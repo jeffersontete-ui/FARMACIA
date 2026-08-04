@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verificar instalação</title>
+<style>
+  body{font-family:-apple-system,Segoe UI,sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#f9fafb;color:#111827}
+  h1{font-size:20px}
+  .item{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:12px}
+  .ic{font-size:22px;flex-shrink:0}
+  .tx{flex:1}
+  .tx b{display:block;font-size:14px}
+  .tx span{font-size:12px;color:#6b7280}
+  .ok{color:#059669}.bad{color:#dc2626}.wait{color:#d97706}
+  .note{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px;font-size:13px;color:#1e40af;line-height:1.6;margin-top:16px}
+</style>
+</head>
+<body>
+<h1>🔎 Verificação antes de publicar</h1>
+<p style="font-size:13px;color:#374151">Esta página confere se os arquivos e o ambiente estão prontos. Ela não muda nada — só verifica.</p>
+
+<div id="lista"></div>
+
+<div class="note">
+  <b>O que fazer com o resultado:</b><br>
+  • Tudo <span class="ok">verde</span> → pode publicar.<br>
+  • <span class="bad">Vermelho no HTTPS</span> → a câmera não vai funcionar. Publique pelo GitHub Pages (que é https), não abra pelo arquivo local.<br>
+  • <span class="bad">Vermelho num arquivo</span> → falta subir aquele arquivo para o repositório.
+</div>
+
+<script>
+const checks=[
+  {nome:"Rodando em HTTPS", desc:"Necessário para câmera e app offline",
+   teste:()=>location.protocol==="https:"||location.hostname==="localhost"},
+  {nome:"index.html", desc:"O app principal", arquivo:"index.html"},
+  {nome:"sw.js", desc:"Service worker (offline)", arquivo:"sw.js"},
+  {nome:"manifest.json", desc:"Instalar como app", arquivo:"manifest.json"},
+  {nome:"icon-192.png", desc:"Ícone", arquivo:"icon-192.png"},
+  {nome:"icon-512.png", desc:"Ícone", arquivo:"icon-512.png"},
+  {nome:"Suporte a leitor de câmera", desc:"BarcodeDetector nativo (ou ZXing por reserva)",
+   teste:()=>("BarcodeDetector"in window)?true:"reserva"},
+  {nome:"Service Worker suportado", desc:"O navegador permite modo offline",
+   teste:()=>"serviceWorker"in navigator}
+];
+
+const el=document.getElementById("lista");
+function linha(nome,desc,estado){
+  const ic=estado===true?'<span class="ic ok">✅</span>':estado==="reserva"?'<span class="ic wait">⚠️</span>':estado==="wait"?'<span class="ic wait">⏳</span>':'<span class="ic bad">❌</span>';
+  const extra=estado==="reserva"?" (usará ZXing — funciona igual)":"";
+  return `<div class="item">${ic}<div class="tx"><b>${nome}</b><span>${desc}${extra}</span></div></div>`;
+}
+
+(async()=>{
+  for(const c of checks){
+    let estado;
+    if(c.arquivo){
+      try{ const r=await fetch(c.arquivo,{method:"HEAD"}); estado=r.ok; }
+      catch(e){ estado=false; }
+    }else{
+      estado=c.teste();
+    }
+    el.insertAdjacentHTML("beforeend", linha(c.nome,c.desc,estado));
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Setup — Criar usuários</title>
+<style>
+  body{font-family:-apple-system,Segoe UI,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#f9fafb;color:#111827}
+  h1{font-size:20px}
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:14px}
+  .warn{background:#fff3cd;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:12px;font-size:13px;line-height:1.5}
+  button{width:100%;height:46px;border:none;border-radius:10px;background:#1a9e6b;color:#fff;font-size:15px;font-weight:700;cursor:pointer}
+  button:disabled{opacity:.5}
+  pre{background:#111827;color:#d1fae5;padding:12px;border-radius:8px;font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:320px;overflow:auto}
+  code{background:#f3f4f6;padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<h1>🔧 Criar os 5 usuários no Firebase</h1>
+
+<div class="warn">
+  <b>Rode esta página UMA vez só.</b> Ela cadastra as cinco pessoas no
+  Firebase Authentication com as senhas atuais. Depois de rodar com sucesso,
+  <b>apague este arquivo do repositório</b> — ele não deve ficar público.
+</div>
+
+<div class="card">
+  <p style="font-size:13px;color:#374151;line-height:1.6">
+    Antes de clicar: no <b>Console do Firebase</b> → <b>Authentication</b> →
+    <b>Sign-in method</b>, ative o provedor <b>E-mail/senha</b>.
+    Sem isso, a criação falha.
+  </p>
+  <button id="btn" onclick="criar()">Criar os 5 usuários agora</button>
+</div>
+
+<pre id="log">Aguardando…</pre>
+
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import{getAuth,createUserWithEmailAndPassword}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+const FB={
+  apiKey:"AIzaSyC3nXsBC2ARX8IOLITHUtovPn4DONEQe7g",
+  authDomain:"estoque-remedios-7b785.firebaseapp.com",
+  projectId:"estoque-remedios-7b785",
+  databaseURL:"https://estoque-remedios-7b785-default-rtdb.firebaseio.com",
+  storageBucket:"estoque-remedios-7b785.firebasestorage.app",
+  messagingSenderId:"1005921072336",
+  appId:"1:1005921072336:web:964ca0ae079b5e796e5ad5"
+};
+const auth=getAuth(initializeApp(FB));
+
+// Senhas atuais (as mesmas de hoje). Troque-as no Console depois.
+const USERS=[
+  {email:"jefferson@farmacia.local",senha:"2407"},
+  {email:"marconi@farmacia.local",  senha:"9876"},
+  {email:"marcelo@farmacia.local",  senha:"1991"},
+  {email:"eliara@farmacia.local",   senha:"1234"},
+  {email:"anderson@farmacia.local", senha:"1010"}
+];
+
+const log=t=>{document.getElementById("log").textContent+="\n"+t;};
+
+window.criar=async()=>{
+  document.getElementById("btn").disabled=true;
+  document.getElementById("log").textContent="Começando…";
+  for(const u of USERS){
+    try{
+      await createUserWithEmailAndPassword(auth,u.email,u.senha);
+      log("✅ criado: "+u.email);
+    }catch(e){
+      if(e.code==="auth/email-already-in-use") log("• já existia: "+u.email);
+      else log("❌ "+u.email+" — "+e.code+" ("+e.message+")");
+    }
+  }
+  log("\n✔ Terminado. Agora APAGUE este arquivo do repositório.");
+};
+</script>
+</body>
+</html>

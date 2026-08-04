@@ -1,0 +1,18 @@
+# Dados sensíveis — NUNCA subir para o GitHub
+dados_digifarma/
+*.csv
+*.fdb
+*.gdb
+agente/config.local.*
+agente/chave-firebase.json
+chave-firebase.json
+agente/agente_erro.log
+*serviceAccount*.json
+.env
+*.local
+
+# Lixo de sistema
+Thumbs.db
+.DS_Store
+_check.mjs
+_s.mjs

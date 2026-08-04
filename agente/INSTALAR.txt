@@ -1,0 +1,72 @@
+========================================================================
+  AGENTE AUTOMÁTICO — sincroniza o Digifarma com o app, sozinho
+========================================================================
+
+O QUE ELE FAZ
+  A cada X minutos, lê o estoque do Digifarma e publica no Firebase.
+  O app mostra esse inventário na aba "Farmácia", sempre atualizado.
+  Você NÃO precisa clicar em nada depois de configurar.
+
+  Importante: o Digifarma MANDA. O que o agente publica é o que o app
+  mostra. Ninguém edita esse inventário pelo app (é só consulta).
+
+------------------------------------------------------------------------
+  INSTALAÇÃO (uma vez só, no PC da farmácia)
+------------------------------------------------------------------------
+
+1) INSTALAR O PYTHON
+   - Baixe em https://python.org (versão 3).
+   - Na instalação, MARQUE "Add Python to PATH".
+
+2) INSTALAR AS BIBLIOTECAS
+   - Abra o Prompt de Comando e rode:
+        pip install firebird-driver firebase-admin
+
+3) BAIXAR A CHAVE DO FIREBASE (a "conta de robô")
+   - Console do Firebase (console.firebase.google.com) > seu projeto
+   - Engrenagem (Configurações do projeto) > aba "Contas de serviço"
+   - Botão "Gerar nova chave privada" > baixa um arquivo .json
+   - Renomeie esse arquivo para:   chave-firebase.json
+   - Coloque ele NA MESMA PASTA do agente_auto.py
+   - NUNCA suba esse arquivo no GitHub. (o .gitignore já bloqueia)
+
+4) AJUSTAR O CAMINHO DO BANCO (se necessário)
+   - Abra agente_auto.py no Bloco de Notas.
+   - Confira a linha DB_PATH — deve apontar para o .fdb do Digifarma:
+        C:\Digifarma\Dados\digifarma6-.fdb
+   - Em ESCOPO, escolha:
+        "controlados" = só os controlados com saldo (SNGPC, ~97)
+        "com_saldo"   = todo produto com saldo (~2.500)
+
+5) TESTAR
+   - Dê dois cliques em  Sincronizar_Agora.bat
+   - Deve aparecer "Publicado no Firebase".
+   - Abra o app > aba Farmácia: o inventário aparece com a hora da sincronização.
+
+------------------------------------------------------------------------
+  DEIXAR AUTOMÁTICO (rodar sozinho de hora em hora)
+------------------------------------------------------------------------
+
+Use o Agendador de Tarefas do Windows:
+
+  1. Menu Iniciar > "Agendador de Tarefas" > "Criar Tarefa Básica".
+  2. Nome: "Sincronizar Digifarma".
+  3. Disparador: "Diariamente" > repetir a cada 1 hora (nas opções avançadas),
+     ou "Ao iniciar o computador".
+  4. Ação: "Iniciar um programa".
+     Programa/script:  (aponte para o Sincronizar_Agora.bat)
+  5. Concluir.
+
+  Pronto. Enquanto o PC estiver LIGADO, o agente sincroniza sozinho.
+  Se o PC estiver desligado, não sincroniza (é o único jeito de ler o
+  Firebird do Digifarma — precisa do PC ligado).
+
+------------------------------------------------------------------------
+  SE DER ERRO
+------------------------------------------------------------------------
+
+  - Veja o arquivo  agente_erro.log  (criado na pasta quando falha).
+  - "unsupported on-disk structure": o Firebird do PC é antigo. Aponte o
+    cliente novo na função conectar_digifarma() dentro do agente_auto.py
+    (há um comentário explicando onde).
+  - "Não achei a chave": o chave-firebase.json não está na pasta certa.

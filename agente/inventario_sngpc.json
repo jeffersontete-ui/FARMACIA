@@ -1,0 +1,972 @@
+[
+ {
+  "id": "dg8176",
+  "n": "ALPRAZOLAM 0,25 MG C/ 30 CPR 0,25 MG C/ 30 CPR (B1)",
+  "q": 4,
+  "v": "12/27",
+  "lab": "",
+  "cod": "7896004718811",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg6923",
+  "n": "ALPRAZOLAM 0,5 MG NQ-GENERICO 0,5 MG C/ 30 CPR (B1)",
+  "q": 15,
+  "v": "04/27",
+  "lab": "",
+  "cod": "7895296280082",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg29844",
+  "n": "ALPRAZOLAM 0,50 MG LEGRAND 0,5MG 30 COMPRIMIDOS",
+  "q": 2,
+  "v": "07/27",
+  "lab": "",
+  "cod": "7894916149150",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg30654",
+  "n": "ALPRAZOLAM 1 MG LEGRAND 1 MG C/ 30 CPR (B1)",
+  "q": 8,
+  "v": "04/27",
+  "lab": "",
+  "cod": "7894916149167",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg6925",
+  "n": "ALPRAZOLAM 1MG NOVA QUIMICA 1 MG C/ 30 CPR (B1)",
+  "q": 27,
+  "v": "04/27",
+  "lab": "",
+  "cod": "7895296280143",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg6926",
+  "n": "ALPRAZOLAM 2 MG NOVA Q 2 MG C/ 30 CPR (B1)",
+  "q": 4,
+  "v": "03/27",
+  "lab": "",
+  "cod": "7895296280204",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg12242",
+  "n": "AMITRIPTILINA 25MG TEUTO 25 MG C/ 30 CPR (C1)",
+  "q": 11,
+  "v": "04/27",
+  "lab": "",
+  "cod": "7896112124429",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg66176",
+  "n": "ARIPIPRAZOL 10 MG NVQ 10 MG X 30",
+  "q": 5,
+  "v": "09/27",
+  "lab": "",
+  "cod": "7895296219020",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg37996",
+  "n": "ARIPIPRAZOL 15 MG 30 CPR (C1) GEN",
+  "q": 3,
+  "v": "08/28",
+  "lab": "",
+  "cod": "7898912189790",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg68605",
+  "n": "ARIPIPRAZOL 15MG 30CPD (C1) G ZYD (C1) 15MG X 30CPR",
+  "q": 1,
+  "v": "11/27",
+  "lab": "",
+  "cod": "7898927562878",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg8142",
+  "n": "BROMAZEPAM 3 MG C/ 30 CPR (B1) 3 MG C/ 30 CPR (B1)",
+  "q": 2,
+  "v": "07/26",
+  "lab": "",
+  "cod": "7896004716268",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg12201",
+  "n": "BROMAZEPAM 3 MG C/ 30 CPR (B1) TEUTO 3 MG C/ 30 CPR (B1)",
+  "q": 3,
+  "v": "05/27",
+  "lab": "",
+  "cod": "7896112115267",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg6466",
+  "n": "BUPROPIONA 150MG COM 60 COMP LEGRAND 150MG C/ 60 COMPRIMIDOS",
+  "q": 1,
+  "v": "11/27",
+  "lab": "",
+  "cod": "7894916146685",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg6465",
+  "n": "BUPROPIONA 150MG LEGRAND C/ 30 150 MG C/ 30 CPR",
+  "q": 3,
+  "v": "12/27",
+  "lab": "",
+  "cod": "7894916146678",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg6856",
+  "n": "BUPROPIONA CLORID 150MG NOVA QUIM. 150 MG C/ 30 CPR REV (C1)",
+  "q": 3,
+  "v": "12/27",
+  "lab": "",
+  "cod": "7895296213042",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg8852",
+  "n": "CARBAMAZEPINA 200 MG C/30 CPR (C1) (GEN)(C1) UNIAO 200 MG C/ 30 CPR (C1)",
+  "q": 5,
+  "v": "08/26",
+  "lab": "",
+  "cod": "7896006225928",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg66119",
+  "n": "CARBONATO DE LITIO BIOLAB 300 MG CX 60 COMP",
+  "q": 7,
+  "v": "03/28",
+  "lab": "",
+  "cod": "7896112403456",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg67996",
+  "n": "CELECOXIBE 200MG 10CAPS C1(TEU) 200MG X 10CPS GEL DUR",
+  "q": 13,
+  "v": "06/27",
+  "lab": "",
+  "cod": "7896112106470",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg68538",
+  "n": "CELECOXIBE 200MG 30CPS 200MG X 30CPS GEL DUR",
+  "q": 2,
+  "v": "07/27",
+  "lab": "",
+  "cod": "7896112107880",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg21963",
+  "n": "CITALOPRAM 20 MG BIOLAB 20 MG C/ 28 CPR (C1)",
+  "q": 1,
+  "v": "05/27",
+  "lab": "",
+  "cod": "7898146820759",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg30147",
+  "n": "CITALOPRAM 20 MG C/ 30 CPR (C1) 20 MG C/ 30 CPR REV",
+  "q": 6,
+  "v": "11/28",
+  "lab": "",
+  "cod": "7896112129110",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg67315",
+  "n": "CITALOPRAM 20MG TORRENT 20MG C/ 30 COMPRIMIDOS",
+  "q": 1,
+  "v": "12/27",
+  "lab": "",
+  "cod": "8903855090467",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg66143",
+  "n": "CLONAZEPAM 0,5MG GEOLAB (B1) 0,5 MG COM CT BL AL PLAS TRANS X 30",
+  "q": 5,
+  "v": "09/26",
+  "lab": "",
+  "cod": "7899095202429",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg67606",
+  "n": "DESVENLAFAXINA 100MG (C1) GEN 28 CPR REV-TUG 100MG (C1) COMP REV LIB",
+  "q": 2,
+  "v": "10/27",
+  "lab": "",
+  "cod": "7896112105305",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg42825",
+  "n": "DESVENLAFAXINA 100MG LEGRAND 100 MG 30 COMPRIMIDOS",
+  "q": 2,
+  "v": "08/27",
+  "lab": "",
+  "cod": "7894916148917",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg66180",
+  "n": "DESVENLAFAXINA 100MG TORRENT 100 MG COM REV LIB PROL CT BL AL AL X 30",
+  "q": 2,
+  "v": "07/27",
+  "lab": "",
+  "cod": "8903855085135",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg66225",
+  "n": "DESVENLAFAXINA 50MG ALTHAIA 50MG X30 CPR REV C1",
+  "q": 1,
+  "v": "12/27",
+  "lab": "",
+  "cod": "7898569767556",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg17882",
+  "n": "DIAZEPAM 10 MG C/ 30 CPR (B1) 10 MG C/ 30 CPR (B1) NEO GEN",
+  "q": 3,
+  "v": "11/27",
+  "lab": "",
+  "cod": "7896714232980",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg68213",
+  "n": "DIAZEPAM 10MG 10 MG COM CT BL AL PLAS TRANS X 30",
+  "q": 2,
+  "v": "09/26",
+  "lab": "",
+  "cod": "7896006205081",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg17880",
+  "n": "DIAZEPAM 5 MG NEO QUIM 5 MG C/ 30 CPR (B1) - NEO GEN",
+  "q": 3,
+  "v": "06/27",
+  "lab": "",
+  "cod": "7896714232966",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg68736",
+  "n": "DIAZEPAM 5MG 30CPR",
+  "q": 2,
+  "v": "05/26",
+  "lab": "",
+  "cod": "7897406122688",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg67774",
+  "n": "DONEPEZILA 10 MG C/30 CPR (C1) (BIOCH) (C1)",
+  "q": 1,
+  "v": "05/28",
+  "lab": "",
+  "cod": "7897406120226",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg27478",
+  "n": "DONEPEZILA 10MG TORRENT 10 MG C/ 30 CPR",
+  "q": 3,
+  "v": "05/27",
+  "lab": "",
+  "cod": "8902220108721",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg68613",
+  "n": "DONEPEZILA 5 MG C/30 COMP (C1)",
+  "q": 5,
+  "v": "06/27",
+  "lab": "",
+  "cod": "7897406120219",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg27477",
+  "n": "DONEPEZILA 5MG TORRENT 5 MG C/ 30 CPR",
+  "q": 1,
+  "v": "08/26",
+  "lab": "",
+  "cod": "8902220108677",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg6493",
+  "n": "DULOXETINA 30MG LEGRAND 30 MG C/ 30 CPR (C1)",
+  "q": 5,
+  "v": "10/27",
+  "lab": "",
+  "cod": "7894916148016",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg6494",
+  "n": "DULOXETINA 60MG LEGRAND 60 MG C/ 30 CPR (C1)",
+  "q": 6,
+  "v": "11/27",
+  "lab": "",
+  "cod": "7894916148023",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg30949",
+  "n": "DULOXETINA CLORID. 60 MG C/ 30 CPR (C1) 60 MG C/ 30 CPR (C1)",
+  "q": 3,
+  "v": "06/27",
+  "lab": "",
+  "cod": "7896181925262",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg28307",
+  "n": "ESCITALOPRAM 10 MG GEOLAB 10 MG C/ 30 CPR (C1)",
+  "q": 1,
+  "v": "06/27",
+  "lab": "",
+  "cod": "7899095238671",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg67059",
+  "n": "ESCITALOPRAM 10MG CIMED 10MG C/ 30 COMP",
+  "q": 8,
+  "v": "03/27",
+  "lab": "",
+  "cod": "7896523200934",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg66882",
+  "n": "ESCITALOPRAM 15MG CIMED 15MG X 30 COMP REV",
+  "q": 4,
+  "v": "05/27",
+  "lab": "",
+  "cod": "7896523200941",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg66695",
+  "n": "ESCITALOPRAM 20MG CIMED 20MG 30 CPR",
+  "q": 3,
+  "v": "10/26",
+  "lab": "",
+  "cod": "7896523200972",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg27481",
+  "n": "ESCITALOPRAM OXALATO 10 MG TORRENT 10 MG C/ 30 CPR (C1)",
+  "q": 4,
+  "v": "05/27",
+  "lab": "",
+  "cod": "8902220109339",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg28815",
+  "n": "ESCITALOPRAM OXALATO 20 MG NOVA QUIMICA 20 MG C/ 30 CPR (C1)",
+  "q": 8,
+  "v": "11/27",
+  "lab": "",
+  "cod": "7895296113182",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg28872",
+  "n": "FLUOXETINA CLORID. 20MG TEUTO 20 MG C/ 30 CPR (C1)",
+  "q": 4,
+  "v": "12/26",
+  "lab": "",
+  "cod": "7896112125617",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg21960",
+  "n": "GABAPENTINA 300 MG BIOLAB 300 MG C/ 30 CPR (C1)",
+  "q": 3,
+  "v": "01/28",
+  "lab": "",
+  "cod": "7898146820582",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg6748",
+  "n": "ISOTRETINOINA 20 MG C/ 30 CPS (C2) 20 MG C/ 30 CPS GEL (C2)",
+  "q": 3,
+  "v": "11/27",
+  "lab": "",
+  "cod": "7895296043069",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg68517",
+  "n": "LAMOTRIGINA 100 MG C/30 COMP (C1)",
+  "q": 8,
+  "v": "12/27",
+  "lab": "",
+  "cod": "7897406119909",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg68214",
+  "n": "LAMOTRIGINA 25 MG C/30 CPR C1) (BIOCH) (C1)",
+  "q": 1,
+  "v": "07/26",
+  "lab": "",
+  "cod": "7897406119893",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg28581",
+  "n": "LAMOTRIGINA 25 MG UNICHEM 25 MG C/ 30 CPR (C1)",
+  "q": 3,
+  "v": "01/29",
+  "lab": "",
+  "cod": "7898912189646",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg67305",
+  "n": "LAMOTRIGINA 25MG ZYDUS 25MG COM 30 COMPRIMIDOS",
+  "q": 4,
+  "v": "09/27",
+  "lab": "",
+  "cod": "7898940658411",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg32903",
+  "n": "LAMOTRIGINA 50 MG ALTHAIA 50 MG C/ 30 CPR",
+  "q": 3,
+  "v": "04/27",
+  "lab": "",
+  "cod": "7898569760267",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg27471",
+  "n": "LAMOTRIGINA 50 MG C/ 30 CPR (C1) TORRENT 50 MG C/ 30 CPR (C1)",
+  "q": 4,
+  "v": "06/26",
+  "lab": "",
+  "cod": "8902220107922",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg67317",
+  "n": "MEMANTINA 10MG NOVA QUIMICA 10MG 4BLTX15COM REV-NQ",
+  "q": 1,
+  "v": "03/27",
+  "lab": "",
+  "cod": "7895296449847",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg21988",
+  "n": "MEMANTINA CLORID. 10 MG C/ 60 CPR (C1) 10 MG C/ 60 CPR REV (C1)",
+  "q": 5,
+  "v": "06/28",
+  "lab": "",
+  "cod": "7898146825129",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg68463",
+  "n": "METILFENIDATO CLOR 10MG 30CPR GEN / NOVA QUIMICA G 10MG 2BLT X 15 COM",
+  "q": 1,
+  "v": "08/27",
+  "lab": "",
+  "cod": "7896472520374",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg68071",
+  "n": "MIRTAZAPINA *C1 30MG 30CPR",
+  "q": 2,
+  "v": "07/26",
+  "lab": "",
+  "cod": "7899620916647",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg67980",
+  "n": "MIRTAZAPINA 15MG (C1) GEN 30 CAPS",
+  "q": 2,
+  "v": "06/26",
+  "lab": "",
+  "cod": "7899620916630",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg66546",
+  "n": "MIRTAZAPINA 30MG TORRENT 30 MG COM REV CT BL AL/AL X 30",
+  "q": 1,
+  "v": "10/26",
+  "lab": "",
+  "cod": "8903855083506",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg66179",
+  "n": "MIRTAZAPINA 45MG TORRENT 45 MG COM REV CT BL AL/AL X 30",
+  "q": 1,
+  "v": "09/26",
+  "lab": "",
+  "cod": "8903855083513",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg68761",
+  "n": "NORTRIPTILINA 25MG (C1) GEN 30 CPR REV-DEL",
+  "q": 3,
+  "v": "10/27",
+  "lab": "",
+  "cod": "7893454714684",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg40153",
+  "n": "OLANZAPINA 10 MG 30 CPR (C1) EMS 10 MG 30 CPR (C1)",
+  "q": 1,
+  "v": "06/26",
+  "lab": "",
+  "cod": "7896004759791",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg13141",
+  "n": "OLANZAPINA 10 MG C/ 30 CPR (C1) BIOSINT. 10 MG C/ 30 CPR (C1)",
+  "q": 8,
+  "v": "06/27",
+  "lab": "",
+  "cod": "7896181918646",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg67874",
+  "n": "OLANZAPINA 2,5 MG C/30 COMP (C1)",
+  "q": 4,
+  "v": "06/26",
+  "lab": "",
+  "cod": "7897406120493",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg31789",
+  "n": "OLANZAPINA 5 MG C/ 30 CPR C1) 5 MG C/ 30 CPR (C1)",
+  "q": 1,
+  "v": "10/27",
+  "lab": "",
+  "cod": "7899095237896",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg66215",
+  "n": "OLANZAPINA 5MG NOVA QUIMICA 5MG",
+  "q": 2,
+  "v": "11/27",
+  "lab": "",
+  "cod": "7895296445528",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg18595",
+  "n": "OXCARBAZEPINA 300 MG C/ 30 CPR (C1)(C1) RANBAXY 300 MG C/ 30 CPR (C1)",
+  "q": 2,
+  "v": "06/27",
+  "lab": "",
+  "cod": "7897076911827",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg66348",
+  "n": "PARAC+CODEINA NEOQUIMICA C/ 12 CPR 30MG + 500MG X 12",
+  "q": 3,
+  "v": "02/28",
+  "lab": "",
+  "cod": "7896714263137",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg40030",
+  "n": "PARACETAMOL+CODEINA 500+30 MG C/ 12 CPR (A2)",
+  "q": 2,
+  "v": "10/27",
+  "lab": "",
+  "cod": "7895296423014",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg29755",
+  "n": "PAROXETINA 20MG TEUTO 20 MG C/ 30 CPR (C1)",
+  "q": 7,
+  "v": "11/27",
+  "lab": "",
+  "cod": "7896112101659",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg68259",
+  "n": "PREGABALINA (C-1) 150MG C/30CP (+) RAN 150 MG CAP DURA CT BL AL PLAS TRANS X 30",
+  "q": 3,
+  "v": "06/28",
+  "lab": "",
+  "cod": "7897076922182",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg66896",
+  "n": "PREGABALINA 150MG MEDQUIMICA 150MG MEDQUIMICA 30 CÁPSULAS",
+  "q": 6,
+  "v": "01/28",
+  "lab": "",
+  "cod": "7896862927097",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg66132",
+  "n": "PREGABALINA 150MG TEUTO 15MG CAP DURA CT BL AL PLAS TRANS X 30",
+  "q": 2,
+  "v": "08/27",
+  "lab": "",
+  "cod": "7896112172208",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg66413",
+  "n": "PREGABALINA 75MG MEDQUIMICA 75MG 30 CÁSPULAS",
+  "q": 7,
+  "v": "01/28",
+  "lab": "",
+  "cod": "7896862927073",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg31903",
+  "n": "QUETIAPINA FUMARATO 100 MG C/ 30 CPR (C1) 100 MG C/ 30 CPR",
+  "q": 2,
+  "v": "10/28",
+  "lab": "",
+  "cod": "7898940658916",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg21993",
+  "n": "QUETIAPINA FUMARATO 100 MG C/ 30 CPR (C1) GEN -AW 100 MG C/ 30 CPR (C1)",
+  "q": 1,
+  "v": "12/28",
+  "lab": "",
+  "cod": "7898146825358",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg41754",
+  "n": "QUETIAPINA FUMARATO 200 MG C/ 30 CPR (C1) GEO 200 MG C/ 30 CPR (C1)",
+  "q": 1,
+  "v": "03/27",
+  "lab": "",
+  "cod": "7899095243743",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg31654",
+  "n": "QUETIAPINA FUMARATO 200 MG C/ 30 CPR (C1) TEU 200 MG C/ 30 CPR (C1)",
+  "q": 1,
+  "v": "06/27",
+  "lab": "",
+  "cod": "7896112121039",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg8605",
+  "n": "QUETIAPINA FUMARATO 25 MG C/ 30 CPR (C1) GER 25 MG C/ 30 CPR",
+  "q": 9,
+  "v": "11/27",
+  "lab": "",
+  "cod": "7896004738949",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg67061",
+  "n": "RISPERIDONA 1 MG/ML NOVA QUIMICA SOL OR C/ 30 ML",
+  "q": 2,
+  "v": "08/27",
+  "lab": "",
+  "cod": "7895296445313",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg68988",
+  "n": "RISPERIDONA 1MG C/30COMP C1 BIOS-GENERICO 1MG X 30CPR REV",
+  "q": 3,
+  "v": "11/26",
+  "lab": "",
+  "cod": "7896181916826",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg68339",
+  "n": "RISPERIDONA 2MG C 30 CP C1",
+  "q": 2,
+  "v": "01/28",
+  "lab": "",
+  "cod": "7899095202399",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg68532",
+  "n": "RISPERIDONA 3 MG C/30 COMP (C1)",
+  "q": 7,
+  "v": "12/26",
+  "lab": "",
+  "cod": "7897406120288",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg29949",
+  "n": "SERTRALINA 50MG GEOLAB 50 MG C/ 30 CPR (C1)",
+  "q": 1,
+  "v": "08/27",
+  "lab": "",
+  "cod": "7899095242203",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg30726",
+  "n": "SERTRALINA CLORID. 50 MG RANBAXY 50 MG C/ 30 CPR (C1)",
+  "q": 21,
+  "v": "01/28",
+  "lab": "",
+  "cod": "7897076908148",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg47371",
+  "n": "SIBUTRAMINA 15MG TORRENT 15 MG C/ 30 CPR (B1)",
+  "q": 4,
+  "v": "06/27",
+  "lab": "",
+  "cod": "8903855078557",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg66250",
+  "n": "TOPIRAMATO 100MG 60 COMP REV 100 MG COM REV CT BL AL/AL X 60",
+  "q": 1,
+  "v": "12/26",
+  "lab": "",
+  "cod": "7898927562304",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg44952",
+  "n": "TOPIRAMATO 25 MG NOVA QUIMICA 60CPR 25 MG C/ 60 CPR (C1)",
+  "q": 2,
+  "v": "10/27",
+  "lab": "",
+  "cod": "7895296444811",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg19919",
+  "n": "TOPIRAMATO 50 MG C/ 60 CPR (C1) 50 MG C/ 60 CPR (C1)",
+  "q": 1,
+  "v": "09/26",
+  "lab": "",
+  "cod": "7897595605467",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg12221",
+  "n": "TRAMADOL 50 MG TEUTO 50 MG C/ 10 CPR (C1)",
+  "q": 17,
+  "v": "08/27",
+  "lab": "",
+  "cod": "7896112121145",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg67422",
+  "n": "TRAMADOL CLOR+PARAC 37,5+325MG EUROFARMA 10 CPR",
+  "q": 2,
+  "v": "12/28",
+  "lab": "",
+  "cod": "7891317158408",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg68001",
+  "n": "TRAZODONA (G) 100MG 30CP (C1) (GLOBO) (C1)",
+  "q": 7,
+  "v": "02/28",
+  "lab": "",
+  "cod": "7899620916616",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg68025",
+  "n": "TRAZODONA 100MG (C1) GEN 30 CPR REV-ZYD 100 MG COM CT BL AL PLAS PVC/PVDC TRANS X 30",
+  "q": 2,
+  "v": "02/28",
+  "lab": "",
+  "cod": "7898927564155",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg66127",
+  "n": "VENLAFAXINA CLOR 75MG TORRENT 75MG X 30CPS GEL DUR",
+  "q": 4,
+  "v": "06/28",
+  "lab": "",
+  "cod": "8903855073118",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg15473",
+  "n": "VENLAFAXINA CLORID. 75 MG C/ 30 CPR (C1) MEDLEY 75 MG C/ 30 CPR (C1)",
+  "q": 6,
+  "v": "08/27",
+  "lab": "",
+  "cod": "7896422513951",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg42427",
+  "n": "ZOLPIDEM 10MG SANDOZ 10 MG C/ 30 CPR (B1)",
+  "q": 3,
+  "v": "07/27",
+  "lab": "",
+  "cod": "7897595608161",
+  "min": 0,
+  "farmacia": 0
+ },
+ {
+  "id": "dg46958",
+  "n": "ZOLPIDEN HEMIT 10 MG LEGRAND 10 MG C/ 30 CPR (C1)",
+  "q": 2,
+  "v": "10/26",
+  "lab": "",
+  "cod": "7894916341295",
+  "min": 0,
+  "farmacia": 0
+ }
+]
