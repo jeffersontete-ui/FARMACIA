@@ -1,0 +1,39 @@
+{
+  "rules": {
+    "estoque": {
+      "dados": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "movs_log": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "cfg": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.token.email == 'jefferson@farmacia.local'"
+      },
+      "backups": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "sngpc": {
+        ".read": "auth != null",
+        ".write": false
+      }
+    },
+    "farmacia": {
+      ".read": "auth != null",
+      ".write": false,
+      "_comentario": "O agente escreve aqui via Admin SDK (chave de servico), que ignora estas regras. O app so le."
+    },
+    "receituario": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "$outros": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}

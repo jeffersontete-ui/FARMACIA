@@ -422,7 +422,7 @@ html,body{min-height:100%;background:var(--g50);font-family:-apple-system,BlinkM
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getDatabase,ref,onValue,set,update,push,runTransaction,serverTimestamp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-import{getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import{getAuth,signInAnonymously,onAuthStateChanged,signOut}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 // ===== CONFIG FIREBASE =====
 const FB={
@@ -450,7 +450,7 @@ let cfg={bloqueado:false,por:"",em:""};
 function aplicarBloqueio(){
   const ls=document.getElementById("lockScreen");if(!ls)return;
   // Jefferson (master) nunca é bloqueado; bypass temporário permite o login dele
-  const liberado=(curUser==="Jefferson")||window._lockBypass===true;
+  const liberado=(curUser==="Admin")||window._lockBypass===true;
   if(cfg.bloqueado&&!liberado){
     document.getElementById("lockInfo").textContent=cfg.em?("Desabilitado por "+(cfg.por||"ADM")+" em "+fmt(cfg.em)):"";
     ls.style.display="flex";
@@ -465,22 +465,15 @@ onValue(CFGREF,snap=>{
   aplicarBloqueio();
   const st=document.getElementById("lockStatusBox");if(st)renderPTab(); // atualiza painel se aberto
 },()=>{});
-// Botão da tela de bloqueio: só o Jefferson consegue passar (com a senha dele)
+// Botão da tela de bloqueio: libera este aparelho (sem senha).
 window.desbloqueioAdm=async()=>{
-  const s=prompt("Senha do administrador (Jefferson):");
-  if(s===null)return;
-  try{
-    await signInWithEmailAndPassword(auth,USER_EMAIL("Jefferson"),s);
-    window._lockBypass=true; // libera este aparelho para o Jefferson
-    aplicarBloqueio();
-    showToast("🔑 Acesso liberado");
-  }catch(e){
-    alert("❌ Senha incorreta");
-  }
+  window._lockBypass=true;
+  aplicarBloqueio();
+  showToast("🔑 Acesso liberado");
 };
 // Liga/desliga o programa para todos os outros usuários (só Jefferson)
 window.toggleBloqueio=()=>{
-  if(curUser!=="Jefferson")return showToast("🔒 Apenas o Jefferson pode fazer isso");
+  if(!isAdm)return showToast("🔒 Apenas o administrador pode fazer isso");
   const novo=!cfg.bloqueado;
   const msg=novo
     ?"🚫 DESABILITAR o programa para TODOS os outros usuários?\n\nEles verão a tela \"PROGRAMA DESABILITADO\" imediatamente, em todos os aparelhos."
@@ -490,7 +483,6 @@ window.toggleBloqueio=()=>{
     .then(()=>showToast(novo?"🚫 Programa desabilitado para os usuários":"✅ Programa habilitado"))
     .catch(e=>showToast("❌ Erro: "+e.message));
 };
-const ADM="2407";
 const CK="est_cache_v2"; // v2: invalida cache antigo
 const SK="est_sess_v2"; // v2
 const DEFAULT_PERMS={verEstoque:true,movimentar:true,verHistorico:false,verResponsavel:false};
@@ -837,75 +829,51 @@ async function pushMov(mov){
 // switchTab removido - cadastro só pelo ADM
 
 // Usuários fixos — senhas podem ser alteradas pelo ADM
-let SENHAS={Jefferson:"2407",Marconi:"9876",Marcelo:"1991",Eliara:"1234",Anderson:"1010"};
+let SENHAS={}; // sem senhas — login anônimo automático
 const SENHAS_KEY="est_senhas_v1";
 try{const s=localStorage.getItem(SENHAS_KEY);if(s)SENHAS={...SENHAS,...JSON.parse(s)};}catch(e){}
 const saveSenhas=()=>{try{localStorage.setItem(SENHAS_KEY,JSON.stringify(SENHAS));}catch(e){}};
 
-// Só o Jefferson é admin. Os outros quatro veem apenas o Estoque,
-// mas TODOS podem movimentar (entrada/saída), cada um com a própria senha.
+// Sem login com nome/senha. O app entra automaticamente (login anônimo do
+// Firebase) e opera como administrador único. Ninguém digita senha.
 const USUARIOS=[
-  {name:"Jefferson",isAdm:true, isMaster:true },
-  {name:"Marconi",  isAdm:false,isMaster:false},
-  {name:"Marcelo",  isAdm:false,isMaster:false},
-  {name:"Eliara",   isAdm:false,isMaster:false},
-  {name:"Anderson", isAdm:false,isMaster:false}
+  {name:"Admin",isAdm:true, isMaster:true }
 ];
 
-window.doLogin=async()=>{
-  const pass=document.getElementById("inpSenha").value.trim();
-  setMsg("");
-  if(!pass)return setMsg("Digite sua senha");
-  const btn=document.getElementById("btnEnt");
-  btn.disabled=true;
-  setMsg("⏳ Entrando...","msg-loading");
-  // A pessoa digita só a senha. Como o Firebase Auth precisa saber QUEM é,
-  // tentamos autenticar cada usuário com essa senha; o que casar, entra.
-  // (São 5 usuários — o custo é irrelevante e nada fica exposto no código.)
-  let entrou=false;
-  for(const u of USUARIOS){
-    try{
-      await signInWithEmailAndPassword(auth,USER_EMAIL(u.name),pass);
-      entrou=true; // onAuthStateChanged assume daqui (chama startApp)
-      break;
-    }catch(e){ /* senha não é desse usuário: tenta o próximo */ }
+// Entra sozinho no Firebase (login anônimo) assim que o app carrega.
+async function entrarAutomatico(){
+  try{
+    await signInAnonymously(auth);
+  }catch(e){
+    // Se o login anônimo não estiver ativado no Firebase, avisa como habilitar.
+    document.getElementById("appMain").style.display="none";
+    const login=document.getElementById("scrLogin");
+    if(login){
+      login.className="screen active";
+      const box=login.querySelector(".login-box")||login;
+      box.innerHTML='<div style="padding:24px;text-align:center;color:var(--g700);font-size:14px;line-height:1.6">'+
+        '⚠️ <b>Falta ativar o login anônimo</b><br><br>'+
+        'No Console do Firebase → <b>Authentication</b> → <b>Sign-in method</b> → ative <b>Anônimo</b>.<br><br>'+
+        '<small style="color:var(--g500)">Erro: '+(e&&e.code||e)+'</small></div>';
+    }
   }
-  btn.disabled=false;
-  if(!entrou){
-    setMsg("❌ Senha incorreta");
-    document.getElementById("inpSenha").value="";
-  }
-};
-// O Firebase decide quem está logado. Fonte única da verdade do login.
+}
+
+// doLogin não é mais usado (não há tela de senha), mas fica como no-op por segurança.
+window.doLogin=()=>{};
+
+// O Firebase confirma a entrada automática e o app abre.
 onAuthStateChanged(auth,(fbUser)=>{
   if(fbUser){
-    const nome=EMAIL_USER(fbUser.email);
-    const u=USUARIOS.find(x=>x.name===nome);
-    if(!u){ signOut(auth); return; }
-    curUser=u.name;
-    isAdm=u.isAdm;
-    sessSave({u:u.name,a:u.isAdm});
-    if(document.getElementById("appMain").style.display==="none"||
-       document.getElementById("scrLogin").classList.contains("active")){
-      startApp();
-    }
-  }else{
-    curUser=null;isAdm=false;
-    document.getElementById("appMain").style.display="none";
-    document.getElementById("scrLogin").className="screen active";
+    curUser="Admin";
+    isAdm=true;
+    startApp();
   }
 });
 
-// doCadastro removido - cadastro só pelo ADM
-
 window.doLogout=()=>{
-  sessionStorage.removeItem(SK);localStorage.removeItem(SK+"_b");
-  try{signOut(auth);}catch(e){}
-  curUser=null;isAdm=false;
-  document.getElementById("appMain").style.display="none";
-  document.getElementById("scrLogin").className="screen active";
-  document.getElementById("inpSenha").value="";
-  setMsg("");
+  // Sem senha, "sair" só recarrega o app (que entra de novo sozinho).
+  location.reload();
 };
 
 function startApp(){
@@ -923,7 +891,7 @@ function startApp(){
     document.querySelectorAll(".fbAdm").forEach(el=>el.style.display="");
     const fbF0=document.getElementById("fbFarmacia");if(fbF0)fbF0.style.display="";
   } else {
-    // Marconi, Marcelo, Eliara, Anderson: veem SÓ o Estoque, mas movimentam.
+    // (Sem usuários nomeados — app entra como Admin único, sem senha.)
     b.textContent=curUser;b.className="badge badge-user";
     document.getElementById("btnPanel").style.display="none";  // sem Painel ADM
     document.getElementById("fabBtn").style.display="none";     // não cadastra medicamento
@@ -1583,7 +1551,7 @@ function renderPTab(){
         <button onclick="window.open('https://wa.me/?text='+encodeURIComponent(${JSON.stringify(texto)}),'_blank')" style="padding:12px;border-radius:8px;border:none;background:#25D366;color:#fff;font-weight:700;cursor:pointer">📤 Enviar pelo WhatsApp</button>
       </div>`:`<div class="pe">✅ Estoque em dia!</div>`;
   } else if(pTab==="config"){
-    const isJefferson = curUser==="Jefferson";
+    const isJefferson = isAdm;
     const usuariosVisiveis = isJefferson
       ? USUARIOS.filter(u=>u.name!=="Jefferson")
       : USUARIOS.filter(u=>u.name===curUser);
@@ -1756,10 +1724,10 @@ if(versaoSalva&&versaoSalva!==APP_VERSION){
 ['est_cache_v1','est_v7_cache','estoque_cache_v5','est_sess_v1','est_sess_v1_b'].forEach(k=>{
   try{localStorage.removeItem(k);sessionStorage.removeItem(k);}catch(e){}
 });
-// A sessão agora é decidida pelo Firebase Auth (onAuthStateChanged, acima).
-// Se o Firebase lembrar o login, startApp() é chamado de lá automaticamente.
-// Pré-carrega o cache para a tela não piscar em branco enquanto o Auth resolve.
+// Pré-carrega o cache para a tela não piscar em branco enquanto entra.
 loadCache();
+// Entra automaticamente (login anônimo). Sem senha, sem tela de login.
+entrarAutomatico();
 
 // Service worker: faz o app abrir offline (só funciona em HTTPS — GitHub Pages ok).
 if("serviceWorker"in navigator){

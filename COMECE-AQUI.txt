@@ -1,0 +1,53 @@
+==========================================================
+  COMO PUBLICAR — versão SEM SENHA (abre direto)
+==========================================================
+
+O app agora NÃO pede senha: abre direto no estoque.
+Por baixo, ele faz um "login anônimo" automático no Firebase
+(ninguém digita nada). Para isso funcionar, faça 2 ajustes no
+Firebase — uma vez só.
+
+------------------------------------------------------
+PASSO 1 — Ativar o login anônimo
+------------------------------------------------------
+  Console do Firebase (console.firebase.google.com)
+   > seu projeto > Authentication > Sign-in method
+   > ative "Anônimo" (Anonymous) > Salvar.
+
+  (Se você tinha ativado "E-mail/senha" antes, pode deixar
+   ativado ou desativar — não faz diferença agora.)
+
+------------------------------------------------------
+PASSO 2 — Publicar as regras (fecha o banco)
+------------------------------------------------------
+  Console do Firebase > Realtime Database > aba "Regras"
+   > apague o que está lá
+   > cole o conteúdo de  firebase/database.rules.json
+   > Publicar.
+
+  Isso impede que estranhos leiam o banco pela URL crua.
+  (O app continua funcionando porque entra pelo login anônimo.)
+
+------------------------------------------------------
+PASSO 3 — Subir os arquivos no GitHub
+------------------------------------------------------
+  Suba, substituindo os atuais:
+     index.html, sw.js, manifest.json
+  Pode subir também: verificar.html, README.md, .gitignore
+
+  NÃO precisa mais do setup-usuarios.html (não há usuários).
+
+------------------------------------------------------
+PASSO 4 — Testar
+------------------------------------------------------
+  Abra o site. Deve abrir DIRETO no estoque, sem pedir senha.
+  Se aparecer "Falta ativar o login anônimo", volte ao Passo 1.
+
+------------------------------------------------------
+AVISO IMPORTANTE (leia)
+------------------------------------------------------
+  Sem senha, QUALQUER PESSOA que abrir o link do app entra e
+  pode mexer no estoque. Como o repositório é público, o link
+  é conhecido. Se isso for um problema, me avise que eu volto
+  o login com senha — dá para ter os dois (abre fácil, mas
+  protegido).
