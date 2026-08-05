@@ -474,18 +474,31 @@ window.desbloqueioAdm=async()=>{
 // Zera o saldo de TODOS os medicamentos do estoque (com dupla confirmação).
 window.zerarTodoEstoque=()=>{
   if(!isAdm)return showToast("🔒 Apenas o administrador");
-  if(!meds.length)return showToast("Não há medicamentos");
-  const c1=confirm("⚠️ Isto vai ZERAR o saldo de "+meds.length+" medicamentos.\n\nOs cadastros continuam, mas todas as quantidades vão a 0.\nNÃO dá para desfazer.\n\nContinuar?");
-  if(!c1)return;
-  const txt=prompt('Para confirmar, digite a palavra:  ZERAR');
-  if(txt===null)return;
-  if(txt.trim().toUpperCase()!=="ZERAR")return showToast("Cancelado — a palavra não confere");
-  meds.forEach(m=>{m.q=0;m.farmacia=0;});
-  movs.push({id:uid(),mid:"*",tipo:"ajuste",qtd:0,resp:curUser,retiradoPor:"ZEROU TODO O ESTOQUE",dt:new Date().toISOString()});
-  if(movs.length>500)movs=movs.slice(-500);
-  save("meds");save("movs");
-  render();closePanel();
-  showToast("🧹 Estoque zerado");
+  // Pergunta qual aba zerar.
+  const resp=prompt("Qual aba deseja ZERAR?\n\nDigite:\n  E  = Estoque (contagem manual)\n  F  = Farmácia (inventário do Digifarma)\n\n(deixe em branco para cancelar)");
+  if(resp===null)return;
+  const op=resp.trim().toUpperCase();
+  if(op!=="E"&&op!=="F")return showToast("Cancelado");
+
+  if(op==="E"){
+    if(!meds.length)return showToast("Não há medicamentos no Estoque");
+    if(!confirm("⚠️ ZERAR o saldo de "+meds.length+" itens da aba ESTOQUE?\n\nOs cadastros continuam; só as quantidades vão a 0.\nNÃO dá para desfazer."))return;
+    const txt=prompt('Para confirmar, digite:  ZERAR');
+    if(txt===null||txt.trim().toUpperCase()!=="ZERAR")return showToast("Cancelado — palavra não confere");
+    meds.forEach(m=>{m.q=0;m.farmacia=0;});
+    movs.push({id:uid(),mid:"*",tipo:"ajuste",qtd:0,resp:curUser,retiradoPor:"ZEROU A ABA ESTOQUE",dt:new Date().toISOString()});
+    if(movs.length>500)movs=movs.slice(-500);
+    save("meds");save("movs");
+    render();closePanel();
+    showToast("🧹 Aba Estoque zerada");
+  } else {
+    // Farmácia = inventário do Digifarma. É reabastecido pelo agente na próxima
+    // sincronização; zerar aqui limpa a exibição até o agente publicar de novo.
+    if(!confirm("⚠️ A aba FARMÁCIA vem do Digifarma (agente).\n\nZerar aqui limpa a exibição, mas o agente vai reabastecer na próxima sincronização.\nPara ficar zerado de verdade, é preciso parar o agente no servidor.\n\nLimpar a exibição agora?"))return;
+    digifarma={itens:[],total:0,unidades:0,atualizado_em:digifarma.atualizado_em};
+    render();closePanel();
+    showToast("🧹 Exibição da Farmácia limpa (até a próxima sincronização)");
+  }
 };
 // Liga/desliga o programa para todos os outros usuários (só Jefferson)
 window.toggleBloqueio=()=>{
@@ -600,22 +613,20 @@ window.render=()=>{
 };
 window.renderFarmacia=function(){
   const q=(document.getElementById("srch")||{value:""}).value.toLowerCase().trim();
-  const carimbo=digifarma.atualizado_em
-    ? fmt(digifarma.atualizado_em)
-    : "—";
+  const carimbo=digifarma.atualizado_em?fmt(digifarma.atualizado_em):"—";
   const cabecalho=`<div style="background:var(--blue-bg);border-radius:10px;padding:12px 14px;margin-bottom:10px;font-size:12px;color:var(--blue)">
-      🏥 <b>Inventário do Digifarma</b> — atualizado automaticamente<br>
+      🏥 <b>Inventário do Digifarma (SNGPC)</b> — atualizado automaticamente<br>
       <span style="color:var(--g500)">Última sincronização: ${carimbo} • ${digifarma.total} itens • ${digifarma.unidades} unidades</span>
     </div>`;
+  if(!digifarma.atualizado_em){
+    document.getElementById("list").innerHTML=cabecalho+
+      '<div style="text-align:center;padding:40px;color:var(--g400)">⏳ Aguardando a primeira sincronização do Digifarma.<br><small>O agente ainda não publicou. Verifique se ele está rodando no servidor.</small></div>';
+    return;
+  }
   let data=(digifarma.itens||[]).filter(m=>
     !q || (m.n||"").toLowerCase().includes(q) || (m.cod||"").includes(q)
   );
   data.sort((a,b)=>(a.n||"").localeCompare(b.n||""));
-  if(!digifarma.atualizado_em){
-    document.getElementById("list").innerHTML=cabecalho+
-      '<div style="text-align:center;padding:40px;color:var(--g400)">⏳ Aguardando a primeira sincronização do Digifarma.<br><small>O agente ainda não publicou. Verifique se ele está rodando no PC.</small></div>';
-    return;
-  }
   if(!data.length){
     document.getElementById("list").innerHTML=cabecalho+'<div style="text-align:center;padding:40px;color:var(--g400)">🔍 Nenhum item encontrado.</div>';
     return;
@@ -623,7 +634,6 @@ window.renderFarmacia=function(){
   document.getElementById("list").innerHTML=cabecalho+data.map(m=>{
     const est=m.q||0;
     const cor=est<=0?"var(--red)":est<=(m.min||0)?"var(--amber)":"var(--blue)";
-    // validade
     const dv=(()=>{const p=(m.v||"").split("/");if(p.length!==2)return null;const mo=+p[0],yr=+p[1];if(!mo||!yr)return null;return new Date(2000+yr,mo-1,1);})();
     let vLabel="",vCor="var(--g500)";
     if(dv){const dias=Math.floor((dv-new Date())/86400000);
@@ -634,18 +644,16 @@ window.renderFarmacia=function(){
       <div class="cico" style="background:var(--blue-bg);font-size:18px">🏥</div>
       <div class="cbody">
         <div class="cname">${(m.n||"").toUpperCase()}</div>
-        ${m.cod?`<div style="font-size:11px;color:var(--g400);margin-top:2px">🔖 ${m.cod}</div>`:""}
         <div style="font-size:13px;margin-top:4px;color:var(--g500)">Validade: <b>${m.v||"—"}</b>${vLabel?` <span style="color:${vCor};font-weight:700">• ${vLabel}</span>`:""}</div>
-        ${m.min?`<div style="font-size:11px;color:var(--g400);margin-top:2px">mínimo: ${m.min}</div>`:""}
       </div>
       <div class="cright" style="text-align:center">
         <div style="font-size:20px;font-weight:700;color:${cor}">${est}x</div>
-        <div style="font-size:10px;color:var(--g400)">Digifarma</div>
+        <div style="font-size:10px;color:var(--g400)">saldo</div>
       </div>
     </div>`;
   }).join("");
 };
-// (A aba Farmácia é só consulta do inventário do Digifarma — sem movimentação.)
+// (A aba Farmácia é só consulta do inventário do Digifarma — sem movimentação, sem ligação com o Estoque.)
 // ===== BUSCA DADOS DO MEDICAMENTO NA INTERNET (por código de barras) =====
 window.buscarInfoCodigo=function(cod){
   cod=(cod||"").trim();
@@ -1599,15 +1607,14 @@ function renderPTab(){
           </button>
         </div>`:""}
         <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px">
-          <h4 style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:8px">⚠️ Zerar todo o estoque</h4>
+          <h4 style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:8px">⚠️ Zerar estoque</h4>
           <p style="font-size:12px;color:var(--g700);line-height:1.5;margin-bottom:10px">
-            Zera a quantidade de <b>todos</b> os medicamentos da aba Estoque (deixa cada um em 0).
-            Os medicamentos continuam cadastrados — só o saldo vai a zero.
-            <b>Não dá para desfazer.</b>
+            Zera as quantidades de uma aba inteira. Ao clicar, o app pergunta se é a
+            aba <b>Estoque</b> ou <b>Farmácia</b>. Os cadastros continuam — só o saldo vai a 0.
           </p>
           <button onclick="zerarTodoEstoque()"
             style="width:100%;height:44px;border:1px solid #fecaca;border-radius:10px;background:#fff;color:var(--red);font-size:14px;font-weight:700;cursor:pointer">
-            🧹 Zerar todo o estoque
+            🧹 Zerar estoque (pergunta qual aba)
           </button>
         </div>
         <div style="background:var(--g50);border-radius:10px;padding:14px">
