@@ -471,6 +471,22 @@ window.desbloqueioAdm=async()=>{
   aplicarBloqueio();
   showToast("🔑 Acesso liberado");
 };
+// Zera o saldo de TODOS os medicamentos do estoque (com dupla confirmação).
+window.zerarTodoEstoque=()=>{
+  if(!isAdm)return showToast("🔒 Apenas o administrador");
+  if(!meds.length)return showToast("Não há medicamentos");
+  const c1=confirm("⚠️ Isto vai ZERAR o saldo de "+meds.length+" medicamentos.\n\nOs cadastros continuam, mas todas as quantidades vão a 0.\nNÃO dá para desfazer.\n\nContinuar?");
+  if(!c1)return;
+  const txt=prompt('Para confirmar, digite a palavra:  ZERAR');
+  if(txt===null)return;
+  if(txt.trim().toUpperCase()!=="ZERAR")return showToast("Cancelado — a palavra não confere");
+  meds.forEach(m=>{m.q=0;m.farmacia=0;});
+  movs.push({id:uid(),mid:"*",tipo:"ajuste",qtd:0,resp:curUser,retiradoPor:"ZEROU TODO O ESTOQUE",dt:new Date().toISOString()});
+  if(movs.length>500)movs=movs.slice(-500);
+  save("meds");save("movs");
+  render();closePanel();
+  showToast("🧹 Estoque zerado");
+};
 // Liga/desliga o programa para todos os outros usuários (só Jefferson)
 window.toggleBloqueio=()=>{
   if(!isAdm)return showToast("🔒 Apenas o administrador pode fazer isso");
@@ -689,7 +705,19 @@ window.buscarInfoCodigo=function(cod){
     if(st){st.textContent="⚠️ Não encontrado online — preencha o nome manualmente";st.style.color="var(--red)";}
   },700);
 };
+// Senha para abrir a aba Farmácia. Fica desbloqueada até fechar/recarregar o app.
+let _farmaciaLiberada=false;
 window.setF=(el,f)=>{
+  // A aba Farmácia exige senha (2407). Estoque e demais abas são livres.
+  if(f==="farmacia" && !_farmaciaLiberada){
+    const s=prompt("🔒 Senha para acessar a Farmácia:");
+    if(s===null)return;              // cancelou — não troca de aba
+    if(s.trim()!=="2407"){
+      showToast("❌ Senha incorreta");
+      return;                        // errou — fica onde estava
+    }
+    _farmaciaLiberada=true;          // acertou — libera até recarregar
+  }
   filter=f;
   document.querySelectorAll(".fb").forEach(b=>{
     b.classList.remove("active");
@@ -1117,7 +1145,7 @@ window.limparHistorico=async()=>{
   showToast("✅ Histórico limpo!");
   renderPTab();
 };
-sngpcCarregarSync();
+// sngpcCarregarSync() desativado — a aba SNGPC saiu deste módulo (vai para Farmácia).
 
 // (Troca de senha agora é feita no Console do Firebase → Authentication.
 //  A senha não fica mais dentro do programa.)
@@ -1125,7 +1153,7 @@ sngpcCarregarSync();
 // ===== IMPORTAR INVENTÁRIO SNGPC (do Digifarma) =====
 window.importarInventario=(input)=>{
   if(!isAdm)return;
-  const msg=document.getElementById("impMsg");
+  const msg=document.getElementById("impMsg")||{style:{}};
   const file=input.files&&input.files[0];
   if(!file)return;
   const reader=new FileReader();
@@ -1570,20 +1598,25 @@ function renderPTab(){
             ${cfg.bloqueado?"✅ HABILITAR o programa":"🚫 DESABILITAR o programa"}
           </button>
         </div>`:""}
-        <div style="background:var(--green-bg);border-radius:10px;padding:14px">
-          <h4 style="font-size:13px;font-weight:700;color:var(--green-d);margin-bottom:10px">🔑 Senhas</h4>
-          <div style="background:#fff;border-radius:8px;padding:12px;font-size:12px;color:var(--g700);line-height:1.6">
-            As senhas agora ficam guardadas com segurança no Firebase Authentication
-            (não mais dentro do programa). Para trocar a senha de alguém:
-            <div style="margin-top:8px;padding-left:4px">
-              1. Abra o <b>Console do Firebase</b> → <b>Authentication</b> → aba <b>Users</b>.<br>
-              2. Ache a pessoa (ex.: <code>marconi@farmacia.local</code>).<br>
-              3. Clique nos <b>⋮</b> → <b>Reset password</b> (ou redefina a senha).
-            </div>
-            <div style="margin-top:10px;padding:8px 10px;background:#fff3cd;border-radius:6px;color:#92400e">
-              ⚠️ As senhas antigas ficaram públicas no código por semanas — vale trocar as cinco.
-            </div>
-          </div>
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px">
+          <h4 style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:8px">⚠️ Zerar todo o estoque</h4>
+          <p style="font-size:12px;color:var(--g700);line-height:1.5;margin-bottom:10px">
+            Zera a quantidade de <b>todos</b> os medicamentos da aba Estoque (deixa cada um em 0).
+            Os medicamentos continuam cadastrados — só o saldo vai a zero.
+            <b>Não dá para desfazer.</b>
+          </p>
+          <button onclick="zerarTodoEstoque()"
+            style="width:100%;height:44px;border:1px solid #fecaca;border-radius:10px;background:#fff;color:var(--red);font-size:14px;font-weight:700;cursor:pointer">
+            🧹 Zerar todo o estoque
+          </button>
+        </div>
+        <div style="background:var(--g50);border-radius:10px;padding:14px">
+          <h4 style="font-size:13px;font-weight:700;color:var(--g700);margin-bottom:8px">📤 Exportar</h4>
+          <p style="font-size:12px;color:var(--g500);line-height:1.5;margin-bottom:10px">Baixa a lista do estoque em CSV (abre no Excel).</p>
+          <button onclick="exportarCSV()"
+            style="width:100%;height:44px;border:1px solid var(--g200);border-radius:10px;background:#fff;color:var(--g700);font-size:14px;font-weight:700;cursor:pointer">
+            📄 Exportar estoque (CSV)
+          </button>
         </div>
         <div style="background:var(--blue-bg);border-radius:10px;padding:14px">
           <h4 style="font-size:13px;font-weight:700;color:var(--blue);margin-bottom:8px">🏥 Aba Farmácia (Digifarma)</h4>
