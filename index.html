@@ -1647,6 +1647,42 @@ function sngpcRender() {
 window.sngpcUploadRetorno = sngpcUploadRetorno;
 
 
+
+/* ===== AVISOS: permitir "zerar" (ocultar) os alertas e a lista de compras =====
+   Fica gravado neste aparelho. Se a situação do item mudar e o aviso deixar de
+   existir, a marca é apagada sozinha — então ele volta a avisar se acontecer de novo. */
+const AVISOS_KEY="est_avisos_ocultos_v1";
+let avisosOcultos={};
+try{avisosOcultos=JSON.parse(localStorage.getItem(AVISOS_KEY)||"{}")||{};}catch(e){avisosOcultos={};}
+const salvarAvisosOcultos=()=>{try{localStorage.setItem(AVISOS_KEY,JSON.stringify(avisosOcultos));}catch(e){}};
+let _avisosNaTela=[];
+window.ocultarAviso=k=>{avisosOcultos[decodeURIComponent(k)]=1;salvarAvisosOcultos();renderPTab();};
+window.zerarAvisos=()=>{
+  if(!_avisosNaTela.length)return;
+  if(!confirm("Zerar "+_avisosNaTela.length+" aviso(s) desta aba?\n\nEles somem daqui. Se a situação do item mudar e voltar a acontecer, o aviso reaparece."))return;
+  _avisosNaTela.forEach(k=>avisosOcultos[k]=1);
+  salvarAvisosOcultos();renderPTab();
+  showToast("🔕 Avisos zerados");
+};
+window.restaurarAvisos=()=>{avisosOcultos={};salvarAvisosOcultos();renderPTab();showToast("↩️ Avisos restaurados");};
+function filtrarAvisos(its){
+  const atuais=new Set(its.map(i=>i.k));
+  let mudou=false;
+  Object.keys(avisosOcultos).forEach(k=>{if(!atuais.has(k)){delete avisosOcultos[k];mudou=true;}});
+  if(mudou)salvarAvisosOcultos();
+  const vis=its.filter(i=>!avisosOcultos[i.k]);
+  _avisosNaTela=vis.map(i=>i.k);
+  return {vis, ocultos: its.length-vis.length};
+}
+function barraAvisos(vis,ocultos){
+  let h="";
+  if(vis.length)h+=`<button onclick="zerarAvisos()" style="width:100%;padding:10px;border-radius:8px;border:none;background:#fee2e2;color:#991b1b;font-weight:700;cursor:pointer;margin-bottom:8px">🔕 Zerar avisos (${vis.length})</button>`;
+  if(ocultos)h+=`<button onclick="restaurarAvisos()" style="width:100%;padding:9px;border-radius:8px;border:1px solid var(--g100);background:#fff;color:var(--g500);font-weight:700;cursor:pointer;margin-bottom:8px">↩️ Mostrar ${ocultos} aviso(s) zerado(s)</button>`;
+  return h;
+}
+function comX(k,html){
+  return `<div style="position:relative">${html}<button onclick="ocultarAviso('${encodeURIComponent(k)}')" title="Zerar este aviso" style="position:absolute;top:6px;right:6px;width:24px;height:24px;border:none;border-radius:6px;background:rgba(0,0,0,.06);color:var(--g500);font-size:13px;line-height:1;cursor:pointer">✕</button></div>`;
+}
 function renderPTab(){
   const body=document.getElementById("pBody");
   if(pTab==="mov"){
@@ -1661,25 +1697,29 @@ function renderPTab(){
     const zero=meds.filter(m=>totalQ(m)<=0);
     const baixo=meds.filter(m=>m.min>0&&totalQ(m)>0&&totalQ(m)<=m.min);
     const its=[
-      ...exp.map(m=>`<div class="ni alerta"><p>⚠️ VENCIDO — ${m.n}</p><span>Validade: ${m.v}</span></div>`),
-      ...soon.map(m=>{const d=parseV(m.v);const days=d?Math.floor((d-new Date())/86400000):0;return`<div class="ni alerta-w"><p>🕐 Vence em ${days} dias — ${m.n}</p><span>Validade: ${m.v}</span></div>`;}),
-      ...zero.map(m=>`<div class="ni alerta"><p>📭 Sem estoque — ${m.n}</p></div>`),
-      ...baixo.map(m=>`<div class="ni alerta-w"><p>⬇️ Estoque baixo — ${m.n}</p><span>Total: ${totalQ(m)} un. (mín: ${m.min})</span></div>`)
+      ...exp.map(m=>({k:"venc|"+m.id+"|"+(m.v||""),h:`<div class="ni alerta"><p>⚠️ VENCIDO — ${m.n}</p><span>Validade: ${m.v}</span></div>`})),
+      ...soon.map(m=>{const d=parseV(m.v);const days=d?Math.floor((d-new Date())/86400000):0;return{k:"soon|"+m.id+"|"+(m.v||""),h:`<div class="ni alerta-w"><p>🕐 Vence em ${days} dias — ${m.n}</p><span>Validade: ${m.v}</span></div>`};}),
+      ...zero.map(m=>({k:"zero|"+m.id,h:`<div class="ni alerta"><p>📭 Sem estoque — ${m.n}</p></div>`})),
+      ...baixo.map(m=>({k:"baixo|"+m.id,h:`<div class="ni alerta-w"><p>⬇️ Estoque baixo — ${m.n}</p><span>Total: ${totalQ(m)} un. (mín: ${m.min})</span></div>`}))
     ];
-    body.innerHTML=its.length?its.join(""):`<div class="pe">✅ Nenhum alerta!</div>`;
+    const {vis,ocultos}=filtrarAvisos(its);
+    body.innerHTML=barraAvisos(vis,ocultos)+(vis.length
+      ? vis.map(i=>comX(i.k,i.h)).join("")
+      : `<div class="pe">${ocultos?"🔕 Todos os avisos foram zerados.":"✅ Nenhum alerta!"}</div>`);
   } else if(pTab==="sngpc"){
     body.innerHTML=sngpcRender();
   } else if(pTab==="compras"){
     const zerados=meds.filter(m=>totalQ(m)<=0);
     const baixo=meds.filter(m=>m.min>0&&totalQ(m)>0&&totalQ(m)<=m.min);
-    const lista=[...zerados,...baixo];
+    const {vis,ocultos}=filtrarAvisos([...zerados,...baixo].map(m=>({k:"compra|"+m.id,m})));
+    const lista=vis.map(i=>i.m);
     const texto=`🛒 *Lista de Compras — Estoque*\n\n`+lista.map(m=>`• ${m.n}: ${totalQ(m)===0?"ZERADO":`${totalQ(m)} un. (mín: ${m.min})`}`).join("\n")+`\n\n_Gerado em ${new Date().toLocaleDateString("pt-BR")}_`;
-    body.innerHTML=lista.length?`
+    body.innerHTML=barraAvisos(vis,ocultos)+(lista.length?`
       <div style="display:flex;flex-direction:column;gap:8px">
-        ${lista.map(m=>`<div style="display:flex;justify-content:space-between;align-items:center;background:var(--red-bg);border-radius:8px;padding:10px 12px"><span style="font-size:13px;font-weight:600;color:var(--red)">💊 ${m.n}</span><span style="font-size:12px;color:var(--g500)">${totalQ(m)===0?"📭 ZERADO":`⬇️ ${totalQ(m)}un`}</span></div>`).join("")}
+        ${lista.map(m=>comX("compra|"+m.id,`<div style="display:flex;justify-content:space-between;align-items:center;background:var(--red-bg);border-radius:8px;padding:10px 12px"><span style="font-size:13px;font-weight:600;color:var(--red);padding-right:26px">💊 ${m.n}</span><span style="font-size:12px;color:var(--g500);padding-right:20px">${totalQ(m)===0?"📭 ZERADO":`⬇️ ${totalQ(m)}un`}</span></div>`)).join("")}
         <button onclick="navigator.clipboard.writeText(${JSON.stringify(texto)}).then(()=>showToast('✅ Lista copiada!'))" style="padding:12px;border-radius:8px;border:none;background:var(--green);color:#fff;font-weight:700;cursor:pointer;margin-top:8px">📋 Copiar lista</button>
         <button onclick="window.open('https://wa.me/?text='+encodeURIComponent(${JSON.stringify(texto)}),'_blank')" style="padding:12px;border-radius:8px;border:none;background:#25D366;color:#fff;font-weight:700;cursor:pointer">📤 Enviar pelo WhatsApp</button>
-      </div>`:`<div class="pe">✅ Estoque em dia!</div>`;
+      </div>`:`<div class="pe">${ocultos?"🔕 Lista zerada.":"✅ Estoque em dia!"}</div>`);
   } else if(pTab==="config"){
     const isJefferson = isAdm;
     const usuariosVisiveis = isJefferson
