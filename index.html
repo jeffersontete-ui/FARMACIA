@@ -614,9 +614,10 @@ window.render=()=>{
 window.renderFarmacia=function(){
   const q=(document.getElementById("srch")||{value:""}).value.toLowerCase().trim();
   const carimbo=digifarma.atualizado_em?fmt(digifarma.atualizado_em):"—";
+  const dataInv=digifarma.data_inventario_sngpc?_dataBR(digifarma.data_inventario_sngpc):"—";
   const cabecalho=`<div style="background:var(--blue-bg);border-radius:10px;padding:12px 14px;margin-bottom:10px;font-size:12px;color:var(--blue)">
-      🏥 <b>Inventário do Digifarma (SNGPC)</b> — atualizado automaticamente<br>
-      <span style="color:var(--g500)">Última sincronização: ${carimbo} • ${digifarma.total} itens • ${digifarma.unidades} unidades</span>
+      🏥 <b>Farmácia — Digifarma × SNGPC</b><br>
+      <span style="color:var(--g500)">Digifarma: ${carimbo} • Inventário SNGPC: ${dataInv}</span>
     </div>`;
   if(!digifarma.atualizado_em){
     document.getElementById("list").innerHTML=cabecalho+
@@ -624,36 +625,46 @@ window.renderFarmacia=function(){
     return;
   }
   let data=(digifarma.itens||[]).filter(m=>
-    !q || (m.n||"").toLowerCase().includes(q) || (m.cod||"").includes(q)
+    !q || (m.n||"").toLowerCase().includes(q) || (m.cod||"").includes(q) || (m.ms&&String(m.ms).includes(q))
   );
   data.sort((a,b)=>(a.n||"").localeCompare(b.n||""));
   if(!data.length){
     document.getElementById("list").innerHTML=cabecalho+'<div style="text-align:center;padding:40px;color:var(--g400)">🔍 Nenhum item encontrado.</div>';
     return;
   }
-  document.getElementById("list").innerHTML=cabecalho+data.map(m=>{
-    const est=m.q||0;
-    const cor=est<=0?"var(--red)":est<=(m.min||0)?"var(--amber)":"var(--blue)";
-    const dv=(()=>{const p=(m.v||"").split("/");if(p.length!==2)return null;const mo=+p[0],yr=+p[1];if(!mo||!yr)return null;return new Date(2000+yr,mo-1,1);})();
-    let vLabel="",vCor="var(--g500)";
-    if(dv){const dias=Math.floor((dv-new Date())/86400000);
-      if(dias<0){vLabel="VENCIDO";vCor="var(--red)";}
-      else if(dias<=90){vLabel="vence em breve";vCor="var(--amber)";}
+  let okN=0,divN=0,semN=0;
+  const linhas=data.map(m=>{
+    const dg=m.q||0;
+    const sn=(m.sngpc===undefined||m.sngpc===null)?null:m.sngpc;
+    let cor,tag;
+    if(sn===null){ semN++; cor="var(--g400)"; tag='<span style="color:var(--g400)">fora do inventário</span>'; }
+    else{
+      const dif=dg-sn;
+      if(dif===0){ okN++; cor="var(--green)"; tag='<span style="color:var(--green);font-weight:700">✅ confere</span>'; }
+      else{ divN++; cor="var(--red)"; const s=dif>0?("Digifarma +"+dif):("Digifarma "+dif); tag='<span style="color:var(--red);font-weight:700">⚠️ '+s+'</span>'; }
     }
     return`<div class="card" style="border-left:4px solid ${cor}">
-      <div class="cico" style="background:var(--blue-bg);font-size:18px">🏥</div>
       <div class="cbody">
         <div class="cname">${(m.n||"").toUpperCase()}</div>
-        <div style="font-size:13px;margin-top:4px;color:var(--g500)">Validade: <b>${m.v||"—"}</b>${vLabel?` <span style="color:${vCor};font-weight:700">• ${vLabel}</span>`:""}</div>
-      </div>
-      <div class="cright" style="text-align:center">
-        <div style="font-size:20px;font-weight:700;color:${cor}">${est}x</div>
-        <div style="font-size:10px;color:var(--g400)">saldo</div>
+        ${m.ms?`<div style="font-size:11px;color:var(--g400);margin-top:2px">M.S. ${m.ms}${m.v?" • val "+m.v:""}</div>`:""}
+        <div style="display:flex;gap:16px;margin-top:6px;font-size:13px">
+          <span style="color:var(--g500)">Digifarma: <b style="color:var(--g900)">${dg}</b></span>
+          <span style="color:var(--g500)">SNGPC: <b style="color:var(--g900)">${sn===null?"—":sn}</b></span>
+          <span>${tag}</span>
+        </div>
       </div>
     </div>`;
   }).join("");
+  const resumo=`<div style="display:flex;gap:8px;margin-bottom:10px;font-size:12px">
+      <div style="flex:1;background:var(--green-bg);border-radius:8px;padding:8px;text-align:center;color:var(--green-d)"><b>${okN}</b><br>conferem</div>
+      <div style="flex:1;background:#fef2f2;border-radius:8px;padding:8px;text-align:center;color:var(--red)"><b>${divN}</b><br>divergem</div>
+      <div style="flex:1;background:var(--g50);border-radius:8px;padding:8px;text-align:center;color:var(--g500)"><b>${semN}</b><br>fora do inv.</div>
+    </div>`;
+  document.getElementById("list").innerHTML=cabecalho+resumo+linhas;
 };
-// (A aba Farmácia é só consulta do inventário do Digifarma — sem movimentação, sem ligação com o Estoque.)
+// dd/mm/aaaa a partir de "aaaa-mm-dd"
+function _dataBR(iso){const p=(iso||"").split("-");return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:iso;}
+// (A aba Farmácia é só consulta — Digifarma × SNGPC, tudo do próprio banco. Não toca no Estoque manual.)
 // ===== BUSCA DADOS DO MEDICAMENTO NA INTERNET (por código de barras) =====
 window.buscarInfoCodigo=function(cod){
   cod=(cod||"").trim();
@@ -750,7 +761,7 @@ window.qrOvClick=e=>{if(e.target.id==="qrOv")closeQR()};
 window.copyLink=()=>{navigator.clipboard.writeText(window.location.href).then(()=>showToast("✅ Link copiado!")).catch(()=>showToast("Link: "+window.location.href));};
 // ===== INVENTÁRIO DO DIGIFARMA (publicado pelo agente automático) =====
 // O agente lê o Digifarma e escreve em /farmacia/inventario. O app só LÊ.
-let digifarma={itens:[],total:0,unidades:0,atualizado_em:""};
+let digifarma={itens:[],total:0,unidades:0,atualizado_em:"",data_inventario_sngpc:""};
 let digifarmaOn=false;
 function ouvirDigifarma(){
   if(digifarmaOn)return;digifarmaOn=true;
@@ -761,7 +772,8 @@ function ouvirDigifarma(){
         digifarma={
           itens:Array.isArray(d.itens)?d.itens:[],
           total:d.total||0,unidades:d.unidades||0,
-          atualizado_em:d.atualizado_em||""
+          atualizado_em:d.atualizado_em||"",
+          data_inventario_sngpc:d.data_inventario_sngpc||""
         };
       }
       if(filter==="farmacia")render();
