@@ -613,7 +613,7 @@ window.render=()=>{
 };
 // ---- helpers de exibição (M.S. / código / lotes) ----
 function _lotesArr(m){
-  const L=Array.isArray(m.lotes)?m.lotes:[];
+  const L=Array.isArray(m.lotes)?m.lotes:(m.lotes&&typeof m.lotes==="object"?Object.values(m.lotes):[]);
   return L.filter(l=>(l&&((l.lote&&String(l.lote).trim())||(+l.q>0))))
           .sort((a,b)=>vkeyU(a.val)-vkeyU(b.val));
 }
@@ -641,7 +641,7 @@ function _idLinhaHTML(m,semVal){
 }
 
 // ---- aba FARMÁCIA: Digifarma x Inventário SNGPC ----
-let farmSub="div";                       // começa mostrando as divergências
+let farmSub=null;                        // null = ainda não escolhido pelo usuário
 window.setFarmSub=function(v){farmSub=v;renderFarmacia();};
 window.renderFarmacia=function(){
   const q=(document.getElementById("srch")||{value:""}).value.toLowerCase().trim();
@@ -659,7 +659,8 @@ window.renderFarmacia=function(){
   const todos=(digifarma.itens||[]);
   // classifica cada item
   todos.forEach(m=>{
-    const sn=(m.sngpc===undefined||m.sngpc===null)?null:+m.sngpc;
+    let sn=(m.sngpc===undefined||m.sngpc===null||m.sngpc==="")?null:parseInt(m.sngpc,10);
+    if(sn!==null&&isNaN(sn))sn=null;
     m._sn=sn;
     m._dif=(sn===null)?null:((+m.q||0)-sn);
     m._cls=(sn===null)?"fora":(m._dif===0?"ok":"div");
@@ -667,6 +668,8 @@ window.renderFarmacia=function(){
   const okN =todos.filter(m=>m._cls==="ok").length;
   const divN=todos.filter(m=>m._cls==="div").length;
   const semN=todos.filter(m=>m._cls==="fora").length;
+  // 1ª abertura: mostra as divergências se houver; senão mostra tudo.
+  if(farmSub===null) farmSub = divN>0 ? "div" : "todos";
 
   // avisos de diagnóstico
   let aviso="";
@@ -693,8 +696,14 @@ window.renderFarmacia=function(){
   // divergências maiores primeiro, depois nome
   data.sort((a,b)=>Math.abs(b._dif||0)-Math.abs(a._dif||0)||(a.n||"").localeCompare(b.n||""));
   if(!data.length){
+    const vazio = q
+      ? "🔍 Nenhum item com esse texto."
+      : (farmSub==="div" ? "✅ Nenhuma divergência — todos os itens do inventário conferem."
+        : farmSub==="ok" ? "Nenhum item conferido ainda."
+        : farmSub==="fora" ? "Nenhum item fora do inventário."
+        : "Nenhum item publicado pelo agente.");
     document.getElementById("list").innerHTML=cabecalho+aviso+resumo+
-      '<div style="text-align:center;padding:40px;color:var(--g400)">🔍 Nenhum item nesta lista.</div>';
+      '<div style="text-align:center;padding:40px;color:var(--g400)">'+vazio+'</div>';
     return;
   }
 
@@ -843,7 +852,7 @@ function ouvirDigifarma(){
       const d=snap.val();
       if(d&&typeof d==="object"){
         digifarma={
-          itens:Array.isArray(d.itens)?d.itens:[],
+          itens:Array.isArray(d.itens)?d.itens:(d.itens&&typeof d.itens==="object"?Object.values(d.itens):[]),
           total:d.total||0,unidades:d.unidades||0,
           atualizado_em:d.atualizado_em||"",
           data_inventario_sngpc:d.data_inventario_sngpc||""
