@@ -606,11 +606,43 @@ window.render=()=>{
     const actsUser=btnMov+btnHist;
     const labStr=m.lab?`<span style="font-weight:500;color:var(--g700)">${m.lab.toUpperCase()}</span>`:"";
     const subLine=labStr||`<span class="${lb.c}">${lb.t}</span>`;
-    const codStr=m.cod?`<div style="font-size:11px;color:var(--g400);margin-top:2px">🔖 ${m.cod}</div>`:"";
+    const codStr=_idLinhaHTML(m,true)+_lotesHTML(m);
     const farmStr=`<div style="font-size:12px;margin-top:3px;color:var(--g500)">Total: <b style="color:var(--g900)">${tot}x</b> • 📦 Estoque: <b style="color:${m.q<=0?"var(--red)":"var(--g900)"}">${m.q||0}x</b>${(m.farmacia>0)?` • <span style="color:var(--blue);font-weight:600">📥 Caixa: ${m.farmacia}x</span>`:""}</div>`;
     return`<div class="card ${s}"><div class="cico ${ic.c}">${ic.e}</div><div class="cbody"><div class="cname">${(m.n||"").toUpperCase()}</div><div class="csub">${subLine}</div><div class="cvenc ${vc}">Validade: ${m.v}</div>${codStr}${farmStr}${lmH}<div class="cacts">${isAdm?actsADM:actsUser}</div></div><div class="cright" style="text-align:center"><div class="qty ${qz?"qz":""}">${m.q||0}x</div><div style="font-size:10px;color:var(--g400);margin-top:2px">estoque</div></div></div>`;
   }).join("");
 };
+// ---- helpers de exibição (M.S. / código / lotes) ----
+function _lotesArr(m){
+  const L=Array.isArray(m.lotes)?m.lotes:[];
+  return L.filter(l=>(l&&((l.lote&&String(l.lote).trim())||(+l.q>0))))
+          .sort((a,b)=>vkeyU(a.val)-vkeyU(b.val));
+}
+function vkeyU(v){const p=String(v||"").split("/");return p.length===2?(2000+ +p[1])*100+(+p[0]):999999;}
+function _lotesHTML(m,cor){
+  const L=_lotesArr(m);
+  if(!L.length)return"";
+  const linhas=L.map(l=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dashed var(--g100)">
+      <span>📦 Lote <b>${l.lote||"—"}</b></span>
+      <span style="color:var(--g500)">val ${l.val||"—"}</span>
+      <span style="font-weight:700;color:${cor||"var(--g900)"}">${+l.q||0}x</span>
+    </div>`).join("");
+  const soma=L.reduce((a,l)=>a+(+l.q||0),0);
+  return `<details style="margin-top:6px">
+      <summary style="font-size:12px;color:var(--blue);cursor:pointer;font-weight:600">📦 ${L.length} lote(s) • ${soma}x — ver detalhes</summary>
+      <div style="font-size:12px;margin-top:4px">${linhas}</div>
+    </details>`;
+}
+function _idLinhaHTML(m,semVal){
+  const ms=m.ms?`<span>🏷️ <b>M.S.</b> ${m.ms}</span>`:"";
+  const cod=m.cod?`<span>🔖 <b>Cód.</b> ${m.cod}</span>`:"";
+  const val=(m.v&&!semVal)?`<span>📅 <b>Val.</b> ${m.v}</span>`:"";
+  const t=[ms,cod,val].filter(Boolean).join("");
+  return t?`<div style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11px;color:var(--g500);margin-top:3px">${t}</div>`:"";
+}
+
+// ---- aba FARMÁCIA: Digifarma x Inventário SNGPC ----
+let farmSub="div";                       // começa mostrando as divergências
+window.setFarmSub=function(v){farmSub=v;renderFarmacia();};
 window.renderFarmacia=function(){
   const q=(document.getElementById("srch")||{value:""}).value.toLowerCase().trim();
   const carimbo=digifarma.atualizado_em?fmt(digifarma.atualizado_em):"—";
@@ -624,43 +656,84 @@ window.renderFarmacia=function(){
       '<div style="text-align:center;padding:40px;color:var(--g400)">⏳ Aguardando a primeira sincronização do Digifarma.<br><small>O agente ainda não publicou. Verifique se ele está rodando no servidor.</small></div>';
     return;
   }
-  let data=(digifarma.itens||[]).filter(m=>
-    !q || (m.n||"").toLowerCase().includes(q) || (m.cod||"").includes(q) || (m.ms&&String(m.ms).includes(q))
-  );
-  data.sort((a,b)=>(a.n||"").localeCompare(b.n||""));
+  const todos=(digifarma.itens||[]);
+  // classifica cada item
+  todos.forEach(m=>{
+    const sn=(m.sngpc===undefined||m.sngpc===null)?null:+m.sngpc;
+    m._sn=sn;
+    m._dif=(sn===null)?null:((+m.q||0)-sn);
+    m._cls=(sn===null)?"fora":(m._dif===0?"ok":"div");
+  });
+  const okN =todos.filter(m=>m._cls==="ok").length;
+  const divN=todos.filter(m=>m._cls==="div").length;
+  const semN=todos.filter(m=>m._cls==="fora").length;
+
+  // avisos de diagnóstico
+  let aviso="";
+  if(!digifarma.data_inventario_sngpc){
+    aviso=`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:#92400e">
+      ⚠️ O agente não encontrou nenhum <b>inventário SNGPC</b> no Digifarma (tabela INVENTARIO_SNGPC vazia ou sem data).
+      Sem ele não há com o que comparar — feche/gere um inventário no Digifarma e rode o agente de novo.</div>`;
+  }else if(!okN&&!divN){
+    aviso=`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:#92400e">
+      ⚠️ O inventário de ${dataInv} foi lido, mas nenhum item bateu por PRODUTO_ID.
+      Provavelmente o agente antigo ainda está rodando no servidor — atualize o <b>agente_auto.py</b>.</div>`;
+  }
+
+  const chip=(id,txt,n,cor)=>`<button onclick="setFarmSub('${id}')" style="flex:1;cursor:pointer;border:1px solid ${farmSub===id?cor:"var(--g100)"};background:${farmSub===id?cor:"#fff"};color:${farmSub===id?"#fff":cor};border-radius:8px;padding:8px 4px;font-size:12px;font-weight:700;line-height:1.3">${n}<br><span style="font-weight:500;font-size:11px">${txt}</span></button>`;
+  const resumo=`<div style="display:flex;gap:8px;margin-bottom:10px">
+      ${chip("div","⚠️ divergem",divN,"var(--red)")}
+      ${chip("ok","✅ conferem",okN,"var(--green)")}
+      ${chip("fora","fora do inv.",semN,"var(--g500)")}
+      ${chip("todos","todos",todos.length,"var(--blue)")}
+    </div>`;
+
+  let data=todos.filter(m=>farmSub==="todos"||m._cls===farmSub)
+                .filter(m=>!q||(m.n||"").toLowerCase().includes(q)||(m.cod||"").includes(q)||(m.ms&&String(m.ms).includes(q)));
+  // divergências maiores primeiro, depois nome
+  data.sort((a,b)=>Math.abs(b._dif||0)-Math.abs(a._dif||0)||(a.n||"").localeCompare(b.n||""));
   if(!data.length){
-    document.getElementById("list").innerHTML=cabecalho+'<div style="text-align:center;padding:40px;color:var(--g400)">🔍 Nenhum item encontrado.</div>';
+    document.getElementById("list").innerHTML=cabecalho+aviso+resumo+
+      '<div style="text-align:center;padding:40px;color:var(--g400)">🔍 Nenhum item nesta lista.</div>';
     return;
   }
-  let okN=0,divN=0,semN=0;
+
   const linhas=data.map(m=>{
-    const dg=m.q||0;
-    const sn=(m.sngpc===undefined||m.sngpc===null)?null:m.sngpc;
-    let cor,tag;
-    if(sn===null){ semN++; cor="var(--g400)"; tag='<span style="color:var(--g400)">fora do inventário</span>'; }
-    else{
-      const dif=dg-sn;
-      if(dif===0){ okN++; cor="var(--green)"; tag='<span style="color:var(--green);font-weight:700">✅ confere</span>'; }
-      else{ divN++; cor="var(--red)"; const s=dif>0?("Digifarma +"+dif):("Digifarma "+dif); tag='<span style="color:var(--red);font-weight:700">⚠️ '+s+'</span>'; }
+    const dg=+m.q||0, sn=m._sn, dif=m._dif;
+    let cor,tag,expl="";
+    if(m._cls==="fora"){
+      cor="var(--g400)";
+      tag='<span style="color:var(--g400)">fora do inventário</span>';
+      expl=`<div style="font-size:12px;color:var(--g500);margin-top:4px">Este produto tem saldo no Digifarma mas <b>não estava no inventário SNGPC</b> de ${dataInv}.</div>`;
+    }else if(m._cls==="ok"){
+      cor="var(--green)";
+      tag='<span style="color:var(--green);font-weight:700">✅ confere</span>';
+    }else{
+      cor="var(--red)";
+      const falta=dif<0;
+      tag=`<span style="color:var(--red);font-weight:700">⚠️ ${dif>0?"+"+dif:dif}</span>`;
+      expl=`<div style="background:#fef2f2;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:12px;color:var(--red)">
+          <b>Divergência de ${Math.abs(dif)} unidade(s)</b><br>
+          ${falta
+            ? `O SNGPC tem <b>${sn}</b> e o Digifarma só tem <b>${dg}</b> — faltam <b>${Math.abs(dif)}</b> no físico/Digifarma (saída não lançada, perda ou venda sem baixa).`
+            : `O Digifarma tem <b>${dg}</b> e o SNGPC só tem <b>${sn}</b> — há <b>${dif}</b> a mais no Digifarma (entrada/nota não escriturada no SNGPC).`}
+        </div>`;
     }
     return`<div class="card" style="border-left:4px solid ${cor}">
       <div class="cbody">
         <div class="cname">${(m.n||"").toUpperCase()}</div>
-        ${m.ms?`<div style="font-size:11px;color:var(--g400);margin-top:2px">M.S. ${m.ms}${m.v?" • val "+m.v:""}</div>`:""}
-        <div style="display:flex;gap:16px;margin-top:6px;font-size:13px">
+        ${_idLinhaHTML(m)}
+        <div style="display:flex;gap:16px;margin-top:6px;font-size:13px;flex-wrap:wrap">
           <span style="color:var(--g500)">Digifarma: <b style="color:var(--g900)">${dg}</b></span>
           <span style="color:var(--g500)">SNGPC: <b style="color:var(--g900)">${sn===null?"—":sn}</b></span>
           <span>${tag}</span>
         </div>
+        ${expl}
+        ${_lotesHTML(m,cor)}
       </div>
     </div>`;
   }).join("");
-  const resumo=`<div style="display:flex;gap:8px;margin-bottom:10px;font-size:12px">
-      <div style="flex:1;background:var(--green-bg);border-radius:8px;padding:8px;text-align:center;color:var(--green-d)"><b>${okN}</b><br>conferem</div>
-      <div style="flex:1;background:#fef2f2;border-radius:8px;padding:8px;text-align:center;color:var(--red)"><b>${divN}</b><br>divergem</div>
-      <div style="flex:1;background:var(--g50);border-radius:8px;padding:8px;text-align:center;color:var(--g500)"><b>${semN}</b><br>fora do inv.</div>
-    </div>`;
-  document.getElementById("list").innerHTML=cabecalho+resumo+linhas;
+  document.getElementById("list").innerHTML=cabecalho+aviso+resumo+linhas;
 };
 // dd/mm/aaaa a partir de "aaaa-mm-dd"
 function _dataBR(iso){const p=(iso||"").split("-");return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:iso;}
