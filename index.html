@@ -632,6 +632,12 @@ function _lotesHTML(m,cor){
       <div style="font-size:12px;margin-top:4px">${linhas}</div>
     </details>`;
 }
+function _dataHoraBR(iso){
+  if(!iso)return"";
+  const p=String(iso).split("T");
+  const d=(p[0]||"").split("-");
+  return d.length===3?`${d[2]}/${d[1]}/${d[0]}${p[1]?" "+p[1].slice(0,5):""}`:String(iso);
+}
 function _idLinhaHTML(m,semVal){
   const ms=m.ms?`<span>🏷️ <b>M.S.</b> ${m.ms}</span>`:"";
   const cod=m.cod?`<span>🔖 <b>Cód.</b> ${m.cod}</span>`:"";
@@ -647,9 +653,15 @@ window.renderFarmacia=function(){
   const q=(document.getElementById("srch")||{value:""}).value.toLowerCase().trim();
   const carimbo=digifarma.atualizado_em?fmt(digifarma.atualizado_em):"—";
   const dataInv=digifarma.data_inventario_sngpc?_dataBR(digifarma.data_inventario_sngpc):"—";
+  const env=digifarma.envio||{};
+  const envTxt=env.ultimo_envio
+    ? `Último envio ao SNGPC: <b>${_dataBR(env.ultimo_envio)}</b>${env.hash_envio?` • hash ${String(env.hash_envio).slice(0,8)}`:""}`
+    : "Último envio ao SNGPC: —";
   const cabecalho=`<div style="background:var(--blue-bg);border-radius:10px;padding:12px 14px;margin-bottom:10px;font-size:12px;color:var(--blue)">
       🏥 <b>Farmácia — Digifarma × SNGPC</b><br>
-      <span style="color:var(--g500)">Digifarma: ${carimbo} • Inventário SNGPC: ${dataInv}</span>
+      <span style="color:var(--g500)">Digifarma: ${carimbo} • Inventário SNGPC: ${dataInv}</span><br>
+      <span style="color:var(--g500)">${envTxt}</span>
+      ${env.hash_envio?`<br><span style="color:var(--g400)">Confira no site da ANVISA se esse envio foi <b>aceito</b>; o Digifarma guarda o enviado, não o aceite.</span>`:""}
     </div>`;
   if(!digifarma.atualizado_em){
     document.getElementById("list").innerHTML=cabecalho+
@@ -683,6 +695,24 @@ window.renderFarmacia=function(){
       Provavelmente o agente antigo ainda está rodando no servidor — atualize o <b>agente_auto.py</b>.</div>`;
   }
 
+  // vendas de controlados que a ANVISA rejeita (sem receita escriturada / sem lote)
+  const vp=digifarma.vendas_problema||[];
+  let blocoVendas="";
+  if(vp.length){
+    const linhas=vp.slice(0,60).map(v=>`<div style="padding:6px 0;border-bottom:1px dashed var(--g100)">
+        <div style="font-size:12px;font-weight:600">${(v.n||"").toUpperCase()} — ${v.q}x</div>
+        <div style="font-size:11px;color:var(--g500)">${_dataHoraBR(v.dt)} • venda ${v.venda} • <span style="color:var(--red)">${(v.erros||[]).join(" + ")}</span></div>
+      </div>`).join("");
+    blocoVendas=`<details style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px 12px;margin-bottom:10px">
+        <summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--red)">🚫 ${vp.length} venda(s) de controlado com pendência — clique para ver</summary>
+        <div style="font-size:11px;color:var(--g500);margin:6px 0">Conferidas ${digifarma.vendas_conferidas} venda(s) dos últimos ${digifarma.dias_conferencia} dias. Estas são as que fazem a ANVISA recusar a transmissão.</div>
+        ${linhas}${vp.length>60?`<div style="font-size:11px;color:var(--g400);padding-top:6px">... e mais ${vp.length-60}</div>`:""}
+      </details>`;
+  }else if(digifarma.vendas_conferidas){
+    blocoVendas=`<div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:#065f46">
+        ✅ ${digifarma.vendas_conferidas} venda(s) de controlado conferida(s) nos últimos ${digifarma.dias_conferencia} dias — todas com receita escriturada e lote.</div>`;
+  }
+
   const chip=(id,txt,n,cor)=>`<button onclick="setFarmSub('${id}')" style="flex:1;cursor:pointer;border:1px solid ${farmSub===id?cor:"var(--g100)"};background:${farmSub===id?cor:"#fff"};color:${farmSub===id?"#fff":cor};border-radius:8px;padding:8px 4px;font-size:12px;font-weight:700;line-height:1.3">${n}<br><span style="font-weight:500;font-size:11px">${txt}</span></button>`;
   const resumo=`<div style="display:flex;gap:8px;margin-bottom:10px">
       ${chip("div","⚠️ divergem",divN,"var(--red)")}
@@ -702,7 +732,7 @@ window.renderFarmacia=function(){
         : farmSub==="ok" ? "Nenhum item conferido ainda."
         : farmSub==="fora" ? "Nenhum item fora do inventário."
         : "Nenhum item publicado pelo agente.");
-    document.getElementById("list").innerHTML=cabecalho+aviso+resumo+
+    document.getElementById("list").innerHTML=cabecalho+aviso+blocoVendas+resumo+
       '<div style="text-align:center;padding:40px;color:var(--g400)">'+vazio+'</div>';
     return;
   }
@@ -735,14 +765,16 @@ window.renderFarmacia=function(){
         <div style="display:flex;gap:16px;margin-top:6px;font-size:13px;flex-wrap:wrap">
           <span style="color:var(--g500)">Digifarma: <b style="color:var(--g900)">${dg}</b></span>
           <span style="color:var(--g500)">SNGPC: <b style="color:var(--g900)">${sn===null?"—":sn}</b></span>
+          ${(m.anvisa!==undefined&&m.anvisa!==dg)?`<span style="color:var(--g500)">ANVISA hoje: <b style="color:var(--g900)">${m.anvisa}</b></span>`:""}
           <span>${tag}</span>
         </div>
+        ${m.pend?`<div style="background:#eff6ff;border-radius:8px;padding:6px 10px;margin-top:6px;font-size:12px;color:var(--blue)">⏳ Ainda não transmitido: ${[m.pend.venda?m.pend.venda+" vendido(s)":"",m.pend.entrada?m.pend.entrada+" entrada(s)":"",m.pend.perda?m.pend.perda+" perda(s)":""].filter(Boolean).join(" • ")}</div>`:""}
         ${expl}
         ${_lotesHTML(m,cor)}
       </div>
     </div>`;
   }).join("");
-  document.getElementById("list").innerHTML=cabecalho+aviso+resumo+linhas;
+  document.getElementById("list").innerHTML=cabecalho+aviso+blocoVendas+resumo+linhas;
 };
 // dd/mm/aaaa a partir de "aaaa-mm-dd"
 function _dataBR(iso){const p=(iso||"").split("-");return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:iso;}
@@ -843,7 +875,7 @@ window.qrOvClick=e=>{if(e.target.id==="qrOv")closeQR()};
 window.copyLink=()=>{navigator.clipboard.writeText(window.location.href).then(()=>showToast("✅ Link copiado!")).catch(()=>showToast("Link: "+window.location.href));};
 // ===== INVENTÁRIO DO DIGIFARMA (publicado pelo agente automático) =====
 // O agente lê o Digifarma e escreve em /farmacia/inventario. O app só LÊ.
-let digifarma={itens:[],total:0,unidades:0,atualizado_em:"",data_inventario_sngpc:""};
+let digifarma={itens:[],total:0,unidades:0,atualizado_em:"",data_inventario_sngpc:"",envio:{},vendas_problema:[],vendas_conferidas:0,dias_conferencia:0};
 let digifarmaOn=false;
 function ouvirDigifarma(){
   if(digifarmaOn)return;digifarmaOn=true;
@@ -855,7 +887,12 @@ function ouvirDigifarma(){
           itens:Array.isArray(d.itens)?d.itens:(d.itens&&typeof d.itens==="object"?Object.values(d.itens):[]),
           total:d.total||0,unidades:d.unidades||0,
           atualizado_em:d.atualizado_em||"",
-          data_inventario_sngpc:d.data_inventario_sngpc||""
+          data_inventario_sngpc:d.data_inventario_sngpc||"",
+          modo_inventario:d.modo_inventario||"",
+          envio:d.envio||{},
+          vendas_problema:Array.isArray(d.vendas_problema)?d.vendas_problema:(d.vendas_problema&&typeof d.vendas_problema==="object"?Object.values(d.vendas_problema):[]),
+          vendas_conferidas:d.vendas_conferidas||0,
+          dias_conferencia:d.dias_conferencia||0
         };
       }
       if(filter==="farmacia")render();
