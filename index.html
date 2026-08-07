@@ -368,7 +368,7 @@ html,body{min-height:100%;background:var(--g50);font-family:-apple-system,BlinkM
 
 <!-- PAINEL ADM -->
 <div class="panel" id="admPanel">
-  <div class="ph"><h3>🔐 Painel ADM <span style="font-size:10px;font-weight:600;color:var(--g400)">v2026.08.07-5</span></h3><button class="ph-x" onclick="closePanel()">✕</button></div>
+  <div class="ph"><h3>🔐 Painel ADM <span style="font-size:10px;font-weight:600;color:var(--g400)">v2026.08.07-6</span></h3><button class="ph-x" onclick="closePanel()">✕</button></div>
   <div class="ptabs">
     <button class="ptab active" id="ptMov"   onclick="setPTab('mov')">🔔 Movim.</button>
     <button class="ptab"        id="ptAlerta" onclick="setPTab('alerta')">⚠️ Alertas</button>
@@ -632,6 +632,23 @@ function _lotesHTML(m,cor){
       <div style="font-size:12px;margin-top:4px">${linhas}</div>
     </details>`;
 }
+function _pendHTML(m){
+  const p=m.pend; if(!p)return"";
+  const resumo=[p.venda?`${p.venda} vendido(s)`:"",p.entrada?`${p.entrada} entrada(s)`:"",p.perda?`${p.perda} perda(s)`:""].filter(Boolean).join(" • ");
+  const det=Array.isArray(p.det)?p.det:(p.det&&typeof p.det==="object"?Object.values(p.det):[]);
+  const ICO={venda:"🛒",entrada:"📥",perda:"🗑️"};
+  const COR={venda:"var(--red)",entrada:"var(--green)",perda:"#b45309"};
+  const SIN={venda:"−",entrada:"+",perda:"−"};
+  const linhas=det.map(d=>`<div style="display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:baseline;padding:4px 0;border-bottom:1px dashed var(--g100)">
+      <span style="font-size:11px;color:var(--g500);white-space:nowrap">${_dataHoraBR(d.dt)}</span>
+      <span style="font-size:11px;color:var(--g500)">${ICO[d.t]||""} ${d.doc||""}${d.lote?` • lote <b>${d.lote}</b>`:""}</span>
+      <span style="font-size:12px;font-weight:700;color:${COR[d.t]||"var(--g900)"}">${SIN[d.t]||""}${d.q}</span>
+    </div>`).join("");
+  return `<details style="background:#eff6ff;border-radius:8px;padding:6px 10px;margin-top:6px">
+      <summary style="font-size:12px;color:var(--blue);cursor:pointer;font-weight:600">⏳ Ainda não transmitido: ${resumo}${det.length?" — ver datas":""}</summary>
+      ${det.length?`<div style="margin-top:4px">${linhas}</div>`:`<div style="font-size:11px;color:var(--g500);margin-top:4px">Sem detalhe disponível.</div>`}
+    </details>`;
+}
 function _dataHoraBR(iso){
   if(!iso)return"";
   const p=String(iso).split("T");
@@ -768,7 +785,7 @@ window.renderFarmacia=function(){
           ${(m.anvisa!==undefined&&m.anvisa!==dg)?`<span style="color:var(--g500)">ANVISA hoje: <b style="color:var(--g900)">${m.anvisa}</b></span>`:""}
           <span>${tag}</span>
         </div>
-        ${m.pend?`<div style="background:#eff6ff;border-radius:8px;padding:6px 10px;margin-top:6px;font-size:12px;color:var(--blue)">⏳ Ainda não transmitido: ${[m.pend.venda?m.pend.venda+" vendido(s)":"",m.pend.entrada?m.pend.entrada+" entrada(s)":"",m.pend.perda?m.pend.perda+" perda(s)":""].filter(Boolean).join(" • ")}</div>`:""}
+        ${_pendHTML(m)}
         ${expl}
         ${_lotesHTML(m,cor)}
       </div>
