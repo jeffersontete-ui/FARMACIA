@@ -368,7 +368,7 @@ html,body{min-height:100%;background:var(--g50);font-family:-apple-system,BlinkM
 
 <!-- PAINEL ADM -->
 <div class="panel" id="admPanel">
-  <div class="ph"><h3>🔐 Painel ADM <span style="font-size:10px;font-weight:600;color:var(--g400)">v2026.08.06-4</span></h3><button class="ph-x" onclick="closePanel()">✕</button></div>
+  <div class="ph"><h3>🔐 Painel ADM <span style="font-size:10px;font-weight:600;color:var(--g400)">v2026.08.07-5</span></h3><button class="ph-x" onclick="closePanel()">✕</button></div>
   <div class="ptabs">
     <button class="ptab active" id="ptMov"   onclick="setPTab('mov')">🔔 Movim.</button>
     <button class="ptab"        id="ptAlerta" onclick="setPTab('alerta')">⚠️ Alertas</button>
@@ -704,13 +704,13 @@ window.renderFarmacia=function(){
         <div style="font-size:11px;color:var(--g500)">${_dataHoraBR(v.dt)} • venda ${v.venda} • <span style="color:var(--red)">${(v.erros||[]).join(" + ")}</span></div>
       </div>`).join("");
     blocoVendas=`<details style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px 12px;margin-bottom:10px">
-        <summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--red)">🚫 ${vp.length} venda(s) de controlado com pendência — clique para ver</summary>
-        <div style="font-size:11px;color:var(--g500);margin:6px 0">Conferidas ${digifarma.vendas_conferidas} venda(s) dos últimos ${digifarma.dias_conferencia} dias. Estas são as que fazem a ANVISA recusar a transmissão.</div>
+        <summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--red)">🚫 ${vp.length} venda(s) a transmitir com pendência — clique para ver</summary>
+        <div style="font-size:11px;color:var(--g500);margin:6px 0">Entre as ${digifarma.vendas_conferidas} venda(s) de controlado ainda NÃO transmitidas. Corrija antes do próximo envio, senão a ANVISA recusa. O que já subiu e foi aceito não aparece aqui.</div>
         ${linhas}${vp.length>60?`<div style="font-size:11px;color:var(--g400);padding-top:6px">... e mais ${vp.length-60}</div>`:""}
       </details>`;
   }else if(digifarma.vendas_conferidas){
     blocoVendas=`<div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:#065f46">
-        ✅ ${digifarma.vendas_conferidas} venda(s) de controlado conferida(s) nos últimos ${digifarma.dias_conferencia} dias — todas com receita escriturada e lote.</div>`;
+        ✅ ${digifarma.vendas_conferidas} venda(s) de controlado a transmitir — todas com receita escriturada e lote.</div>`;
   }
 
   const chip=(id,txt,n,cor)=>`<button onclick="setFarmSub('${id}')" style="flex:1;cursor:pointer;border:1px solid ${farmSub===id?cor:"var(--g100)"};background:${farmSub===id?cor:"#fff"};color:${farmSub===id?"#fff":cor};border-radius:8px;padding:8px 4px;font-size:12px;font-weight:700;line-height:1.3">${n}<br><span style="font-weight:500;font-size:11px">${txt}</span></button>`;
