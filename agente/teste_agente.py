@@ -189,6 +189,31 @@ def principal():
     conferir('mede há quanto tempo o Anvisa.exe não conclui',
              'precisaLogin' in dados['anvisa'], dados['anvisa'])
 
+    # ------------------------------------------------------------
+    # --envio: tem que dar um resultado DIFERENTE do --auto, senão o
+    # botão "Atualizar envio" do app é idêntico a "Sincronizar vendas"
+    # ------------------------------------------------------------
+    por_sql_envio = dict(por_sql)
+    por_sql_envio[ag.CONSULTAS['ponteiros']] = [
+        dict(RESPOSTAS['ponteiros'][0], ULTIMO_ENVIO_SNGPC=datetime.date(2026, 8, 1))
+    ]
+
+    def consultar_falso_envio(conexao, sql, parametros=()):
+        if 'RDB$RELATION_FIELDS' in sql:
+            return [{'CAMPO': c} for c in ('LOTE_ID', 'PRODUTO_ID', 'NUM_LOTE', 'SALDO')]
+        if sql in por_sql_envio:
+            return por_sql_envio[sql]
+        if 'FROM LOTES' in sql:
+            return RESPOSTAS['saldo_digifarma']
+        raise AssertionError('consulta não simulada:\n' + sql[:120])
+
+    ag.consultar = consultar_falso_envio
+    dados_envio = ag.montar_inventario(conexao=None, config=config, usar_envio=True)
+    conferir('--envio usa a data do último envio ao SNGPC (não o carimbo do Anvisa.exe)',
+             dados_envio['inventario']['data'] == '2026-08-01', dados_envio['inventario'])
+    conferir('sem --envio, a data do inventário continua vindo do Anvisa.exe',
+             dados['inventario']['data'] == '2026-08-05', dados['inventario'])
+
     shutil.rmtree(pasta, ignore_errors=True)
     print('\n%s\n' % ('%d falha(s)' % len(falhas) if falhas else 'Tudo passou.'))
     return 1 if falhas else 0

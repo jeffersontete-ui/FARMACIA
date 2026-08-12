@@ -501,8 +501,17 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
     # 4. saldo do Digifarma × inventário da ANVISA
     # ------------------------------------------------------------
     saldo_anvisa, inventario_em = ler_inventario_anvisa(conexao)
+    # data do inventário: prioridade é a data pedida na linha de comando;
+    # senão, se veio de "--envio"/botão "Atualizar envio", a data do último
+    # envio ao SNGPC; senão, o carimbo que o próprio Anvisa.exe deixou.
+    data_do_inventario = (
+        data_inventario
+        or (ultimo_envio if usar_envio else None)
+        or (inventario_em or '')[:10]
+        or None
+    )
     resultado['inventario'] = {
-        'data': data_inventario or (inventario_em or '')[:10] or None,
+        'data': data_do_inventario,
         'origem': 'INVENTARIO_SNGPC (site da ANVISA, via Anvisa.exe)',
         'itens': len(saldo_anvisa),
     }
