@@ -141,7 +141,6 @@ echo.
 echo  Log:        %~dp0agente.log
 echo  Config:     %~dp0agente_config.json
 echo  Rodar agora: %PY% agente_auto.py --auto
-echo  Uma data:    %PY% agente_auto.py 31/07/2026
 echo ============================================================
 echo.
 pause
