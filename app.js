@@ -16,13 +16,13 @@
    1. CONFIGURAÇÃO
    ============================================================ */
 const CONFIG_FIREBASE = {
-  apiKey: 'COLOQUE_A_API_KEY',
+  apiKey: 'AIzaSyC3nXsBC2ARX8IOLITHUtovPn4DONEQe7g',
   authDomain: 'estoque-remedios-7b785.firebaseapp.com',
   databaseURL: 'https://estoque-remedios-7b785-default-rtdb.firebaseio.com',
   projectId: 'estoque-remedios-7b785',
-  storageBucket: 'estoque-remedios-7b785.appspot.com',
-  messagingSenderId: 'COLOQUE_O_SENDER_ID',
-  appId: 'COLOQUE_O_APP_ID'
+  storageBucket: 'estoque-remedios-7b785.firebasestorage.app',
+  messagingSenderId: '1005921072336',
+  appId: '1:1005921072336:web:964ca0ae079b5e796e5ad5'
 };
 
 const CHAVE_OPERADOR = 'farmacia.operador';
