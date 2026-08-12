@@ -1,0 +1,23 @@
+# NUNCA subir credenciais nem dado de paciente
+chave-firebase.json
+*serviceAccount*.json
+*.fdb
+*.FDB
+
+# XMLs do SNGPC contêm dados de paciente
+*.XML
+*.xml
+sngpc.zip
+enviados/
+
+# lixo de sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+__pycache__/
+*.pyc
+.venv/
+
+# exceção: o exemplo anonimizado do XML É para versionar
+!agente/exemplo_SNGPC.XML

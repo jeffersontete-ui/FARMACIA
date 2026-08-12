@@ -1,0 +1,16 @@
+{
+  "name": "Farmácia — SNGPC",
+  "short_name": "SNGPC",
+  "description": "Conferência do estoque de controlados entre o Digifarma e o que foi transmitido ao SNGPC.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F2F0EC",
+  "theme_color": "#111111",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

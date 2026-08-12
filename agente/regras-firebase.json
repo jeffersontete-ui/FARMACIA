@@ -1,0 +1,79 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "farmacia": {
+      "inventario": {
+        ".read": "auth != null && root.child('farmacia/autorizados').child(auth.uid).val() === true",
+        ".write": "auth != null && root.child('farmacia/agentes').child(auth.uid).val() === true"
+      },
+
+      "config": {
+        ".read": "auth != null && root.child('farmacia/autorizados').child(auth.uid).val() === true",
+        ".write": "auth != null && root.child('farmacia/autorizados').child(auth.uid).val() === true",
+        "senhaHash": { ".validate": "newData.isString() && newData.val().length === 64" }
+      },
+
+      "aceites": {
+        ".read": "auth != null && root.child('farmacia/autorizados').child(auth.uid).val() === true",
+        "$data": {
+          ".write": "auth != null && root.child('farmacia/autorizados').child(auth.uid).val() === true",
+          ".validate": "$data.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) && newData.hasChildren(['status','por','em'])",
+          "status": { ".validate": "newData.val() === 'aceito' || newData.val() === 'recusado'" },
+          "por": { ".validate": "newData.isString() && newData.val().length > 0" },
+          "em": { ".validate": "newData.isString()" },
+          "$outro": { ".validate": false }
+        }
+      },
+
+      "operadores": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "$i": { ".validate": "newData.isString() && newData.val().length <= 60" }
+      },
+
+      "comando": {
+        ".read": "auth != null && (root.child('farmacia/autorizados').child(auth.uid).val() === true || root.child('farmacia/agentes').child(auth.uid).val() === true)",
+        ".write": "auth != null && (root.child('farmacia/autorizados').child(auth.uid).val() === true || root.child('farmacia/agentes').child(auth.uid).val() === true)",
+        "acao": { ".validate": "newData.val() === 'sincronizar_vendas' || newData.val() === 'atualizar_envio'" }
+      },
+
+      "autorizados": { ".read": "auth != null", ".write": false },
+      "agentes":     { ".read": "auth != null", ".write": false }
+    },
+
+    "estoque": {
+      ".read": "auth != null",
+
+      "itens": {
+        ".write": "auth != null",
+        "$id": {
+          "nome": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120" },
+          "quantidade": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "minimo": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "validade": { ".validate": "newData.isString() && (newData.val() === '' || newData.val().matches(/^[0-9]{2}\\/[0-9]{2}$/))" },
+          "atualizadoPor": { ".validate": "newData.isString() && newData.val().length > 0" }
+        }
+      },
+
+      "compras": {
+        ".write": "auth != null",
+        "$id": {
+          "nome": { ".validate": "newData.isString() && newData.val().length > 0" },
+          "quantidade": { ".validate": "newData.isNumber() && newData.val() > 0" }
+        }
+      },
+
+      "historico": {
+        "$id": {
+          ".write": "auth != null && !data.exists()",
+          ".validate": "newData.hasChildren(['tipo','quando','por'])",
+          "por":    { ".validate": "newData.isString() && newData.val().length > 0" },
+          "tipo":   { ".validate": "newData.isString()" },
+          "quando": { ".validate": "newData.isString()" }
+        }
+      }
+    }
+  }
+}

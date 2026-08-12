@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111111">
+<title>Farmácia — SNGPC</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+
+<!-- 1. LOGIN FIREBASE -->
+<section id="tela-login" class="tela tela-cheia">
+  <div class="cartao-entrada">
+    <p class="marca">Farmácia<span class="tarja">SNGPC</span></p>
+    <h1 class="titulo-entrada">Entrar</h1>
+    <label class="campo"><span>E-mail</span><input id="login-email" type="email" autocomplete="username" inputmode="email"></label>
+    <label class="campo"><span>Senha da conta</span><input id="login-senha" type="password" autocomplete="current-password"></label>
+    <p id="login-erro" class="aviso-erro" hidden></p>
+    <button id="btn-entrar" class="botao botao-principal">Entrar</button>
+  </div>
+</section>
+
+<!-- 2. SENHA DO APP (farmacêutico) -->
+<section id="tela-senha" class="tela tela-cheia" hidden>
+  <div class="cartao-entrada">
+    <p class="marca">Farmácia<span class="tarja">SNGPC</span></p>
+    <h1 class="titulo-entrada">Senha da farmácia</h1>
+    <p class="sublinha">Esta tela é do farmacêutico responsável. A senha é separada da conta de e-mail.</p>
+    <label class="campo"><span>Senha</span><input id="senha-app" type="password" autocomplete="off"></label>
+    <p id="senha-erro" class="aviso-erro" hidden></p>
+    <button id="btn-senha" class="botao botao-principal">Abrir</button>
+    <p id="senha-primeira" hidden>
+      <span class="sublinha">Nenhuma senha definida ainda. A que você digitar agora passa a valer para todo mundo.</span>
+      <button id="btn-definir-senha" class="botao botao-secundario">Definir esta senha</button>
+    </p>
+  </div>
+</section>
+
+<!-- 3. QUEM ESTÁ OPERANDO -->
+<section id="tela-operador" class="tela tela-cheia" hidden>
+  <div class="cartao-entrada">
+    <p class="marca">Farmácia<span class="tarja">SNGPC</span></p>
+    <h1 class="titulo-entrada">Quem está conferindo?</h1>
+    <p class="sublinha">O nome fica gravado em cada aceite marcado.</p>
+    <div id="lista-operadores" class="grade-operadores"></div>
+    <label class="campo"><span>Ou digite um nome novo</span><input id="operador-novo" type="text" autocomplete="off"></label>
+    <button id="btn-operador" class="botao botao-principal">Começar</button>
+  </div>
+</section>
+
+<!-- 4. APP -->
+<div id="app" hidden>
+  <header class="topo">
+    <div>
+      <p class="marca">Farmácia<span class="tarja">SNGPC</span></p>
+      <p id="rotulo-operador" class="operador-atual"></p>
+    </div>
+    <div class="topo-acoes">
+      <button id="btn-config" class="botao botao-fantasma">Config</button>
+      <button id="btn-sair" class="botao botao-fantasma">Sair</button>
+    </div>
+  </header>
+
+  <div id="barra-estado" class="barra-estado" hidden></div>
+
+  <main>
+    <!-- PAINEL -->
+    <section id="v-painel" class="vista">
+      <div class="cabeca-vista">
+        <h2>Situação</h2>
+        <div class="cabeca-acoes">
+          <button id="btn-sincronizar" class="botao botao-secundario">Sincronizar vendas</button>
+          <button id="btn-atualizar-envio" class="botao botao-secundario">Atualizar envio</button>
+        </div>
+      </div>
+      <p id="carimbo" class="sublinha"></p>
+      <div id="fila-comando" class="barra-comando" hidden></div>
+
+      <div class="placar">
+        <button class="cartao-numero" data-ir="saldo">
+          <strong id="n-saldo">—</strong><span>divergências de saldo</span>
+        </button>
+        <button class="cartao-numero" data-ir="xml">
+          <strong id="n-xml">—</strong><span>itens fora do XML</span>
+        </button>
+        <button class="cartao-numero" data-ir="vendas">
+          <strong id="n-vendas">—</strong><span>vendas com problema</span>
+        </button>
+      </div>
+
+      <div class="bloco">
+        <h3>Aguardando transmissão</h3>
+        <dl id="dados-pendentes" class="dados"></dl>
+        <p class="nota">Contado pelos ponteiros da tabela SNGPC, não por data.
+        Perdas e transferências não têm ponteiro (ficam em 0), então essas duas
+        cortam por data a partir do último envio.</p>
+      </div>
+
+      <div class="bloco">
+        <h3>Último envio ao SNGPC</h3>
+        <dl id="dados-envio" class="dados"></dl>
+        <p class="nota">O Digifarma guarda o que foi <strong>enviado</strong>, não o que a ANVISA
+        <strong>aceitou</strong>. O aceite se marca à mão, na aba Aceites.</p>
+      </div>
+    </section>
+
+    <!-- DIVERGÊNCIAS DE SALDO -->
+    <section id="v-saldo" class="vista" hidden>
+      <div class="cabeca-vista"><h2>Divergências de saldo</h2></div>
+      <p class="sublinha">Saldo do Digifarma comparado com o inventário SNGPC vigente.</p>
+      <input id="busca-saldo" class="busca" type="search" placeholder="Buscar por descrição, M.S., código de barras ou lote" autocomplete="off">
+      <div id="lista-saldo" class="pilha"></div>
+      <p id="saldo-vazio" class="vazio" hidden>Nenhuma divergência de saldo. Digifarma e inventário batem.</p>
+    </section>
+
+    <!-- CONFERÊNCIA XML -->
+    <section id="v-xml" class="vista" hidden>
+      <div class="cabeca-vista"><h2>Conferência do XML</h2></div>
+      <p class="sublinha">O que saiu no banco cruzado com o que subiu no XML, por registro M.S. + lote.</p>
+      <input id="busca-xml" class="busca" type="search" placeholder="Buscar por descrição, M.S. ou lote" autocomplete="off">
+      <div id="lista-xml" class="pilha"></div>
+      <p id="xml-vazio" class="vazio" hidden>Tudo que saiu no período está no XML.</p>
+    </section>
+
+    <!-- VENDAS COM PROBLEMA -->
+    <section id="v-vendas" class="vista" hidden>
+      <div class="cabeca-vista"><h2>Vendas com problema</h2></div>
+      <p class="sublinha">Controlado vendido sem receita escriturada ou sem lote — a causa clássica de recusa.</p>
+      <div id="lista-vendas" class="pilha"></div>
+      <p id="vendas-vazio" class="vazio" hidden>Nenhuma venda pendente de correção.</p>
+    </section>
+
+    <!-- ACEITES -->
+    <section id="v-aceites" class="vista" hidden>
+      <div class="cabeca-vista"><h2>Aceites da ANVISA</h2></div>
+      <p class="sublinha">A pasta de retorno do Digifarma fica vazia: o aceite só existe no site da ANVISA.
+      Confira lá e marque aqui — fica registrado quem marcou e quando.</p>
+      <div id="lista-aceites" class="pilha"></div>
+      <p id="aceites-vazio" class="vazio" hidden>Nenhum envio registrado ainda.</p>
+    </section>
+  </main>
+
+  <nav class="navegacao">
+    <button class="nav-item nav-ativo" data-vista="painel">Situação</button>
+    <button class="nav-item" data-vista="saldo">Saldo<span id="selo-saldo" class="selo" hidden>0</span></button>
+    <button class="nav-item" data-vista="xml">XML<span id="selo-xml" class="selo" hidden>0</span></button>
+    <button class="nav-item" data-vista="vendas">Vendas<span id="selo-vendas" class="selo" hidden>0</span></button>
+    <button class="nav-item" data-vista="aceites">Aceites</button>
+  </nav>
+</div>
+
+<div id="modal" class="modal" hidden>
+  <div class="modal-caixa" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
+    <h3 id="modal-titulo"></h3>
+    <div id="modal-corpo"></div>
+    <div id="modal-acoes" class="modal-acoes"></div>
+  </div>
+</div>
+
+<div id="aviso" class="aviso" hidden></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

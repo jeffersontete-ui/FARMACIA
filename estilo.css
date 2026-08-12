@@ -1,0 +1,205 @@
+/* FARMÁCIA — SNGPC
+   Referência visual: a tarja preta da caixa de controlado.
+   Preto para comando, vermelho-tarja para pendência, papel quente de bula. */
+
+:root{
+  --tinta:#161616;
+  --tinta-fraca:#6B6B68;
+  --papel:#F2F0EC;
+  --cartao:#FFFFFF;
+  --linha:#DDD9D2;
+  --tarja:#111111;
+  --vermelho:#9E1B1B;
+  --vermelho-claro:#F7E7E5;
+  --ambar:#8A5B00;
+  --ambar-claro:#F8EFDC;
+  --verde:#1F6B4A;
+  --verde-claro:#E4F0E9;
+  --raio:8px;
+  --sombra:0 1px 2px rgba(22,22,22,.08), 0 8px 24px rgba(22,22,22,.06);
+  --fonte:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:var(--fonte);
+  background:var(--papel);
+  color:var(--tinta);
+  font-size:16px;line-height:1.45;
+  -webkit-text-size-adjust:100%;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+
+/* ---------- marca com tarja ---------- */
+.marca{
+  margin:0;font-weight:800;font-size:15px;
+  letter-spacing:.14em;text-transform:uppercase;
+}
+.marca .tarja{
+  display:inline-block;margin-left:8px;padding:2px 8px;
+  background:var(--tarja);color:#fff;font-size:10px;letter-spacing:.2em;
+  vertical-align:2px;border-radius:2px;
+}
+h1,h2,h3{margin:0;font-weight:750;letter-spacing:-.01em}
+h2{font-size:22px}
+h3{font-size:16px;text-transform:uppercase;letter-spacing:.08em}
+.sublinha{margin:6px 0 14px;color:var(--tinta-fraca);font-size:14px}
+.nota{margin:12px 0 0;font-size:12.5px;color:var(--tinta-fraca);border-left:3px solid var(--linha);padding-left:10px}
+
+/* ---------- entrada ---------- */
+.tela-cheia{min-height:100dvh;display:grid;place-items:center;padding:24px}
+.cartao-entrada{
+  width:100%;max-width:420px;background:var(--cartao);
+  border:1px solid var(--linha);border-radius:var(--raio);
+  box-shadow:var(--sombra);padding:26px;
+  border-top:6px solid var(--tarja);
+}
+.titulo-entrada{margin:18px 0 4px;font-size:26px}
+.grade-operadores{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+
+.campo{display:block;margin:14px 0}
+.campo>span{
+  display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--tinta-fraca);margin-bottom:6px;font-weight:650;
+}
+.campo input{width:100%;padding:12px;border:1px solid var(--linha);border-radius:6px;background:#fff}
+.campo input:focus,.botao:focus-visible,.nav-item:focus-visible,.cartao-numero:focus-visible{
+  outline:3px solid var(--tarja);outline-offset:2px;
+}
+
+.botao{
+  border:1px solid transparent;border-radius:6px;padding:12px 16px;
+  font-weight:650;cursor:pointer;background:transparent;min-height:44px;
+}
+.botao-principal{background:var(--tarja);color:#fff;width:100%}
+.cabeca-acoes .botao,.modal-acoes .botao{width:auto}
+.botao-secundario{background:#fff;border-color:var(--tinta);color:var(--tinta)}
+.botao-fantasma{color:var(--tinta-fraca);border-color:var(--linha);background:#fff}
+.botao-perigo{background:var(--vermelho);color:#fff}
+.botao:disabled{opacity:.5;cursor:not-allowed}
+.chip{border:1px solid var(--linha);background:#fff;border-radius:999px;padding:8px 14px;cursor:pointer;min-height:40px}
+
+/* ---------- topo e navegação ---------- */
+.topo{
+  position:sticky;top:0;z-index:20;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top));
+  background:var(--cartao);border-bottom:3px solid var(--tarja);
+}
+.operador-atual{margin:2px 0 0;font-size:13px;color:var(--tinta-fraca)}
+.topo-acoes{display:flex;gap:8px;flex-shrink:0}
+.topo-acoes .botao{padding:8px 10px;font-size:13px;min-height:38px}
+
+main{padding:16px 16px 96px;max-width:900px;margin:0 auto}
+.cabeca-vista{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.cabeca-acoes{display:flex;gap:8px;flex-wrap:wrap}
+
+.navegacao{
+  position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;
+  background:var(--cartao);border-top:1px solid var(--linha);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.nav-item{
+  flex:1;border:0;background:transparent;padding:12px 4px;
+  font-size:12px;font-weight:650;color:var(--tinta-fraca);
+  cursor:pointer;position:relative;min-height:56px;
+}
+.nav-ativo{color:var(--tinta);box-shadow:inset 0 3px 0 var(--tarja)}
+.selo{
+  position:absolute;top:8px;left:50%;margin-left:12px;
+  background:var(--vermelho);color:#fff;font-size:10px;line-height:1;
+  padding:3px 5px;border-radius:999px;
+}
+.busca{width:100%;padding:12px;margin:10px 0 14px;border:1px solid var(--linha);border-radius:6px;background:#fff}
+
+/* ---------- placar ---------- */
+.placar{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0}
+.cartao-numero{
+  background:var(--cartao);border:1px solid var(--linha);border-radius:var(--raio);
+  padding:14px 10px;text-align:center;cursor:pointer;border-top:4px solid var(--tarja);
+}
+.cartao-numero strong{display:block;font-size:28px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.cartao-numero span{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--tinta-fraca)}
+.cartao-numero.alerta{border-top-color:var(--vermelho)}
+.cartao-numero.alerta strong{color:var(--vermelho)}
+
+.bloco{
+  background:var(--cartao);border:1px solid var(--linha);border-radius:var(--raio);
+  padding:16px;margin-top:14px;
+}
+.dados{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:12px 0 0;font-size:14px}
+.dados dt{color:var(--tinta-fraca);font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:650}
+.dados dd{margin:0;font-variant-numeric:tabular-nums}
+
+.barra-comando{
+  background:var(--ambar-claro);color:var(--ambar);
+  border-radius:var(--raio);padding:10px 14px;font-size:13.5px;font-weight:600;margin-bottom:12px;
+}
+
+/* ---------- linhas com tarja (assinatura) ---------- */
+.pilha{display:grid;gap:10px}
+.linha{
+  background:var(--cartao);border:1px solid var(--linha);border-radius:var(--raio);
+  overflow:hidden;box-shadow:var(--sombra);
+}
+.linha-cabeca{
+  width:100%;text-align:left;background:transparent;border:0;cursor:pointer;
+  padding:12px 14px;display:block;
+}
+.linha-titulo{margin:0;font-weight:700;font-size:15.5px}
+.linha-meta{
+  margin:4px 0 0;font-size:12.5px;color:var(--tinta-fraca);
+  display:flex;flex-wrap:wrap;gap:4px 12px;font-variant-numeric:tabular-nums;
+}
+.linha-tarja{
+  background:var(--tarja);color:#fff;
+  padding:6px 14px;font-size:12px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;
+  display:flex;justify-content:space-between;gap:12px;
+}
+.linha-tarja.falta{background:var(--vermelho)}
+.linha-tarja.sobra{background:var(--ambar)}
+.linha-detalhe{padding:12px 14px;border-top:1px solid var(--linha);font-size:14px;background:#FBFAF8}
+.linha-detalhe dl{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;margin:0}
+.linha-detalhe dt{color:var(--tinta-fraca);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+.linha-detalhe dd{margin:0;font-variant-numeric:tabular-nums}
+.motivo{
+  margin:10px 0 0;padding:8px 10px;border-radius:6px;
+  background:var(--vermelho-claro);color:var(--vermelho);font-size:13px;font-weight:600;
+}
+
+/* ---------- aceites ---------- */
+.aceite{
+  background:var(--cartao);border:1px solid var(--linha);border-radius:var(--raio);
+  padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+}
+.aceite-data{font-weight:700;font-variant-numeric:tabular-nums}
+.estado{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:999px}
+.estado-aceito{background:var(--verde-claro);color:var(--verde)}
+.estado-recusado{background:var(--vermelho-claro);color:var(--vermelho)}
+.estado-pendente{background:var(--ambar-claro);color:var(--ambar)}
+
+/* ---------- modal ---------- */
+.modal{position:fixed;inset:0;z-index:50;background:rgba(22,22,22,.55);display:flex;align-items:flex-end;justify-content:center}
+.modal-caixa{
+  background:var(--cartao);width:100%;max-width:560px;max-height:92dvh;overflow:auto;
+  border-radius:12px 12px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom));
+  border-top:6px solid var(--tarja);
+}
+@media (min-width:600px){
+  .modal{align-items:center;padding:24px}
+  .modal-caixa{border-radius:12px}
+}
+.modal-acoes{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+.modal-acoes .botao{flex:1 1 auto}
+
+.aviso{
+  position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(76px + env(safe-area-inset-bottom));z-index:60;
+  background:var(--tarja);color:#fff;padding:12px 18px;border-radius:999px;
+  font-size:14px;font-weight:600;box-shadow:var(--sombra);max-width:92vw;text-align:center;
+}
+.aviso-erro{color:var(--vermelho);font-size:14px;margin:8px 0 0;font-weight:600}
+.barra-estado{background:var(--vermelho-claro);color:var(--vermelho);padding:8px 16px;font-size:13px;font-weight:600;text-align:center}
+.vazio{color:var(--tinta-fraca);text-align:center;padding:40px 20px;font-size:15px;border:1px dashed var(--linha);border-radius:var(--raio)}
