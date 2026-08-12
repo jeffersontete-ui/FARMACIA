@@ -95,8 +95,6 @@ Para o servidor voltar sozinho depois de queda de energia (o
 
 ```
 python agente_auto.py --auto          sincronização completa
-python agente_auto.py --envio         inventário vigente no último envio
-python agente_auto.py 31/07/2026      inventário daquela data
 python agente_auto.py --schema        confere as tabelas da base
 python agente_auto.py --colunas LOTES lista as colunas de uma tabela
 python agente_auto.py --teste         testa Firebird e Firebase

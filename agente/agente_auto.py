@@ -10,8 +10,6 @@ NUNCA é escrito por aqui — todas as consultas são SELECT.
 Modos:
     python agente_auto.py --auto            sincronização completa (de hora em hora)
     python agente_auto.py --fila            atende os botões do app (de 5 em 5 min)
-    python agente_auto.py --envio           usa o inventário vigente no último envio
-    python agente_auto.py 31/07/2026        usa o inventário daquela data
     python agente_auto.py --schema          confere se as tabelas/campos existem
     python agente_auto.py --teste           testa conexão com Firebird e Firebase
 
@@ -416,7 +414,7 @@ def so_digitos(valor):
     return ''.join(c for c in str(valor or '') if c.isdigit())
 
 
-def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
+def montar_inventario(conexao, config):
     import mapa_xml
 
     resultado = {'atualizadoEm': datetime.datetime.now().isoformat(timespec='seconds')}
@@ -502,7 +500,7 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
     # ------------------------------------------------------------
     saldo_anvisa, inventario_em = ler_inventario_anvisa(conexao)
     resultado['inventario'] = {
-        'data': data_inventario or (inventario_em or '')[:10] or None,
+        'data': (inventario_em or '')[:10] or None,
         'origem': 'INVENTARIO_SNGPC (site da ANVISA, via Anvisa.exe)',
         'itens': len(saldo_anvisa),
     }
@@ -669,11 +667,11 @@ def publicar(db, dados):
 # ============================================================
 # MODOS
 # ============================================================
-def modo_auto(config, data_inventario=None, usar_envio=False):
+def modo_auto(config):
     db = conectar_firebase(config)
     conexao = conectar_firebird(config)
     try:
-        dados = montar_inventario(conexao, config, data_inventario, usar_envio)
+        dados = montar_inventario(conexao, config)
         publicar(db, dados)
     finally:
         conexao.close()
@@ -691,7 +689,7 @@ def modo_fila(config):
     acao = pedido.get('acao')
     registrar('Atendendo "%s" pedido por %s.' % (acao, pedido.get('pedidoPor')))
     try:
-        modo_auto(config, usar_envio=(acao == 'atualizar_envio'))
+        modo_auto(config)
         ref.update({
             'estado': 'concluido',
             'concluidoEm': datetime.datetime.now().isoformat(timespec='seconds'),
@@ -779,10 +777,8 @@ def modo_teste(config):
 # ============================================================
 def principal():
     parser = argparse.ArgumentParser(description='Agente SNGPC — Digifarma para Firebase')
-    parser.add_argument('data', nargs='?', help='data do inventário, DD/MM/AAAA')
     parser.add_argument('--auto', action='store_true', help='sincronização completa')
     parser.add_argument('--fila', action='store_true', help='atende os botões do app')
-    parser.add_argument('--envio', action='store_true', help='usa o inventário vigente no último envio')
     parser.add_argument('--schema', action='store_true', help='confere as tabelas da base')
     parser.add_argument('--teste', action='store_true', help='testa Firebird e Firebase')
     parser.add_argument('--colunas', metavar='TABELA', help='lista as colunas de uma tabela')
@@ -790,13 +786,6 @@ def principal():
 
     config = carregar_config()
     sys.path.insert(0, PASTA)
-
-    data_inventario = None
-    if args.data:
-        try:
-            data_inventario = datetime.datetime.strptime(args.data, '%d/%m/%Y').date().isoformat()
-        except ValueError:
-            raise SystemExit('Data em formato DD/MM/AAAA, por exemplo 31/07/2026.')
 
     try:
         if args.colunas:
@@ -808,7 +797,7 @@ def principal():
         elif args.fila:
             modo_fila(config)
         else:
-            modo_auto(config, data_inventario, args.envio)
+            modo_auto(config)
     except SystemExit:
         raise
     except Exception as e:
