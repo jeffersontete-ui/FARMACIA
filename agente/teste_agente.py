@@ -198,6 +198,15 @@ def principal():
     ag.fechar(ruim)
     conferir('erro no fechamento não derruba o agente', ruim.fechou)
 
+    # 401 do Firebase é regra recusando, não chave inválida — o agente
+    # precisa dizer qual nó cadastrar em vez de cuspir um traceback
+    conferir('reconhece a recusa das regras do Firebase',
+             ag.erro_de_permissao(Exception('Permission denied'))
+             and not ag.erro_de_permissao(Exception('Connection refused')))
+    conferir('o recado diz o nó exato a cadastrar',
+             'farmacia/agentes/agente-sngpc' in ag.recado_de_permissao(ag.CONFIG_PADRAO),
+             ag.recado_de_permissao(ag.CONFIG_PADRAO))
+
     # o fdb dimensiona o parâmetro do LIKE pelo tamanho da coluna:
     # REGISTRO_MS é VARCHAR(13) e "%ESCITALOPRAM%" tem 14
     conferir('o filtro do --saldo não fica preso ao tamanho da coluna',

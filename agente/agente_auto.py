@@ -910,6 +910,27 @@ def br(data_iso):
 # ============================================================
 # PUBLICAÇÃO
 # ============================================================
+def erro_de_permissao(e):
+    """O Firebase devolve 401 'Permission denied' quando as REGRAS recusam a
+    escrita — não é chave de serviço inválida nem internet fora."""
+    return 'permission denied' in str(e).lower()
+
+
+def recado_de_permissao(config):
+    uid = config.get('uid_agente') or CONFIG_PADRAO['uid_agente']
+    return (
+        'O Firebase recusou a escrita em farmacia/inventario.\n'
+        'Pelas regras, só escreve quem está cadastrado em farmacia/agentes:\n'
+        '\n'
+        '    farmacia/agentes/%s   precisa existir e valer true\n'
+        '\n'
+        'Console do Firebase > Realtime Database > aba Dados. O valor tem de ser\n'
+        'o booleano true, sem aspas — "true" como texto não passa na regra.\n'
+        'Confira também se o "uid_agente" do agente_config.json é exatamente\n'
+        'esse nome. A chave de serviço não é passe livre: o agente entra com\n'
+        'esse UID e as regras valem para ele igual valem para o app.' % uid)
+
+
 def publicar(db, dados):
     db.reference('farmacia/inventario').set(dados)
     inventario = dados.get('inventario', {})
@@ -934,6 +955,10 @@ def modo_auto(config, data_inventario=None, usar_envio=False):
     try:
         dados = montar_inventario(conexao, config, data_inventario, usar_envio)
         publicar(db, dados)
+    except Exception as e:
+        if erro_de_permissao(e):
+            registrar(recado_de_permissao(config))
+        raise
     finally:
         fechar(conexao)
 
@@ -1110,8 +1135,14 @@ def modo_teste(config):
 
     print('Firebase: %s' % config['url_banco'])
     db = conectar_firebase(config)
-    db.reference('farmacia/inventario/atualizadoEm').set(
-        datetime.datetime.now().isoformat(timespec='seconds'))
+    try:
+        db.reference('farmacia/inventario/atualizadoEm').set(
+            datetime.datetime.now().isoformat(timespec='seconds'))
+    except Exception as e:
+        if erro_de_permissao(e):
+            print('\n' + recado_de_permissao(config))
+            raise SystemExit(1)
+        raise
     print('  escreveu em farmacia/inventario/atualizadoEm.')
     print('\nTudo certo.')
 
