@@ -16,6 +16,7 @@ Modos:
     python agente_auto.py --saldo TEXTO     mostra como o saldo de um lote foi apurado
     python agente_auto.py --linhas LOTE     despeja todas as colunas de LOTES de um lote
     python agente_auto.py --resumo          separa divergência real de lote escrito diferente
+    python agente_auto.py --inventario      mostra o que entra e o que sai do inventário SNGPC
     python agente_auto.py --tarefas         três listas de trabalho, na ordem de resolver
     python agente_auto.py --teste           testa conexão com Firebird e Firebase
 
@@ -228,7 +229,7 @@ CONSULTAS = {
     # quem é controlado, para filtrar o inventário do SNGPC pelo mesmo
     # critério das vendas: PSICOTROPICO='S' OU ANTIMICROBIANO='S'
     "produtos_controlados": """
-        SELECT PRODUTO_ID, PSICOTROPICO, ANTIMICROBIANO FROM PRODUTOS
+        SELECT PRODUTO_ID, PRODUTO, PSICOTROPICO, ANTIMICROBIANO FROM PRODUTOS
     """,
 
     # --- saldo por lote no Digifarma ---
@@ -1684,6 +1685,76 @@ def modo_tarefas(config):
     return True
 
 
+def modo_inventario(config):
+    """Abre o inventário do SNGPC linha a linha e diz o que entra, o que sai
+    e por quê. Só o banco da farmácia sabe QUAIS são os produtos; este
+    comando é o que os nomeia."""
+    conexao = conectar_firebird(config)
+    try:
+        linhas = consultar(conexao, CONSULTAS['inventario_sngpc'])
+        if not linhas:
+            print('INVENTARIO_SNGPC está vazia. Rode o Anvisa.exe e faça o login.')
+            return False
+
+        campos = list(linhas[0])
+        campo_produto = next((c for c in campos if c.strip().upper() == 'PRODUTO_ID'), None)
+        usados = {chave: escolher_campo(campos, regras)
+                  for chave, regras in CAMPOS_INVENTARIO.items()}
+
+        cadastro = consultar(conexao, CONSULTAS['produtos_controlados'])
+    finally:
+        fechar(conexao)
+
+    nomes, controlados, conhecidos = {}, set(), set()
+    for linha in cadastro:
+        produto = texto(linha.get('PRODUTO_ID'))
+        if not produto:
+            continue
+        conhecidos.add(produto)
+        nomes[produto] = texto(linha.get('PRODUTO'))
+        if (texto(linha.get('PSICOTROPICO')).upper() == 'S'
+                or texto(linha.get('ANTIMICROBIANO')).upper() == 'S'):
+            controlados.add(produto)
+
+    print('INVENTARIO_SNGPC — %d linha(s)' % len(linhas))
+    print('colunas usadas: %s\n' % ', '.join(
+        '%s=%s' % (k, v) for k, v in sorted(usados.items()) if v))
+    if not campo_produto:
+        print('A tabela não tem PRODUTO_ID: não dá para dizer quem é controlado,')
+        print('e o inventário entra inteiro.')
+        return True
+
+    entram, fora, sem_cadastro = [], [], []
+    for linha in linhas:
+        produto = texto(linha.get(campo_produto))
+        destino = (fora if produto in conhecidos and produto not in controlados
+                   else entram if produto in controlados
+                   else sem_cadastro)
+        destino.append((produto, linha))
+
+    def mostrar(titulo, grupo, explicacao):
+        print('%s: %d' % (titulo, len(grupo)))
+        print('  %s' % explicacao)
+        for produto, linha in grupo[:40]:
+            print('     cód %-8s %-38s M.S. %-18s lote %-14s %g' % (
+                produto or '—',
+                (nomes.get(produto) or texto(linha.get(usados['descricao'])) or '—')[:38],
+                formatar_ms(linha.get(usados['ms'])),
+                texto(linha.get(usados['lote'])) or '—',
+                numero(linha.get(usados['quantidade']))))
+        if len(grupo) > 40:
+            print('     ... e mais %d' % (len(grupo) - 40))
+        print('')
+
+    mostrar('ENTRAM na comparação (controlados)', entram,
+            'psicotrópico ou antimicrobiano no cadastro do Digifarma')
+    mostrar('FICAM DE FORA (não controlados)', fora,
+            'estão no cadastro e NÃO estão marcados: não são do SNGPC')
+    mostrar('ENTRAM, mas sem produto no cadastro', sem_cadastro,
+            'o SNGPC tem e o Digifarma não conhece — pode ser divergência de verdade')
+    return True
+
+
 def modo_resumo(config):
     """Divergência que sobra é diferença de estoque de verdade ou lote
     escrito diferente dos dois lados? Este resumo separa uma coisa da
@@ -1843,6 +1914,8 @@ def principal():
                         help='despeja todas as colunas de LOTES de um lote')
     parser.add_argument('--resumo', action='store_true',
                         help='separa divergência de verdade de lote escrito diferente')
+    parser.add_argument('--inventario', action='store_true',
+                        help='mostra o inventário do SNGPC: o que entra, o que sai e por quê')
     parser.add_argument('--tarefas', action='store_true',
                         help='as divergências em três listas de trabalho, na ordem de resolver')
     args = parser.parse_args()
@@ -1862,6 +1935,8 @@ def principal():
             raise SystemExit(0 if modo_colunas(config, args.colunas) else 1)
         if args.tarefas:
             raise SystemExit(0 if modo_tarefas(config) else 1)
+        if args.inventario:
+            raise SystemExit(0 if modo_inventario(config) else 1)
         if args.resumo:
             raise SystemExit(0 if modo_resumo(config) else 1)
         if args.linhas:
