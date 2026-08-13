@@ -462,10 +462,10 @@ function definicoes(pares) {
    não subiu ao SNGPC não é a mesma coisa que uma contagem que não fecha. A
    tarja diz qual é qual; o agente classifica em farmacia/inventario. */
 const MOTIVO_SALDO = {
-  nao_transmitido: ['Entrada não transmitida ao SNGPC', 'sobra',
-    'O Digifarma tem este lote e a ANVISA não conhece nem o registro M.S. Costuma ser entrada de nota que ainda não subiu.'],
-  lote_ausente: ['Lote fora do inventário SNGPC', 'sobra',
-    'A ANVISA conhece o medicamento, mas não este lote. Confira se a entrada do lote foi transmitida.'],
+  anvisa_zerada_produto: ['Zerado na ANVISA — nenhum lote deste registro', 'sobra',
+    'A ANVISA não tem saldo em lote nenhum deste registro M.S. Pode ser entrada que não subiu, ou saldo errado no Digifarma. Confira o estoque físico antes de mexer na escrituração.'],
+  anvisa_zerada_lote: ['Zerado na ANVISA — o registro tem outros lotes', 'sobra',
+    'A ANVISA tem saldo em outros lotes deste medicamento, mas não neste. Confira o número do lote e a entrada dele.'],
   quantidade: ['Quantidade diferente do SNGPC', 'sobra',
     'Os dois lados têm o lote, com contagens diferentes. É conferência de prateleira.'],
   so_na_anvisa: ['Só no inventário SNGPC', 'falta',
@@ -519,13 +519,18 @@ function pintarSaldo() {
       || [dif < 0 ? 'Falta no Digifarma' : 'Sobra no Digifarma', dif < 0 ? 'falta' : 'sobra', ''];
     const detalhe = definicoes([
       ['Código', i.codigo],
-      ['Saldo Digifarma', i.saldoDigifarma],
+      ['Saldo Digifarma (só este lote)', i.saldoDigifarma],
       // só vêm quando LOTES é tabela de movimento: mostram de onde
       // o saldo saiu, para conferir contra a tela do Digifarma
       ['Entrou no lote', i.entradas],
       ['Baixado (vendas e perdas)', i.baixas],
-      ['Saldo do inventário SNGPC', i.saldoSngpc],
+      ['Saldo do inventário SNGPC (só este lote)', i.saldoSngpc],
       ['Diferença', (dif > 0 ? '+' : '') + dif],
+      // a tela do Digifarma mostra o produto inteiro; a conferência é por
+      // lote. Sem estes dois, o número do app não bate com o da tela e
+      // parece errado quando está certo.
+      ['Digifarma — todos os lotes deste M.S.', i.saldoDigifarmaMs],
+      ['SNGPC — todos os lotes deste M.S.', i.saldoSngpcMs],
       ['Registro M.S.', i.ms],
       ['Código de barras', i.ean],
       ['Lote', i.lote],
@@ -535,6 +540,13 @@ function pintarSaldo() {
     if (explicacao) {
       const nota = criar('p', 'motivo');
       nota.textContent = explicacao;
+      detalhe.appendChild(nota);
+    }
+    if (i.saldoDigifarmaMs !== undefined) {
+      const nota = criar('p', 'motivo');
+      nota.textContent = 'Este medicamento tem mais de um lote. A tela do Digifarma soma '
+        + 'todos; aqui a conferência é lote a lote, porque é assim que o SNGPC guarda. '
+        + 'Os outros lotes não aparecem nesta lista quando batem com a ANVISA.';
       detalhe.appendChild(nota);
     }
 

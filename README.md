@@ -185,19 +185,44 @@ rode `--saldo` para ver a conta e fixe no `agente_config.json`:
 { "coluna_saldo": "QUANTIDADE", "modo_saldo": "saldo" }
 ```
 
+### Lote, não produto
+
+A conferência é **por M.S. + lote**, porque é assim que o SNGPC guarda o
+inventário. A tela do Digifarma mostra o **produto**, somando os lotes. Os
+dois números são diferentes e os dois estão certos.
+
+A pregabalina 150mg (código 66132) da Drogaria Humanae tem três lotes —
+72200415 com 6, 72200416 com 1 e 72200417 com 2. A tela do Digifarma mostra
+9; o app mostra 6 no lote que diverge, porque os outros dois batem com a
+ANVISA e nem entram na lista. Quem confere lê 6 num lado e 9 no outro e
+conclui que o app está errado.
+
+Por isso cada item leva também `saldoDigifarmaMs` e `saldoSngpcMs` — os
+totais somando os lotes daquele registro M.S. — e o app os mostra como
+"todos os lotes deste M.S.". Eles só aparecem quando o medicamento tem
+mais de um lote, que é exatamente quando o número do lote não bate com a
+tela.
+
 ### Os tipos de divergência de saldo
 
 "Sobra no Digifarma" não diz o que fazer. Cada divergência se resolve num
 lugar diferente, então o agente classifica cada item em `motivo` e o app
 mostra isso na tarja:
 
-| `motivo` | O que é | Onde se resolve |
+| `motivo` | O que é | Por onde começar |
 |---|---|---|
-| `nao_transmitido` | o Digifarma tem o lote e a ANVISA não conhece nem o registro M.S. | escrituração: entrada de nota que não subiu |
-| `lote_ausente` | a ANVISA conhece o medicamento, mas não esse lote | escrituração: entrada daquele lote |
+| `anvisa_zerada_produto` | a ANVISA não tem saldo em lote nenhum desse registro M.S. | conferir o estoque físico e o saldo do Digifarma |
+| `anvisa_zerada_lote` | a ANVISA tem outros lotes do medicamento, mas não esse | conferir o número do lote e a entrada dele |
 | `quantidade` | os dois lados têm o lote, com contagens diferentes | conferência de prateleira |
 | `so_na_anvisa` | a ANVISA tem saldo e o Digifarma não | saída lançada só de um lado |
 | `negativo` | o próprio Digifarma está com saldo negativo | corrigir no Digifarma: saída sem entrada |
+
+O nome do `motivo` diz o que se **observa**, não a causa. Zero na ANVISA
+tanto pode ser entrada que não subiu quanto saldo errado no Digifarma — os
+dois casos apareceram no mesmo dia na Drogaria Humanae, no TORVAL CR e no
+DUAL. As etiquetas anteriores (`nao_transmitido`, `lote_ausente`)
+afirmavam a causa e mandavam mexer na escrituração quando o problema era o
+estoque.
 
 `farmacia/inventario/resumoSaldo` traz a contagem por tipo, que o app
 mostra no topo da aba Saldo.

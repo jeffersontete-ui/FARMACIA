@@ -724,16 +724,33 @@ def so_digitos(valor):
     return ''.join(c for c in str(valor or '') if c.isdigit())
 
 
+def formatar_ms(valor):
+    """1052500180189 -> 1.0525.0018.018-9, que é como o registro aparece no
+    site da ANVISA e na bula. A comparação interna é só de dígitos; isto é
+    para quem vai conferir com o site aberto do lado."""
+    d = so_digitos(valor)
+    if len(d) != 13:
+        return d or '(sem M.S.)'
+    return '%s.%s.%s.%s-%s' % (d[0], d[1:5], d[5:9], d[9:12], d[12])
+
+
 def classificar_divergencia(registro, saldo_anvisa, ms_no_inventario):
     """Divergência de saldo não é uma coisa só, e cada tipo se resolve num
     lugar diferente. Sem isso o app mistura 'falta transmitir a entrada'
-    com 'a contagem não fecha' na mesma etiqueta de sobra."""
+    com 'a contagem não fecha' na mesma etiqueta de sobra.
+
+    O nome diz o que se OBSERVA, não a causa. Um lote ausente do inventário
+    da ANVISA quer dizer saldo zero lá, e zero tanto pode ser entrada que
+    não subiu quanto saldo errado no Digifarma — a farmácia confirmou os
+    dois casos no mesmo dia. Afirmar a causa na etiqueta manda gente
+    mexer na escrituração quando o problema era o estoque."""
     if registro['saldoDigifarma'] < 0:
         # o Digifarma é a verdade, mas aqui a verdade dele está torta:
         # saída lançada sem a entrada correspondente
         return 'negativo'
     if not saldo_anvisa:
-        return 'nao_transmitido' if registro['ms'] not in ms_no_inventario else 'lote_ausente'
+        return ('anvisa_zerada_produto' if registro['ms'] not in ms_no_inventario
+                else 'anvisa_zerada_lote')
     return 'quantidade'
 
 
@@ -843,12 +860,24 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
     # do inventário é o que separa "não transmiti a entrada" de "o lote
     # sumiu do inventário"
     ms_no_inventario = {chave[0] for chave in saldo_anvisa}
+    # totais por medicamento, somando os lotes. A tela do Digifarma mostra o
+    # PRODUTO; o app compara LOTE a lote. Sem os dois números lado a lado,
+    # quem confere lê 6 no app, 9 no Digifarma e conclui que o app erra —
+    # quando os outros 3 estão em lotes que batem e por isso nem aparecem.
+    total_ms_anvisa = {}
+    for (ms_lote, _), quantidade in saldo_anvisa.items():
+        total_ms_anvisa[ms_lote] = total_ms_anvisa.get(ms_lote, 0.0) + quantidade
 
     itens = []
     try:
         por_chave, info_saldo = saldo_por_lote(conexao, config)
         resultado['inventario']['colunaSaldo'] = info_saldo['coluna']
         resultado['inventario']['modoSaldo'] = info_saldo['modo']
+
+        total_ms_digifarma = {}
+        for (ms_lote, _), registro in por_chave.items():
+            total_ms_digifarma[ms_lote] = (total_ms_digifarma.get(ms_lote, 0.0)
+                                           + registro['saldoDigifarma'])
 
         for chave, registro in por_chave.items():
             anvisa = saldo_anvisa.pop(chave, 0.0)
@@ -861,6 +890,13 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
             if registro['diferenca']:
                 registro['motivo'] = classificar_divergencia(
                     registro, anvisa, ms_no_inventario)
+            # só quando o medicamento tem mais de um lote: aí o número do
+            # lote não bate com a tela do Digifarma e o total explica
+            digi_ms = round(total_ms_digifarma.get(chave[0], 0.0), 3)
+            anvisa_ms = round(total_ms_anvisa.get(chave[0], 0.0), 3)
+            if digi_ms != registro['saldoDigifarma'] or anvisa_ms != registro['saldoSngpc']:
+                registro['saldoDigifarmaMs'] = digi_ms
+                registro['saldoSngpcMs'] = anvisa_ms
             itens.append(registro)
     except Exception as e:
         registrar('Falha ao levantar o saldo por lote: %s' % e)
@@ -1206,8 +1242,15 @@ def modo_conferir_saldo(config, filtro):
             if info['modo'] == 'movimento':
                 print('  baixas fora de LOTES (vendas + perdas): %g' % baixado)
                 saldo -= g['saidas'] + baixado
-            print('  SALDO PUBLICADO: %g     ANVISA: %g\n'
+            print('  SALDO PUBLICADO: %g     ANVISA: %g'
                   % (round(saldo, 3), round(saldo_anvisa.get(chave, 0.0), 3)))
+            # a tela do Digifarma mostra o produto, não o lote
+            irmaos = [c for c in por_lote if c[0] == chave[0]]
+            if len(irmaos) > 1:
+                print('  este M.S. tem %d lotes; a tela do Digifarma soma todos\n'
+                      % len(irmaos))
+            else:
+                print('')
         print('Se o SALDO PUBLICADO não bater com a tela do Digifarma, fixe a coluna')
         print('certa em agente_config.json ("coluna_saldo" e "modo_saldo").')
         return True
@@ -1300,9 +1343,9 @@ def modo_tarefas(config):
                  % ('', i['ms'] or '(sem M.S.)', comprado, baixado, outras))
 
     # ---------- 2 ----------
-    escrituracao = (sorted(por_motivo.get('nao_transmitido', []),
+    escrituracao = (sorted(por_motivo.get('anvisa_zerada_produto', []),
                            key=lambda i: -i['saldoDigifarma'])
-                    + sorted(por_motivo.get('lote_ausente', []),
+                    + sorted(por_motivo.get('anvisa_zerada_lote', []),
                              key=lambda i: -i['saldoDigifarma']))
     esperando = [i for i in escrituracao if chave_do(i) in na_fila]
     faltando = [i for i in escrituracao if chave_do(i) not in na_fila]
@@ -1319,7 +1362,10 @@ def modo_tarefas(config):
     antigas = [i for i in faltando if not entrou_depois_do_inventario(i)]
 
     escrever('')
-    escrever('2. CONFERIR A TRANSMISSÃO — %d lote(s) que o SNGPC não tem' % len(escrituracao))
+    escrever('2. ZERADO NA ANVISA — %d lote(s) com saldo aqui e zero lá' % len(escrituracao))
+    escrever('   Zero na ANVISA tanto pode ser entrada que não subiu quanto saldo')
+    escrever('   errado no Digifarma. Confira o estoque físico ANTES de mexer na')
+    escrever('   escrituração: já apareceram os dois casos.')
     if esperando:
         escrever('   %d estão na fila do próximo envio: o envio resolve sozinho.'
                  % len(esperando))
@@ -1339,12 +1385,12 @@ def modo_tarefas(config):
             grupos.setdefault((i['ms'], i['descricao']), []).append(i)
         repetidos = {k: v for k, v in grupos.items() if len(v) > 1}
         if repetidos:
-            escrever('   Atenção ao padrão: nestes, TODO lote falta no SNGPC, de notas')
-            escrever('   diferentes e de meses diferentes. Isso aponta o CADASTRO do')
-            escrever('   produto (registro M.S. errado ou não reconhecido pela ANVISA),')
-            escrever('   não o envio — reenviar não resolve.')
+            escrever('   Comece por estes: o registro M.S. inteiro está zerado na ANVISA,')
+            escrever('   em vários lotes e de notas de meses diferentes. Um M.S. de cada')
+            escrever('   vez resolve vários lotes — confira o saldo dele na ANVISA e o')
+            escrever('   estoque físico, e veja se o Digifarma é que está errado.')
             for (ms, desc), itens_grupo in sorted(repetidos.items(), key=lambda x: -len(x[1])):
-                escrever('      %-42s M.S. %-14s %d lotes' % (desc[:42], ms or '(sem M.S.)',
+                escrever('      %-42s M.S. %-16s %d lotes' % (desc[:42], formatar_ms(ms),
                                                               len(itens_grupo)))
         escrever('')
     for i in antigas:
@@ -1352,10 +1398,12 @@ def modo_tarefas(config):
         escrever('   %-42s lote %-14s Digifarma %g · SNGPC %g' % (
             i['descricao'][:42], i['lote'] or '(vazio)',
             i['saldoDigifarma'], i['saldoSngpc']))
-        if entrada.get('nota'):
-            escrever('   %-42s nota %d de %s · %s' % (
-                '', entrada['nota'], br(entrada.get('data')),
-                'já transmitida' if entrada['nota'] <= ponteiro_entrada else 'não transmitida'))
+        escrever('   %-42s M.S. %-16s %s' % (
+            '', formatar_ms(i['ms']),
+            ('nota %d de %s · %s' % (
+                entrada['nota'], br(entrada.get('data')),
+                'já transmitida' if entrada['nota'] <= ponteiro_entrada
+                else 'não transmitida')) if entrada.get('nota') else ''))
 
     if recentes:
         escrever('')

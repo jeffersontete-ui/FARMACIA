@@ -320,15 +320,28 @@ def principal():
     conferir('lote sem divergência não recebe motivo',
              not any(i.get('motivo') for i in dados['itens'] if not i['diferenca']))
 
-    conferir('M.S. que a ANVISA nem conhece é entrada não transmitida',
+    # a etiqueta diz o que se OBSERVA, não a causa: zero na ANVISA tanto é
+    # entrada que não subiu quanto saldo errado no Digifarma, e a farmácia
+    # confirmou os dois casos no mesmo dia
+    conferir('M.S. inteiro zerado na ANVISA',
              ag.classificar_divergencia(
-                 {'saldoDigifarma': 5, 'ms': '999'}, 0.0, {'111'}) == 'nao_transmitido')
-    conferir('M.S. conhecido, lote ausente, é outro caso',
+                 {'saldoDigifarma': 5, 'ms': '999'}, 0.0, {'111'}) == 'anvisa_zerada_produto')
+    conferir('M.S. com outros lotes, mas este zerado',
              ag.classificar_divergencia(
-                 {'saldoDigifarma': 5, 'ms': '111'}, 0.0, {'111'}) == 'lote_ausente')
+                 {'saldoDigifarma': 5, 'ms': '111'}, 0.0, {'111'}) == 'anvisa_zerada_lote')
+    conferir('o registro M.S. sai no formato do site da ANVISA',
+             ag.formatar_ms('1052500180189') == '1.0525.0018.018-9'
+             and ag.formatar_ms('1057304750041') == '1.0573.0475.004-1'
+             and ag.formatar_ms('123') == '123', ag.formatar_ms('1052500180189'))
     conferir('saldo negativo é dado torto no Digifarma, não sobra',
              ag.classificar_divergencia(
                  {'saldoDigifarma': -2, 'ms': '111'}, 0.0, {'111'}) == 'negativo')
+    # o M.S. do diazepam tem lote K1 nos dois cadastros: o total por M.S.
+    # é o que permite conferir contra a tela do Digifarma, que soma os lotes
+    conferir('medicamento de um lote só não carrega total por M.S.',
+             'saldoDigifarmaMs' not in next(
+                 i for i in dados['itens'] if i['ms'] == '1023506630204'))
+
     negativo = next(i for i in dados['itens'] if i['lote'] == 'BLGH23013')
     conferir('lote negativo não é classificado como sobra',
              negativo.get('motivo') == 'negativo', negativo)
@@ -396,7 +409,7 @@ def principal():
     texto_saida = '\n'.join(saida)
     conferir('as tarefas saem nas três seções, na ordem de resolver',
              ok and texto_saida.index('1. CORRIGIR NO DIGIFARMA')
-             < texto_saida.index('2. CONFERIR A TRANSMISSÃO')
+             < texto_saida.index('2. ZERADO NA ANVISA')
              < texto_saida.index('3. CONFERIR NA PRATELEIRA'), texto_saida[:400])
     conferir('a lista separa o que precisa de alguém do que se resolve sozinho',
              'PRECISAM DE ALGUÉM' in texto_saida, texto_saida[:300])
