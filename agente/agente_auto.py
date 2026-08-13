@@ -192,6 +192,31 @@ CONSULTAS = {
          ORDER BY C.VENDA_NOTA_ID DESC
     """,
 
+    # --- venda AINDA NÃO TRANSMITIDA que vai travar o próximo envio ---
+    # Corta pelo ponteiro, não por data: o que interessa é o que ainda vai
+    # subir. Venda de controlado sem receita escriturada é a causa clássica
+    # de recusa, e depois de transmitida o conserto é bem mais caro.
+    "vendas_sem_receita_pendentes": """
+        SELECT C.VENDA_NOTA_ID AS VENDA,
+               C.VENDA_DATA_HORA AS QUANDO,
+               P.PRODUTO, P.REGISTRO_MS,
+               IVL.NUM_LOTE, I.ITEMVEND_QUANT AS QUANTIDADE
+          FROM CAB_VENDAS C
+          JOIN ITEM_VENDAS I ON (I.VENDA_NOTA_ID = C.VENDA_NOTA_ID)
+                            AND ((I.CANCELADO = 'N') OR (I.CANCELADO IS NULL))
+          JOIN PRODUTOS P ON (P.PRODUTO_ID = I.PRODUTO_ID)
+          LEFT JOIN VENDAS_PSICOTROPICOS VP ON (VP.VENDA_NOTA_ID = I.VENDA_NOTA_ID)
+                                           AND (VP.ITEM_VENDA_ID = I.ITEM_VENDA_ID)
+          LEFT JOIN ITEM_VENDAS_LOTES IVL ON (IVL.VENDA_NOTA_ID = I.VENDA_NOTA_ID)
+                                         AND (IVL.ITEM_VENDA_ID = I.ITEM_VENDA_ID)
+                                         AND (IVL.PRODUTO_ID = I.PRODUTO_ID)
+         WHERE C.VENDA_NOTA_ID > ?
+           AND (C.VENDA_RECEBIDO + C.SUBSIDIO + COALESCE(C.SUBSIDIO_ASSEFAZ, 0)) > 0
+           AND ((P.PSICOTROPICO = 'S') OR (P.ANTIMICROBIANO = 'S'))
+           AND VP.VENDA_NOTA_ID IS NULL
+         ORDER BY C.VENDA_NOTA_ID
+    """,
+
     # --- venda de controlado sem receita escriturada ou sem lote ---
     "vendas_problema": """
         SELECT C.VENDA_NOTA_ID AS VENDA,
@@ -857,6 +882,22 @@ def vendas_recentes(conexao, dias=DIAS_VENDAS_RECENTES):
     } for l in linhas]
 
 
+def vendas_sem_receita_pendentes(conexao):
+    """Vendas de controlado que ainda vão subir e estão sem receita
+    escriturada. É a lista para corrigir ANTES do próximo envio — depois de
+    transmitido, o conserto é bem mais caro."""
+    linhas = consultar(conexao, CONSULTAS['ponteiros'])
+    ptr_venda = int(numero((linhas[0] if linhas else {}).get('ULT_SAIDA_VENDA_NOTA_ID')))
+    return [{
+        'venda': l.get('VENDA'),
+        'quando': texto_hora(l.get('QUANDO')),
+        'descricao': texto(l.get('PRODUTO')),
+        'ms': so_digitos(l.get('REGISTRO_MS')),
+        'lote': texto(l.get('NUM_LOTE')),
+        'quantidade': numero(l.get('QUANTIDADE')),
+    } for l in consultar(conexao, CONSULTAS['vendas_sem_receita_pendentes'], (ptr_venda,))]
+
+
 def classificar_divergencia(registro, saldo_anvisa, ms_no_inventario):
     """Divergência de saldo não é uma coisa só, e cada tipo se resolve num
     lugar diferente. Sem isso o app mistura 'falta transmitir a entrada'
@@ -966,6 +1007,27 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
     resultado['resumoPendentes'] = {t: len(v) for t, v in resultado['pendentes'].items()}
 
     # ------------------------------------------------------------
+    # 3b. movimento desde o último envio, por M.S. + lote
+    # ------------------------------------------------------------
+    # O inventário do SNGPC é a foto do ÚLTIMO ENVIO; o saldo do Digifarma é
+    # de agora. Entre um e outro a farmácia vendeu e recebeu. Comparar as
+    # duas fotos direto acusa como divergência tudo que se moveu no
+    # intervalo — inclusive a entrada de ontem, que ainda nem podia estar
+    # no inventário. A conta certa é:
+    #
+    #     SNGPC (último envio) + entradas − vendas − perdas − transferências
+    #     = saldo do Digifarma hoje
+    movimento_pendente = {}
+    for tipo, itens_tipo in resultado['pendentes'].items():
+        sinal = 1 if tipo == 'entradas' else -1
+        for pendente in itens_tipo:
+            chave = (so_digitos(pendente['ms']), texto(pendente['lote']).upper())
+            if not chave[1]:
+                continue  # sem lote não há como somar na conta do lote
+            movimento_pendente[chave] = (movimento_pendente.get(chave, 0.0)
+                                         + sinal * numero(pendente['quantidade']))
+
+    # ------------------------------------------------------------
     # 4. saldo do Digifarma × inventário da ANVISA
     # ------------------------------------------------------------
     saldo_anvisa, inventario_em, campos_anvisa, fora_do_criterio = ler_inventario_anvisa(conexao)
@@ -1031,12 +1093,19 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
 
         for chave, registro in por_chave.items():
             anvisa = saldo_anvisa.pop(chave, 0.0)
+            pendente = round(movimento_pendente.pop(chave, 0.0), 3)
             # lote zerado dos dois lados não é divergência nem notícia:
             # publicar tudo só engorda o farmacia/inventario
-            if not registro['saldoDigifarma'] and not anvisa:
+            if not registro['saldoDigifarma'] and not anvisa and not pendente:
                 continue
+            esperado = round(anvisa + pendente, 3)
             registro['saldoSngpc'] = round(anvisa, 3)
-            registro['diferenca'] = round(registro['saldoDigifarma'] - anvisa, 3)
+            if pendente:
+                # o que ainda não subiu: é o que explica a diferença entre a
+                # foto do envio e o saldo de agora
+                registro['movimentoDesdeEnvio'] = pendente
+                registro['esperadoSngpc'] = esperado
+            registro['diferenca'] = round(registro['saldoDigifarma'] - esperado, 3)
             if registro['diferenca']:
                 registro['motivo'] = classificar_divergencia(
                     registro, anvisa, ms_no_inventario)
@@ -1056,16 +1125,24 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
 
     # o que a ANVISA tem e o Digifarma não
     for (ms, lote), quantidade in saldo_anvisa.items():
-        itens.append({
+        pendente = round(movimento_pendente.pop((ms, lote), 0.0), 3)
+        esperado = round(quantidade + pendente, 3)
+        if not esperado:
+            continue  # o movimento pendente já zerou o lote: nada a conferir
+        item = {
             'codigo': '',
             'descricao': (DESCRICOES.get((ms, lote))
                           or DESCRICOES_POR_MS.get(ms)
                           or '(só no inventário da ANVISA)'),
             'ms': ms, 'ean': '', 'lote': lote, 'validade': '',
             'saldoDigifarma': 0.0, 'saldoSngpc': round(quantidade, 3),
-            'diferenca': round(-quantidade, 3),
+            'diferenca': round(-esperado, 3),
             'motivo': 'so_na_anvisa',
-        })
+        }
+        if pendente:
+            item['movimentoDesdeEnvio'] = pendente
+            item['esperadoSngpc'] = esperado
+        itens.append(item)
     resultado['itens'] = itens
     resultado['resumoSaldo'] = {}
     for i in itens:
@@ -1152,6 +1229,10 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
         resultado['vendasRecentesEm'] = datetime.datetime.now().isoformat(timespec='seconds')
     except Exception as e:
         registrar('Falha ao levantar as vendas recentes: %s' % e)
+    try:
+        resultado['vendasSemReceita'] = vendas_sem_receita_pendentes(conexao)
+    except Exception as e:
+        registrar('Falha ao levantar as vendas sem receita: %s' % e)
 
     # ------------------------------------------------------------
     # 7. saúde da sincronização com o site da ANVISA
@@ -1285,12 +1366,20 @@ def publicar_vendas_recentes(config, db):
     conexao = conectar_firebird(config)
     try:
         linhas = vendas_recentes(conexao)
+        try:
+            sem_receita = vendas_sem_receita_pendentes(conexao)
+        except Exception as e:
+            registrar('Não consegui levantar as vendas sem receita: %s' % e)
+            sem_receita = None
     finally:
         fechar(conexao)
     agora_iso = datetime.datetime.now().isoformat(timespec='seconds')
     db.reference('farmacia/inventario/vendasRecentes').set(linhas)
     db.reference('farmacia/inventario/vendasRecentesEm').set(agora_iso)
-    registrar('Vendas recentes publicadas: %d linha(s).' % len(linhas))
+    if sem_receita is not None:
+        db.reference('farmacia/inventario/vendasSemReceita').set(sem_receita)
+    registrar('Vendas recentes publicadas: %d linha(s); %s sem receita para o próximo envio.'
+              % (len(linhas), len(sem_receita) if sem_receita is not None else '?'))
     return linhas
 
 

@@ -125,6 +125,14 @@
     <section id="v-vendas" class="vista" hidden>
       <div class="cabeca-vista"><h2>Vendas com problema</h2></div>
       <p class="sublinha">Controlado vendido sem receita escriturada ou sem lote — a causa clássica de recusa.</p>
+      <div id="bloco-sem-receita" class="bloco" hidden>
+        <h3>Sem receita — corrigir antes do próximo envio</h3>
+        <p class="sublinha">Vendas de controlado que ainda não foram transmitidas e estão
+        sem receita escriturada. É a causa clássica de recusa, e depois de transmitida
+        a correção fica bem mais cara. Atualiza de 5 em 5 minutos.</p>
+        <div id="lista-sem-receita" class="pilha"></div>
+      </div>
+
       <div id="lista-vendas" class="pilha"></div>
       <p id="vendas-vazio" class="vazio" hidden>Nenhuma venda pendente de correção.</p>
 

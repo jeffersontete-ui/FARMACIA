@@ -203,6 +203,28 @@ produto do cadastro** continua entrando. Pode ser medicamento que o SNGPC
 tem e a farmácia não — divergência de verdade, que precisa aparecer. Só sai
 o que está no cadastro e está marcado como não controlado.
 
+### A conta: o inventário é uma foto do último envio
+
+O inventário do SNGPC mostra o estoque **como estava no último envio**. O
+saldo do Digifarma é de **agora**. Entre um e outro a farmácia vendeu e
+recebeu. Comparar as duas fotos direto acusa como divergência tudo que se
+moveu no intervalo — inclusive a entrada de ontem, que ainda nem podia
+estar no inventário.
+
+```
+SNGPC (último envio) + entradas − vendas − perdas − transferências
+= saldo do Digifarma hoje
+```
+
+O que entra nessa conta são os **pendentes de transmissão**, que o agente já
+levanta pelos ponteiros da tabela `SNGPC`. Cada item publica
+`movimentoDesdeEnvio` e `esperadoSngpc`, e a `diferenca` é contra o
+esperado, não contra a foto. O app mostra a conta inteira, nesta ordem:
+saldo no último envio → movimento desde então → esperado hoje → Digifarma →
+diferença.
+
+Divergência de verdade é o que **sobra** depois disso.
+
 ### A regra da comparação
 
 **Registro M.S. + número do lote → quantidade.** Dois lotes só são o mesmo
@@ -259,6 +281,12 @@ botões do app. Ela passa a publicar também as vendas de controlado dos
 lote vendido**, com número da venda, hora, produto, lote e quantidade. A
 mesma venda aparece duas vezes quando sai de dois lotes, que é como o SNGPC
 precisa e como se confere no balcão.
+
+Junto sobe `vendasSemReceita`: as vendas de controlado **que ainda não foram
+transmitidas** e estão sem receita escriturada — cortadas pelo ponteiro, não
+por data. É a causa clássica de recusa, e o conserto antes do envio é bem
+mais barato que depois. O app mostra essas em bloco próprio, no topo da aba
+Vendas.
 
 Escrever num filho de `farmacia/inventario` é de propósito: a regra do banco
 já libera esse caminho para o agente, então não é preciso republicar regras.

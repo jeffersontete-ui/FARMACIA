@@ -60,6 +60,11 @@ RESPOSTAS = {
         {'CAB_NOTA_ID': 3315, 'NOTA_FISCAL': '206800', 'DATA_RECEBIMENTO': datetime.date(2026, 8, 6),
          'PRODUTO': 'ALPRAZOLAM', 'REGISTRO_MS': '1444400010023', 'COD_BARRAS': '790',
          'NUM_LOTE': 'B77Z', 'QUANTIDADE': 20},
+        # entrada de 3 no lote 6G1234 DEPOIS do envio: o inventário do SNGPC
+        # ainda mostra 2, e o Digifarma já mostra 5. Não é divergência.
+        {'CAB_NOTA_ID': 3316, 'NOTA_FISCAL': '206801', 'DATA_RECEBIMENTO': datetime.date(2026, 8, 6),
+         'PRODUTO': 'ALPRAZOLAM', 'REGISTRO_MS': '1023506630204', 'COD_BARRAS': '789',
+         'NUM_LOTE': '6G1234', 'QUANTIDADE': 3},
     ],
     'perdas_pendentes': [],
     'transferencias_pendentes': [],
@@ -89,6 +94,12 @@ RESPOSTAS = {
          'PRODUTO': 'ALPRAZOLAM 1MG', 'REGISTRO_MS': '1444400010023',
          'NUM_LOTE': 'B77Z', 'QUANTIDADE': 1},
     ],
+    # venda que ainda vai subir e está sem receita: corrigir antes do envio
+    'vendas_sem_receita_pendentes': [
+        {'VENDA': 8830, 'QUANDO': datetime.datetime(2026, 8, 13, 14, 32, 5),
+         'PRODUTO': 'CLONAZEPAM 2MG', 'REGISTRO_MS': '1003301220019',
+         'NUM_LOTE': 'L2345A', 'QUANTIDADE': 3},
+    ],
     # quem é controlado: o inventário do SNGPC é filtrado por isto, igual
     # às vendas e ao estoque
     'produtos_controlados': [
@@ -114,11 +125,12 @@ RESPOSTAS = {
         # 5 no Digifarma contra 8 na ANVISA -> falta 3
         {'PRODUTO_ID': 100, 'PRODUTO': 'ALPRAZOLAM', 'REGISTRO_MS': '1023506630204',
          'COD_BARRAS': '789', 'NUM_LOTE': '5F9779', 'LOTE_VENCIMENTO': datetime.date(2027, 9, 30), 'SALDO': 5},
-        # segundo lote do MESMO medicamento, e este bate: não vira divergência
-        # e por isso some da lista — mas precisa aparecer no detalhe do outro,
-        # senão o total do Digifarma (7) fica sem explicação
+        # segundo lote do MESMO medicamento, que some da lista por não
+        # divergir — mas precisa aparecer no detalhe do outro, senão o total
+        # do Digifarma fica sem explicação.
+        # 5 hoje = 2 no último envio + 3 que entraram depois e não subiram
         {'PRODUTO_ID': 100, 'PRODUTO': 'ALPRAZOLAM', 'REGISTRO_MS': '1023506630204',
-         'COD_BARRAS': '789', 'NUM_LOTE': '6G1234', 'LOTE_VENCIMENTO': datetime.date(2028, 1, 31), 'SALDO': 2},
+         'COD_BARRAS': '789', 'NUM_LOTE': '6G1234', 'LOTE_VENCIMENTO': datetime.date(2028, 1, 31), 'SALDO': 5},
         # bate certinho
         {'PRODUTO_ID': 200, 'PRODUTO': 'ARIPIPRAZOL', 'REGISTRO_MS': '1057306610050',
          'COD_BARRAS': '790', 'NUM_LOTE': '2604608', 'LOTE_VENCIMENTO': datetime.date(2027, 3, 31), 'SALDO': 2},
@@ -389,12 +401,28 @@ def principal():
     # pregabalina, 6 no app contra 9 na tela do Digifarma
     alpra_div = next(i for i in dados['itens']
                      if i['ms'] == '1023506630204' and i['lote'] == '5F9779')
+    # o inventário do SNGPC é a foto do último envio; o saldo do Digifarma é
+    # de agora. Comparar as duas fotos direto acusa como divergência tudo que
+    # se moveu no intervalo — inclusive a entrada de ontem, que ainda nem
+    # podia estar no inventário.
+    alpra_novo = next(i for i in dados['itens'] if i['lote'] == '6G1234')
+    conferir('entrada que ainda não subiu não vira divergência',
+             alpra_novo['diferenca'] == 0.0
+             and alpra_novo['saldoDigifarma'] == 5.0
+             and alpra_novo['saldoSngpc'] == 2.0, alpra_novo)
+    conferir('a conta mostra o movimento e o esperado, não só o resultado',
+             alpra_novo.get('movimentoDesdeEnvio') == 3.0
+             and alpra_novo.get('esperadoSngpc') == 5.0, alpra_novo)
+    conferir('lote parado continua sem a conta do movimento',
+             'movimentoDesdeEnvio' not in next(
+                 i for i in dados['itens'] if i['lote'] == '5F9779'))
+
     conferir('o total por M.S. soma os dois lotes',
-             alpra_div.get('saldoDigifarmaMs') == 7.0
+             alpra_div.get('saldoDigifarmaMs') == 10.0
              and alpra_div.get('saldoSngpcMs') == 10.0, alpra_div)
     conferir('o detalhe lista TODOS os lotes do medicamento, inclusive o que bate',
              [(l['lote'], l['digifarma'], l['sngpc']) for l in alpra_div.get('lotesDoMs', [])]
-             == [('5F9779', 5.0, 8.0), ('6G1234', 2.0, 2.0)], alpra_div.get('lotesDoMs'))
+             == [('5F9779', 5.0, 8.0), ('6G1234', 5.0, 2.0)], alpra_div.get('lotesDoMs'))
     conferir('o lote que bate continua fora da lista de divergências',
              not any(i['lote'] == '6G1234' and i['diferenca'] for i in dados['itens']))
     conferir('medicamento de um lote só não carrega total por M.S.',
@@ -411,7 +439,7 @@ def principal():
     conferir('vendas pendentes saem pelo ponteiro, não por data',
              dados['resumoPendentes']['vendas'] == 1, dados['resumoPendentes'])
     conferir('entradas pendentes saem pelo ponteiro',
-             dados['resumoPendentes']['entradas'] == 1, dados['resumoPendentes'])
+             dados['resumoPendentes']['entradas'] == 2, dados['resumoPendentes'])
 
     # zero divergência de XML tanto pode ser conferência limpa quanto
     # conferência que não aconteceu — o app precisa distinguir
@@ -462,6 +490,12 @@ def principal():
              and {v['lote'] for v in dois_lotes} == {'L2345A', 'L9999B'}, dois_lotes)
     conferir('o carimbo diz quando as vendas foram publicadas',
              bool(dados.get('vendasRecentesEm')))
+
+    # o que trava o PRÓXIMO envio, cortado pelo ponteiro e não por data
+    sem_receita = dados.get('vendasSemReceita', [])
+    conferir('venda sem receita que ainda vai subir aparece à parte',
+             len(sem_receita) == 1 and sem_receita[0]['venda'] == 8830
+             and sem_receita[0]['lote'] == 'L2345A', sem_receita)
 
     conferir('o XML da transmissão é arquivado em enviados\\',
              os.path.exists(os.path.join(pasta, 'enviados', 'sngpc_%s.xml' % hoje)))

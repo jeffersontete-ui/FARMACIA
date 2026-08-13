@@ -356,7 +356,7 @@ function pintar() {
   avisarSobreAnvisa();
   if (estado.vista === 'saldo') pintarSaldo();
   if (estado.vista === 'xml') pintarXml();
-  if (estado.vista === 'vendas') { pintarVendas(); pintarVendasRecentes(); }
+  if (estado.vista === 'vendas') { pintarSemReceita(); pintarVendas(); pintarVendasRecentes(); }
   if (estado.vista === 'aceites') pintarAceites();
 }
 
@@ -570,7 +570,13 @@ function pintarSaldo() {
       // o saldo saiu, para conferir contra a tela do Digifarma
       ['Entrou no lote', i.entradas],
       ['Baixado (vendas e perdas)', i.baixas],
-      ['Saldo do inventário SNGPC (só este lote)', i.saldoSngpc],
+      // a conta, na ordem em que se lê: a foto do último envio, o que se
+      // moveu desde então, o que o SNGPC deveria mostrar, e o que o
+      // Digifarma mostra. A diferença é do último par, não do primeiro.
+      ['Saldo do inventário SNGPC (último envio)', i.saldoSngpc],
+      ['Movimento desde o envio', i.movimentoDesdeEnvio === undefined ? undefined
+        : (i.movimentoDesdeEnvio > 0 ? '+' : '') + i.movimentoDesdeEnvio],
+      ['Esperado no SNGPC hoje', i.esperadoSngpc],
       ['Diferença', (dif > 0 ? '+' : '') + dif],
       // a tela do Digifarma mostra o produto inteiro; a conferência é por
       // lote. Sem estes dois, o número do app não bate com o da tela e
@@ -586,6 +592,14 @@ function pintarSaldo() {
     if (explicacao) {
       const nota = criar('p', 'motivo');
       nota.textContent = explicacao;
+      detalhe.appendChild(nota);
+    }
+    if (i.movimentoDesdeEnvio !== undefined) {
+      const nota = criar('p', 'motivo');
+      nota.textContent = 'Este lote se moveu depois do último envio. O inventário do '
+        + 'SNGPC é a foto daquele momento, então a conferência soma o que entrou e '
+        + 'desconta o que saiu desde então — a diferença é contra o esperado, não '
+        + 'contra a foto.';
       detalhe.appendChild(nota);
     }
     if (i.saldoDigifarmaMs !== undefined) {
@@ -745,6 +759,34 @@ function pintarVendas() {
 
 /* Acompanhamento das vendas: sobe pela tarefa de 5 em 5 minutos, então a
    tela vive sozinha — o Firebase empurra a atualização sem ninguém recarregar. */
+function pintarSemReceita() {
+  const itens = lista('vendasSemReceita');
+  $('bloco-sem-receita').hidden = itens.length === 0;
+  const alvo = $('lista-sem-receita');
+  alvo.innerHTML = '';
+  itens.forEach((v, n) => {
+    alvo.appendChild(linha({
+      chave: 'semreceita:' + (v.venda ?? n) + ':' + (v.lote || ''),
+      titulo: v.descricao || ('Venda ' + (v.venda ?? '?')),
+      meta: [
+        v.quando && horaBR(v.quando),
+        v.ms && 'M.S. ' + v.ms,
+        v.lote ? 'Lote ' + v.lote : 'Sem lote'
+      ],
+      tarja: ['Escriturar a receita antes de transmitir', 'Venda ' + (v.venda ?? '—')],
+      tarjaClasse: 'falta',
+      detalhe: definicoes([
+        ['Venda', v.venda],
+        ['Quando', horaBR(v.quando)],
+        ['Produto', v.descricao],
+        ['Registro M.S.', v.ms],
+        ['Lote', v.lote],
+        ['Quantidade', v.quantidade]
+      ])
+    }));
+  });
+}
+
 function pintarVendasRecentes() {
   const alvo = $('lista-vendas-recentes');
   if (!alvo) return;
