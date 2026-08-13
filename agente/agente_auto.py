@@ -521,22 +521,36 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
         coluna = detectar_coluna_saldo(conexao)
         sql = CONSULTAS['saldo_digifarma'].replace('{SALDO}', coluna)
         resultado['inventario']['colunaSaldo'] = coluna
+
+        # O SQL agrupa por PRODUTO_ID e LOTE_VENCIMENTO também, mas a
+        # comparação com a ANVISA é só por M.S. + lote. Dois cadastros com o
+        # mesmo registro, ou o mesmo lote gravado com validades diferentes,
+        # viravam DUAS linhas com a mesma chave: a primeira levava todo o
+        # saldo do SNGPC e a segunda ficava com zero, inventando divergência
+        # dos dois lados. Somamos pela chave da comparação antes de comparar.
+        por_chave = {}
         for linha in consultar(conexao, sql):
             chave = (so_digitos(linha.get('REGISTRO_MS')),
                      texto(linha.get('NUM_LOTE')).upper())
-            digifarma = numero(linha.get('SALDO'))
+            registro = por_chave.get(chave)
+            if registro is None:
+                registro = por_chave[chave] = {
+                    'codigo': texto(linha.get('PRODUTO_ID')),
+                    'descricao': texto(linha.get('PRODUTO')),
+                    'ms': chave[0],
+                    'ean': texto(linha.get('COD_BARRAS')),
+                    'lote': chave[1],
+                    'validade': texto(linha.get('LOTE_VENCIMENTO')),
+                    'saldoDigifarma': 0.0,
+                }
+            registro['saldoDigifarma'] += numero(linha.get('SALDO'))
+
+        for chave, registro in por_chave.items():
             anvisa = saldo_anvisa.pop(chave, 0.0)
-            itens.append({
-                'codigo': texto(linha.get('PRODUTO_ID')),
-                'descricao': texto(linha.get('PRODUTO')),
-                'ms': chave[0],
-                'ean': texto(linha.get('COD_BARRAS')),
-                'lote': chave[1],
-                'validade': texto(linha.get('LOTE_VENCIMENTO')),
-                'saldoDigifarma': round(digifarma, 3),
-                'saldoSngpc': round(anvisa, 3),
-                'diferenca': round(digifarma - anvisa, 3),
-            })
+            registro['saldoDigifarma'] = round(registro['saldoDigifarma'], 3)
+            registro['saldoSngpc'] = round(anvisa, 3)
+            registro['diferenca'] = round(registro['saldoDigifarma'] - anvisa, 3)
+            itens.append(registro)
     except Exception as e:
         registrar('Falha ao levantar o saldo por lote: %s' % e)
 

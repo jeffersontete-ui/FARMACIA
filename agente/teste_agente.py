@@ -81,6 +81,8 @@ RESPOSTAS = {
          'QUANTIDADE': 8, 'DATA_ATUALIZACAO': '2026-08-05'},
         {'REGISTRO_MS': '1057306610050', 'MEDICAMENTO': 'ARIPIPRAZOL', 'LOTE': '2604608',
          'QUANTIDADE': 2, 'DATA_ATUALIZACAO': '2026-08-05'},
+        {'REGISTRO_MS': '1122233340001', 'MEDICAMENTO': 'DIAZEPAM', 'LOTE': 'K1',
+         'QUANTIDADE': 10, 'DATA_ATUALIZACAO': '2026-08-05'},
     ],
     'saldo_digifarma': [
         # 5 no Digifarma contra 8 na ANVISA -> falta 3
@@ -89,6 +91,12 @@ RESPOSTAS = {
         # bate certinho
         {'PRODUTO_ID': 200, 'PRODUTO': 'ARIPIPRAZOL', 'REGISTRO_MS': '1057306610050',
          'COD_BARRAS': '790', 'NUM_LOTE': '2604608', 'LOTE_VENCIMENTO': datetime.date(2027, 3, 31), 'SALDO': 2},
+        # mesmo M.S. + mesmo lote em dois cadastros, com validades diferentes:
+        # 4 + 6 = 10, que é exatamente o que a ANVISA tem. Não é divergência.
+        {'PRODUTO_ID': 300, 'PRODUTO': 'DIAZEPAM 10MG', 'REGISTRO_MS': '1122233340001',
+         'COD_BARRAS': '791', 'NUM_LOTE': 'K1', 'LOTE_VENCIMENTO': datetime.date(2027, 5, 31), 'SALDO': 4},
+        {'PRODUTO_ID': 301, 'PRODUTO': 'DIAZEPAM 10MG', 'REGISTRO_MS': '1122233340001',
+         'COD_BARRAS': '791', 'NUM_LOTE': 'K1', 'LOTE_VENCIMENTO': datetime.date(2027, 6, 30), 'SALDO': 6},
     ],
 }
 
@@ -162,13 +170,24 @@ def principal():
     conferir('descobre sozinho a coluna de saldo da tabela LOTES',
              dados['inventario'].get('colunaSaldo') == 'SALDO', dados['inventario'])
     conferir('o inventário vem do INVENTARIO_SNGPC (lado ANVISA)',
-             dados['inventario']['itens'] == 2, dados['inventario'])
+             dados['inventario']['itens'] == 3, dados['inventario'])
 
     diferencas = {i['ms']: i['diferenca'] for i in dados['itens']}
     conferir('diferença de saldo por M.S. + lote',
              diferencas.get('1023506630204') == -3.0, diferencas)
     conferir('lote que bate não vira divergência',
              diferencas.get('1057306610050') == 0.0, diferencas)
+
+    # o mesmo M.S. + lote em dois cadastros tem que virar UMA linha somada;
+    # antes, a primeira levava todo o saldo do SNGPC e a segunda ficava com
+    # zero, inventando divergência dos dois lados
+    repetidos = [i for i in dados['itens'] if i['ms'] == '1122233340001']
+    conferir('mesmo M.S. + lote em cadastros diferentes vira uma linha só',
+             len(repetidos) == 1, repetidos)
+    conferir('o saldo do Digifarma soma os cadastros repetidos',
+             repetidos and repetidos[0]['saldoDigifarma'] == 10.0, repetidos)
+    conferir('cadastro repetido que bate com a ANVISA não vira divergência',
+             repetidos and repetidos[0]['diferenca'] == 0.0, repetidos)
 
     conferir('vendas pendentes saem pelo ponteiro, não por data',
              dados['resumoPendentes']['vendas'] == 1, dados['resumoPendentes'])
