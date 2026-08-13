@@ -1233,6 +1233,10 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
         resultado['vendasSemReceita'] = vendas_sem_receita_pendentes(conexao)
     except Exception as e:
         registrar('Falha ao levantar as vendas sem receita: %s' % e)
+    try:
+        resultado['diagnostico'] = snapshot_diagnostico(conexao)
+    except Exception as e:
+        registrar('Falha ao montar o diagnóstico: %s' % e)
 
     # ------------------------------------------------------------
     # 7. saúde da sincronização com o site da ANVISA
@@ -1387,6 +1391,11 @@ def publicar_vendas_recentes(config, db):
         except Exception as e:
             registrar('Não consegui levantar as vendas sem receita: %s' % e)
             sem_receita = None
+        try:
+            diagnostico = snapshot_diagnostico(conexao)
+        except Exception as e:
+            registrar('Não consegui montar o diagnóstico: %s' % e)
+            diagnostico = None
     finally:
         fechar(conexao)
     agora_iso = datetime.datetime.now().isoformat(timespec='seconds')
@@ -1394,6 +1403,10 @@ def publicar_vendas_recentes(config, db):
     db.reference('farmacia/inventario/vendasRecentesEm').set(agora_iso)
     if sem_receita is not None:
         db.reference('farmacia/inventario/vendasSemReceita').set(sem_receita)
+    # o diagnóstico sobe junto: é o que permite ver de fora do servidor por
+    # que ainda há divergência, sem precisar estar na máquina
+    if diagnostico is not None:
+        db.reference('farmacia/inventario/diagnostico').set(diagnostico)
     registrar('Vendas recentes publicadas: %d linha(s); %s sem receita para o próximo envio.'
               % (len(linhas), len(sem_receita) if sem_receita is not None else '?'))
     return linhas
@@ -1790,52 +1803,112 @@ def modo_tarefas(config):
     return True
 
 
+def classificar_inventario_anvisa(conexao):
+    """Separa a INVENTARIO_SNGPC em três: o que entra na comparação, o que
+    fica de fora por não ser controlado, e o que entra sem ter produto no
+    cadastro. Serve ao --inventario e ao diagnóstico que sobe ao app."""
+    linhas = consultar(conexao, CONSULTAS['inventario_sngpc'])
+    if not linhas:
+        return {'total': 0, 'entram': [], 'fora': [], 'semCadastro': [], 'usados': {}}
+
+    campos = list(linhas[0])
+    usados = {chave: escolher_campo(campos, regras)
+              for chave, regras in CAMPOS_INVENTARIO.items()}
+    campo_produto = next((c for c in campos if c.strip().upper() == 'PRODUTO_ID'), None)
+
+    nomes, controlados, conhecidos = {}, set(), set()
+    if campo_produto:
+        for linha in consultar(conexao, CONSULTAS['produtos_controlados']):
+            produto = texto(linha.get('PRODUTO_ID'))
+            if not produto:
+                continue
+            conhecidos.add(produto)
+            nomes[produto] = texto(linha.get('PRODUTO'))
+            if (texto(linha.get('PSICOTROPICO')).upper() == 'S'
+                    or texto(linha.get('ANTIMICROBIANO')).upper() == 'S'):
+                controlados.add(produto)
+
+    grupos = {'entram': [], 'fora': [], 'semCadastro': []}
+    for linha in linhas:
+        produto = texto(linha.get(campo_produto)) if campo_produto else ''
+        if not campo_produto:
+            nome = 'entram'
+        elif produto in controlados:
+            nome = 'entram'
+        elif produto in conhecidos:
+            nome = 'fora'
+        else:
+            nome = 'semCadastro'
+        grupos[nome].append((produto, linha))
+
+    return dict(grupos, total=len(linhas), usados=usados, nomes=nomes,
+                temProdutoId=bool(campo_produto))
+
+
+def snapshot_diagnostico(conexao):
+    """Os números que respondem "por que ainda há divergência", num formato
+    que cabe na tela do celular. Sobe junto com as vendas, de 5 em 5
+    minutos, para quem não está no servidor conseguir ver."""
+    linhas = consultar(conexao, CONSULTAS['ponteiros'])
+    ponteiros = linhas[0] if linhas else {}
+    ptr_venda = int(numero(ponteiros.get('ULT_SAIDA_VENDA_NOTA_ID')))
+    ptr_entrada = int(numero(ponteiros.get('ULT_ENTRADA_CAB_NOTA_ID')))
+
+    pendentes = {}
+    try:
+        pendentes['vendas'] = len(consultar(conexao, CONSULTAS['saidas_pendentes'],
+                                            (ptr_venda,)))
+        pendentes['entradas'] = len(consultar(conexao, CONSULTAS['entradas_pendentes'],
+                                              (ptr_entrada,)))
+    except Exception as e:
+        registrar('Diagnóstico: não consegui contar os pendentes: %s' % e)
+
+    inventario = {}
+    try:
+        grupos = classificar_inventario_anvisa(conexao)
+        inventario = {
+            'linhas': grupos['total'],
+            'entram': len(grupos['entram']),
+            'foraDoCriterio': len(grupos['fora']),
+            'semProdutoNoCadastro': len(grupos['semCadastro']),
+        }
+    except Exception as e:
+        registrar('Diagnóstico: não consegui classificar o inventário: %s' % e)
+
+    return {
+        'em': datetime.datetime.now().isoformat(timespec='seconds'),
+        'ponteiroVenda': ptr_venda,
+        'ponteiroEntrada': ptr_entrada,
+        'ultimoEnvio': texto(ponteiros.get('ULTIMO_ENVIO_SNGPC'))[:10] or None,
+        'pendentes': pendentes,
+        'inventarioSngpc': inventario,
+    }
+
+
 def modo_inventario(config):
     """Abre o inventário do SNGPC linha a linha e diz o que entra, o que sai
     e por quê. Só o banco da farmácia sabe QUAIS são os produtos; este
     comando é o que os nomeia."""
     conexao = conectar_firebird(config)
     try:
-        linhas = consultar(conexao, CONSULTAS['inventario_sngpc'])
-        if not linhas:
-            print('INVENTARIO_SNGPC está vazia. Rode o Anvisa.exe e faça o login.')
-            return False
-
-        campos = list(linhas[0])
-        campo_produto = next((c for c in campos if c.strip().upper() == 'PRODUTO_ID'), None)
-        usados = {chave: escolher_campo(campos, regras)
-                  for chave, regras in CAMPOS_INVENTARIO.items()}
-
-        cadastro = consultar(conexao, CONSULTAS['produtos_controlados'])
+        grupos = classificar_inventario_anvisa(conexao)
     finally:
         fechar(conexao)
 
-    nomes, controlados, conhecidos = {}, set(), set()
-    for linha in cadastro:
-        produto = texto(linha.get('PRODUTO_ID'))
-        if not produto:
-            continue
-        conhecidos.add(produto)
-        nomes[produto] = texto(linha.get('PRODUTO'))
-        if (texto(linha.get('PSICOTROPICO')).upper() == 'S'
-                or texto(linha.get('ANTIMICROBIANO')).upper() == 'S'):
-            controlados.add(produto)
+    if not grupos['total']:
+        print('INVENTARIO_SNGPC está vazia. Rode o Anvisa.exe e faça o login.')
+        return False
 
-    print('INVENTARIO_SNGPC — %d linha(s)' % len(linhas))
+    usados, nomes = grupos['usados'], grupos.get('nomes', {})
+    print('INVENTARIO_SNGPC — %d linha(s)' % grupos['total'])
     print('colunas usadas: %s\n' % ', '.join(
         '%s=%s' % (k, v) for k, v in sorted(usados.items()) if v))
-    if not campo_produto:
+    if not grupos.get('temProdutoId'):
         print('A tabela não tem PRODUTO_ID: não dá para dizer quem é controlado,')
         print('e o inventário entra inteiro.')
         return True
 
-    entram, fora, sem_cadastro = [], [], []
-    for linha in linhas:
-        produto = texto(linha.get(campo_produto))
-        destino = (fora if produto in conhecidos and produto not in controlados
-                   else entram if produto in controlados
-                   else sem_cadastro)
-        destino.append((produto, linha))
+    entram, fora, sem_cadastro = grupos['entram'], grupos['fora'], grupos['semCadastro']
 
     def mostrar(titulo, grupo, explicacao):
         print('%s: %d' % (titulo, len(grupo)))

@@ -18,7 +18,7 @@ O estoque manual do balcão fica no repositório separado **ESTOQUE**.
 
 | Aba | O que traz |
 |---|---|
-| Situação | carimbo do último sincronismo, dados do último envio, botões que pedem ao agente |
+| Situação | carimbo do último sincronismo, **diagnóstico**, dados do último envio, botões que pedem ao agente |
 | Saldo | divergências entre o saldo do Digifarma e o inventário SNGPC vigente, com M.S., código de barras, lote e o detalhe de cada uma — cada uma classificada pelo **tipo** (veja abaixo) |
 | XML | o que saiu no banco cruzado com o que subiu no XML, por registro M.S. + lote — e, quando não há divergência, **se a conferência aconteceu** |
 | Vendas | controlado vendido sem receita escriturada ou sem lote — a causa clássica de recusa — e o **acompanhamento das últimas vendas**, com número, hora, lote e quantidade, atualizado de 5 em 5 minutos |
@@ -291,6 +291,26 @@ Vendas.
 Escrever num filho de `farmacia/inventario` é de propósito: a regra do banco
 já libera esse caminho para o agente, então não é preciso republicar regras.
 E a sincronização completa, que é cara, continua de hora em hora.
+
+### Diagnóstico à distância
+
+Quase todo diagnóstico deste projeto exigiu alguém sentado no servidor
+rodando `--saldo`, `--resumo`, `--inventario`. Quem cuida da farmácia nem
+sempre está lá, e o mais comum é justamente querer entender um número
+olhando o celular.
+
+Por isso a tarefa de 5 minutos publica um `diagnostico` em
+`farmacia/inventario`, que o app mostra na aba Situação:
+
+- quanto está **esperando transmissão**, por tipo, e os ponteiros de venda e
+  entrada — é o que diz se a conta do movimento desde o envio tem com o que
+  trabalhar;
+- como a `INVENTARIO_SNGPC` foi lida: quantas linhas, quantas entram na
+  comparação, quantas ficam fora do critério e quantas não têm produto no
+  cadastro.
+
+Não substitui os comandos, que trazem a lista item a item — mas responde
+"por que ainda há divergência" sem precisar ir até a máquina.
 
 ### Zero que não quer dizer "tudo certo"
 

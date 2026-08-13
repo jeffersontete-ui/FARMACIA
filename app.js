@@ -352,6 +352,7 @@ function pintar() {
     : 'O agente ainda não publicou nada. Rode o INSTALAR_AGENTE.bat no servidor.';
 
   pintarEnvio();
+  pintarDiagnostico();
   pintarPendentes();
   avisarSobreAnvisa();
   if (estado.vista === 'saldo') pintarSaldo();
@@ -406,6 +407,40 @@ function baseDoSaldo() {
   if (!inv.colunaSaldo) return '—';
   const modo = ROTULO_MODO_SALDO[inv.modoSaldo];
   return 'LOTES.' + inv.colunaSaldo + (modo ? ' — ' + modo : '');
+}
+
+/* O diagnóstico existe para responder de longe "por que ainda há
+   divergência". Sobe de 5 em 5 minutos junto com as vendas. */
+function pintarDiagnostico() {
+  const dl = $('dados-diagnostico');
+  dl.innerHTML = '';
+  const d = estado.inventario?.diagnostico;
+  if (!d) {
+    const dt = criar('dt'); dt.textContent = 'Sem dados';
+    const dd = criar('dd'); dd.textContent = 'o agente ainda não publicou o diagnóstico';
+    dl.append(dt, dd);
+    return;
+  }
+  const pend = d.pendentes || {};
+  const inv = d.inventarioSngpc || {};
+  const total = Object.values(pend).reduce((s, n) => s + Number(n || 0), 0);
+  const linhas = [
+    ['Lido em', dataHora(d.em)],
+    ['Esperando transmissão', total === 0
+      ? 'nada — tudo que o Digifarma tem já foi enviado'
+      : Object.entries(pend).map(([t, n]) => n + ' ' + t).join(' · ')],
+    ['Ponteiros', 'venda ' + (d.ponteiroVenda ?? '—') + ' · entrada ' + (d.ponteiroEntrada ?? '—')],
+    ['Último envio', dataBR(d.ultimoEnvio)],
+    ['Inventário SNGPC (linhas)', inv.linhas],
+    ['— entram na comparação', inv.entram],
+    ['— fora do critério', inv.foraDoCriterio],
+    ['— sem produto no cadastro', inv.semProdutoNoCadastro]
+  ];
+  linhas.filter(([, v]) => v !== undefined && v !== null).forEach(([k, v]) => {
+    const dt = criar('dt'); dt.textContent = k;
+    const dd = criar('dd'); dd.textContent = esc(v);
+    dl.append(dt, dd);
+  });
 }
 
 function pintarEnvio() {

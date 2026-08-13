@@ -491,6 +491,15 @@ def principal():
     conferir('o carimbo diz quando as vendas foram publicadas',
              bool(dados.get('vendasRecentesEm')))
 
+    # o diagnóstico é o que se lê de fora do servidor: sem ele, "por que
+    # ainda há divergência" só se responde na máquina da farmácia
+    diag = dados.get('diagnostico', {})
+    conferir('o diagnóstico sobe com pendentes, ponteiros e inventário',
+             diag.get('ponteiroVenda') == 8821
+             and diag.get('pendentes', {}).get('entradas') == 2
+             and diag.get('inventarioSngpc', {}).get('foraDoCriterio') == 1
+             and diag.get('inventarioSngpc', {}).get('linhas') == 5, diag)
+
     # o que trava o PRÓXIMO envio, cortado pelo ponteiro e não por data
     sem_receita = dados.get('vendasSemReceita', [])
     conferir('venda sem receita que ainda vai subir aparece à parte',
