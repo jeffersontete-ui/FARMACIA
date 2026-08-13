@@ -216,6 +216,10 @@ def principal():
              'farmacia/agentes/agente-sngpc' in ag.recado_de_permissao(ag.CONFIG_PADRAO),
              ag.recado_de_permissao(ag.CONFIG_PADRAO))
 
+    conferir('a chave frouxa ignora zero à esquerda e pontuação do lote',
+             ag.chave_frouxa(('123', '00036467')) == ag.chave_frouxa(('123', '36.467'))
+             and ag.chave_frouxa(('123', 'BQ37J001')) != ag.chave_frouxa(('123', 'BQ37J002')))
+
     # o fdb dimensiona o parâmetro do LIKE pelo tamanho da coluna:
     # REGISTRO_MS é VARCHAR(13) e "%ESCITALOPRAM%" tem 14
     conferir('o filtro do --saldo não fica preso ao tamanho da coluna',

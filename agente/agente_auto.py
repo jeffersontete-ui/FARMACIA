@@ -15,6 +15,7 @@ Modos:
     python agente_auto.py --schema          confere se as tabelas/campos existem
     python agente_auto.py --saldo TEXTO     mostra como o saldo de um lote foi apurado
     python agente_auto.py --linhas LOTE     despeja todas as colunas de LOTES de um lote
+    python agente_auto.py --resumo          separa divergência real de lote escrito diferente
     python agente_auto.py --teste           testa conexão com Firebird e Firebase
 
 Não gera .exe. Atualizar o agente = trocar este arquivo.
@@ -1156,6 +1157,81 @@ def modo_conferir_saldo(config, filtro):
         fechar(conexao)
 
 
+def chave_frouxa(chave):
+    """A chave da comparação sem os enfeites do número de lote: só letra e
+    número, sem zero à esquerda. '00036467' e '36467' viram a mesma coisa.
+    Serve para MEDIR quantas divergências são só jeito de escrever o lote —
+    não é usada na comparação de verdade, que continua exata."""
+    ms, lote = chave
+    return (ms, ''.join(c for c in lote if c.isalnum()).lstrip('0'))
+
+
+def modo_resumo(config):
+    """Divergência que sobra é diferença de estoque de verdade ou lote
+    escrito diferente dos dois lados? Este resumo separa uma coisa da
+    outra antes de alguém sair conferindo prateleira."""
+    conexao = conectar_firebird(config)
+    try:
+        por_chave, info = saldo_por_lote(conexao, config)
+        saldo_anvisa, inventario_em, _ = ler_inventario_anvisa(conexao)
+
+        digi = {k: v['saldoDigifarma'] for k, v in por_chave.items() if v['saldoDigifarma']}
+        anvisa = {k: v for k, v in saldo_anvisa.items() if v}
+        descricao = {k: v['descricao'] for k, v in por_chave.items()}
+
+        comuns = set(digi) & set(anvisa)
+        iguais = [k for k in comuns if abs(digi[k] - anvisa[k]) < 0.001]
+        so_digi = sorted(set(digi) - set(anvisa), key=lambda k: -digi[k])
+        so_anvisa = sorted(set(anvisa) - set(digi), key=lambda k: -anvisa[k])
+
+        print('saldo por LOTES.%s (modo %s)' % (info['coluna'], info['modo']))
+        print('inventário da ANVISA de %s\n' % (inventario_em or '(sem data)'))
+        print('  lotes com saldo no Digifarma: %d' % len(digi))
+        print('  lotes com saldo na ANVISA:    %d' % len(anvisa))
+        print('  casaram (M.S. + lote):        %d — %d batendo, %d com valor diferente'
+              % (len(comuns), len(iguais), len(comuns) - len(iguais)))
+        print('  só no Digifarma:              %d' % len(so_digi))
+        print('  só na ANVISA:                 %d' % len(so_anvisa))
+
+        # quantas das que não casaram casariam se o lote fosse comparado
+        # ignorando zero à esquerda e pontuação
+        frouxa_anvisa = {}
+        for k in so_anvisa:
+            frouxa_anvisa.setdefault(chave_frouxa(k), []).append(k)
+        pares = [(k, frouxa_anvisa[chave_frouxa(k)][0])
+                 for k in so_digi if chave_frouxa(k) in frouxa_anvisa]
+
+        print('\n  casariam se o lote fosse comparado sem zero à esquerda\n'
+              '  e sem pontuação: %d' % len(pares))
+        for d, a in pares[:15]:
+            print('      %-40s lote Digifarma %-14s ANVISA %-14s'
+                  % (descricao.get(d, '')[:40], d[1] or '(vazio)', a[1] or '(vazio)'))
+
+        # mesmo remédio, lote que a ANVISA não tem de jeito nenhum
+        ms_anvisa = {k[0] for k in anvisa}
+        sem_o_ms = [k for k in so_digi if k[0] not in ms_anvisa]
+        print('\n  no Digifarma com saldo e o M.S. nem aparece na ANVISA: %d' % len(sem_o_ms))
+        print('  (costuma ser entrada que ainda não foi transmitida)')
+
+        print('\n  maiores diferenças de valor entre os que casaram:')
+        for k in sorted(comuns, key=lambda k: -abs(digi[k] - anvisa[k]))[:15]:
+            if abs(digi[k] - anvisa[k]) < 0.001:
+                break
+            print('      %-40s lote %-12s Digifarma %-8g ANVISA %g'
+                  % (descricao.get(k, '')[:40], k[1], digi[k], anvisa[k]))
+
+        negativos = [k for k in digi if digi[k] < 0]
+        if negativos:
+            print('\n  lotes com saldo NEGATIVO no Digifarma: %d' % len(negativos))
+            print('  (saída lançada sem entrada; é dado torto no Digifarma, não conta do agente)')
+            for k in sorted(negativos, key=lambda k: digi[k])[:10]:
+                print('      %-40s lote %-12s %g'
+                      % (descricao.get(k, '')[:40], k[1], digi[k]))
+        return True
+    finally:
+        fechar(conexao)
+
+
 def modo_linhas(config, lote):
     """Despeja TUDO que a base guarda sobre um lote: cada linha de LOTES com
     todas as suas colunas, e cada venda daquele lote. É o que mostra se
@@ -1239,6 +1315,8 @@ def principal():
                         help='mostra como o saldo de um lote foi apurado')
     parser.add_argument('--linhas', metavar='LOTE',
                         help='despeja todas as colunas de LOTES de um lote')
+    parser.add_argument('--resumo', action='store_true',
+                        help='separa divergência de verdade de lote escrito diferente')
     args = parser.parse_args()
 
     config = carregar_config()
@@ -1254,6 +1332,8 @@ def principal():
     try:
         if args.colunas:
             raise SystemExit(0 if modo_colunas(config, args.colunas) else 1)
+        if args.resumo:
+            raise SystemExit(0 if modo_resumo(config) else 1)
         if args.linhas:
             raise SystemExit(0 if modo_linhas(config, args.linhas) else 1)
         if args.saldo is not None:
