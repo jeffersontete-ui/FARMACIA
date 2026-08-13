@@ -20,7 +20,7 @@ O estoque manual do balcão fica no repositório separado **ESTOQUE**.
 |---|---|
 | Situação | carimbo do último sincronismo, dados do último envio, botões que pedem ao agente |
 | Saldo | divergências entre o saldo do Digifarma e o inventário SNGPC vigente, com M.S., código de barras, lote e o detalhe de cada uma — cada uma classificada pelo **tipo** (veja abaixo) |
-| XML | o que saiu no banco cruzado com o que subiu no XML, por registro M.S. + lote |
+| XML | o que saiu no banco cruzado com o que subiu no XML, por registro M.S. + lote — e, quando não há divergência, **se a conferência aconteceu** |
 | Vendas | controlado vendido sem receita escriturada ou sem lote — a causa clássica de recusa |
 | Aceites | marcar à mão o aceite ou a recusa de cada envio, com nome e horário |
 
@@ -202,6 +202,20 @@ totais somando os lotes daquele registro M.S. — e o app os mostra como
 "todos os lotes deste M.S.". Eles só aparecem quando o medicamento tem
 mais de um lote, que é exatamente quando o número do lote não bate com a
 tela.
+
+### Zero que não quer dizer "tudo certo"
+
+Foi o erro que originou este trabalho: 4135 "sobras" que não eram sobra, e
+um saldo do SNGPC zerado que era coluna não reconhecida. A recíproca vale —
+um **zero** também engana. "0 divergências de XML" tanto pode ser
+conferência limpa quanto conferência que não aconteceu: sem `SNGPC.XML` na
+pasta, sem período no cabeçalho, ou sem venda nenhuma no período.
+
+Por isso `conferenciaXmlResumo` publica `conferiu`, o arquivo, o período e
+quantas saídas havia de cada lado; e `vendasProblemaDesde` publica a data de
+corte da aba Vendas, porque aquela consulta corta por data e o zero não vale
+para a história inteira. O app usa os dois para dizer qual zero é qual, em
+vez de "tudo que saiu no período está no XML".
 
 ### Os tipos de divergência de saldo
 

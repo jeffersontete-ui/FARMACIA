@@ -572,11 +572,30 @@ function pintarSaldo() {
   }
 }
 
+/* Zero divergências pode ser conferência limpa ou conferência que não
+   aconteceu. O texto do vazio tem que dizer qual dos dois. */
+function textoXmlVazio() {
+  const r = estado.inventario?.conferenciaXmlResumo;
+  if (!r) return 'O agente ainda não conferiu o XML.';
+  if (!r.conferiu) {
+    return 'Não deu para conferir o XML: ' + (r.porque || 'motivo não informado')
+      + '. Este zero não quer dizer que está tudo certo.';
+  }
+  if (!r.vendasNoBanco && !r.itensNoXml) {
+    return 'Nenhuma venda de controlado entre ' + dataBR(r.periodoDe) + ' e '
+      + dataBR(r.periodoAte) + ' — não havia nada a conferir neste envio.';
+  }
+  return 'Confere: ' + r.vendasNoBanco + ' saída(s) no banco e ' + r.itensNoXml
+    + ' item(ns) no XML ' + esc(r.arquivo) + ', de ' + dataBR(r.periodoDe)
+    + ' a ' + dataBR(r.periodoAte) + '. Tudo bateu.';
+}
+
 function pintarXml() {
   const alvo = $('lista-xml');
   alvo.innerHTML = '';
   const itens = pendenciasXml()
     .filter((c) => combina(c, estado.buscaXml, ['descricao', 'ms', 'lote']));
+  $('xml-vazio').textContent = textoXmlVazio();
   $('xml-vazio').hidden = itens.length > 0 || !!estado.buscaXml;
 
   const ROTULO = {
@@ -620,6 +639,13 @@ function pintarVendas() {
   const alvo = $('lista-vendas');
   alvo.innerHTML = '';
   const itens = vendasProblema();
+  const desde = estado.inventario?.vendasProblemaDesde;
+  // a consulta corta por data: sem dizer desde quando, o zero parece
+  // valer para toda a história da farmácia
+  $('vendas-vazio').textContent = desde
+    ? 'Nenhuma venda pendente de correção desde ' + dataBR(desde)
+      + '. Vendas anteriores a essa data não entram nesta conferência.'
+    : 'Nenhuma venda pendente de correção.';
   $('vendas-vazio').hidden = itens.length > 0;
 
   const MOTIVO = {

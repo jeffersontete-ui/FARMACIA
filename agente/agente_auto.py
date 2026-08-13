@@ -922,6 +922,16 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
     # ------------------------------------------------------------
     # 5. conferência do XML contra as vendas do período
     # ------------------------------------------------------------
+    # "0 divergências" tanto pode ser conferência limpa quanto conferência
+    # que não aconteceu — sem XML, sem período, ou sem venda nenhuma no
+    # período. O app precisa saber a diferença; o mesmo zero enganoso do
+    # saldo, que fazia 4135 sobras parecerem divergência.
+    resumo_xml = {
+        'temXml': bool(dados_xml),
+        'arquivo': (dados_xml or {}).get('arquivo'),
+        'periodoDe': periodo_de,
+        'periodoAte': periodo_ate,
+    }
     if dados_xml and periodo_de and periodo_ate:
         saidas = consultar(conexao, CONSULTAS['saidas_periodo'], (periodo_de, periodo_ate))
         do_banco = [{
@@ -932,12 +942,27 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
             'venda': l.get('VENDA'),
         } for l in saidas]
         # só as VENDAS do XML entram aqui; entradas são outro balde
-        divergencias = mapa_xml.comparar(dados_xml['movimentos'].get('venda', {}), do_banco)
+        vendas_xml = dados_xml['movimentos'].get('venda', {})
+        divergencias = mapa_xml.comparar(vendas_xml, do_banco)
         periodo = '%s a %s' % (br(periodo_de), br(periodo_ate))
         for d in divergencias:
             d['periodo'] = periodo
             d['arquivo'] = dados_xml['arquivo']
         resultado['conferencia_xml'] = divergencias
+        resumo_xml.update({
+            'conferiu': True,
+            'vendasNoBanco': len(do_banco),
+            'totalNoBanco': round(sum(l['quantidade'] for l in do_banco), 3),
+            'itensNoXml': len(vendas_xml),
+            'totalNoXml': round(sum(i['quantidade'] for i in vendas_xml.values()), 3),
+            'divergencias': len(divergencias),
+        })
+    else:
+        resumo_xml['conferiu'] = False
+        resumo_xml['porque'] = ('o agente não achou o XML da transmissão em %s'
+                                % config.get('pasta_xml') if not dados_xml
+                                else 'o XML não trouxe o período da transmissão')
+    resultado['conferenciaXmlResumo'] = resumo_xml
 
     # ------------------------------------------------------------
     # 6. vendas com problema
@@ -964,6 +989,9 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
     except Exception as e:
         registrar('Falha ao levantar vendas com problema: %s' % e)
     resultado['vendas_problema'] = problemas
+    # a consulta corta por data: sem dizer desde quando, "nenhuma venda com
+    # problema" parece valer para sempre
+    resultado['vendasProblemaDesde'] = corte_data
 
     # ------------------------------------------------------------
     # 7. saúde da sincronização com o site da ANVISA

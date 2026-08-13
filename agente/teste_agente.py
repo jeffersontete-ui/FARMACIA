@@ -354,6 +354,27 @@ def principal():
     conferir('entradas pendentes saem pelo ponteiro',
              dados['resumoPendentes']['entradas'] == 1, dados['resumoPendentes'])
 
+    # zero divergência de XML tanto pode ser conferência limpa quanto
+    # conferência que não aconteceu — o app precisa distinguir
+    resumo_xml = dados.get('conferenciaXmlResumo', {})
+    conferir('a conferência do XML publica se realmente conferiu',
+             resumo_xml.get('conferiu') is True
+             and resumo_xml.get('vendasNoBanco') == 2
+             and resumo_xml.get('periodoDe'), resumo_xml)
+    conferir('a conferência de vendas publica desde quando vale',
+             bool(dados.get('vendasProblemaDesde')), dados.get('vendasProblemaDesde'))
+
+    # sem XML na pasta, "0 divergências" não é conferência limpa
+    pasta_vazia = tempfile.mkdtemp()
+    sem_xml = ag.montar_inventario(conexao=None, config=dict(config, pasta_xml=pasta_vazia))
+    resumo_sem = sem_xml.get('conferenciaXmlResumo', {})
+    conferir('sem XML, o agente diz que NÃO conferiu e por quê',
+             resumo_sem.get('conferiu') is False
+             and pasta_vazia in (resumo_sem.get('porque') or ''), resumo_sem)
+    conferir('sem XML não sobra conferência de XML publicada',
+             not sem_xml.get('conferencia_xml'), sem_xml.get('conferencia_xml'))
+    shutil.rmtree(pasta_vazia, ignore_errors=True)
+
     fora = [c for c in dados.get('conferencia_xml', []) if c['situacao'] == 'fora_do_xml']
     conferir('venda que não subiu no XML vira divergência',
              any(c['ms'] == '1999900090011' for c in fora), fora)
