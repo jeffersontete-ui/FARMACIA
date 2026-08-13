@@ -166,9 +166,9 @@ main{padding:16px 16px 96px;max-width:900px;margin:0 auto}
   background:var(--cartao);border:1px solid var(--linha);border-radius:var(--raio);
   padding:16px;margin-top:14px;
 }
-.dados{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:12px 0 0;font-size:14px}
+.dados{display:grid;grid-template-columns:1fr auto;gap:6px 16px;margin:12px 0 0;font-size:14px;align-items:baseline}
 .dados dt{color:var(--tinta-fraca);font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:650}
-.dados dd{margin:0;font-variant-numeric:tabular-nums}
+.dados dd{margin:0;font-variant-numeric:tabular-nums;text-align:right;font-weight:600}
 
 .barra-comando{
   background:var(--ambar-claro);color:var(--ambar);
@@ -183,8 +183,19 @@ main{padding:16px 16px 96px;max-width:900px;margin:0 auto}
 }
 .linha-cabeca{
   width:100%;text-align:left;background:transparent;border:0;cursor:pointer;
-  padding:12px 14px;display:block;
+  padding:12px 40px 12px 14px;display:block;position:relative;
+  transition:background .15s ease;
 }
+/* sem seta, nada dizia que a linha abre */
+.linha-cabeca::after{
+  content:'';position:absolute;right:17px;top:50%;
+  width:9px;height:9px;margin-top:-7px;
+  border-right:2px solid var(--tinta-fraca);border-bottom:2px solid var(--tinta-fraca);
+  transform:rotate(45deg);transition:transform .22s ease;
+}
+.linha.aberta .linha-cabeca::after{transform:rotate(-135deg);margin-top:-2px}
+.linha-cabeca:active{background:var(--detalhe)}
+@media (hover:hover){.linha-cabeca:hover{background:var(--detalhe)}}
 .linha-titulo{margin:0;font-weight:700;font-size:15.5px}
 .linha-meta{
   margin:4px 0 0;font-size:12.5px;color:var(--tinta-fraca);
@@ -200,10 +211,17 @@ main{padding:16px 16px 96px;max-width:900px;margin:0 auto}
 .linha-tarja>span:last-child{flex:0 0 auto;font-variant-numeric:tabular-nums}
 .linha-tarja.falta{background:var(--faixa-falta)}
 .linha-tarja.sobra{background:var(--faixa-sobra)}
-.linha-detalhe{padding:12px 14px;border-top:1px solid var(--linha);font-size:14px;background:var(--detalhe)}
-.linha-detalhe dl{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;margin:0}
+/* 0fr -> 1fr anima a altura sem precisar saber quanto ela mede */
+.linha-detalhe{display:grid;grid-template-rows:0fr;transition:grid-template-rows .24s ease}
+.linha.aberta .linha-detalhe{grid-template-rows:1fr}
+.linha-detalhe>.linha-detalhe-dentro{overflow:hidden;min-height:0}
+.linha-detalhe-dentro>*{
+  padding:12px 14px;border-top:1px solid var(--linha);
+  font-size:14px;background:var(--detalhe);
+}
+.linha-detalhe dl{display:grid;grid-template-columns:1fr auto;gap:6px 14px;margin:0;align-items:baseline}
 .linha-detalhe dt{color:var(--tinta-fraca);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
-.linha-detalhe dd{margin:0;font-variant-numeric:tabular-nums}
+.linha-detalhe dd{margin:0;font-variant-numeric:tabular-nums;text-align:right;font-weight:600}
 .motivo{
   margin:10px 0 0;padding:8px 10px;border-radius:6px;
   background:var(--vermelho-claro);color:var(--vermelho);font-size:13px;font-weight:600;
@@ -251,3 +269,30 @@ main{padding:16px 16px 96px;max-width:900px;margin:0 auto}
 .aviso-erro{color:var(--vermelho);font-size:14px;margin:8px 0 0;font-weight:600}
 .barra-estado{background:var(--vermelho-claro);color:var(--vermelho);padding:8px 16px;font-size:13px;font-weight:600;text-align:center}
 .vazio{color:var(--tinta-fraca);text-align:center;padding:40px 20px;font-size:15px;border:1px dashed var(--linha);border-radius:var(--raio)}
+
+/* ---------- resposta ao toque ----------
+   Num celular sem cursor, o único jeito de saber que o toque pegou é o
+   elemento reagir. Sem isto, quem toca duas vezes achando que falhou. */
+.botao,.chip,.cartao-numero,.nav-item{transition:transform .12s ease, background .15s ease, border-color .15s ease}
+.botao:active,.chip:active,.cartao-numero:active{transform:scale(.98)}
+.nav-item:active{background:var(--detalhe)}
+@media (hover:hover){
+  .botao-principal:hover,.botao-perigo:hover{filter:brightness(1.12)}
+  .botao-secundario:hover,.botao-fantasma:hover,.chip:hover{border-color:var(--tinta)}
+  .cartao-numero:hover{border-color:var(--tinta)}
+}
+
+/* o placar são botões: a borda de cima é o que os liga à navegação */
+.cartao-numero{transition:border-color .15s ease, transform .12s ease}
+.nav-ativo{box-shadow:inset 0 3px 0 var(--tarja)}
+
+/* ---------- entrada com mais respiro ---------- */
+.cartao-entrada .marca{font-size:16px}
+.titulo-entrada{margin:22px 0 2px;font-size:28px;letter-spacing:-.02em}
+.cartao-entrada .botao-principal{margin-top:20px}
+.grade-operadores:empty{display:none}
+
+/* quem pede menos movimento no sistema não quer o detalhe deslizando */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{transition-duration:.01ms !important;animation-duration:.01ms !important}
+}

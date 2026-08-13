@@ -483,16 +483,20 @@ function linha({ chave, titulo, meta, tarja, tarjaClasse, detalhe }) {
   faixa.append(esquerda, direita);
   el.appendChild(faixa);
 
+  // O detalhe abre com transição, e `hidden` não anima. Em vez de esconder,
+  // a caixa é uma grade que vai de 0fr a 1fr; o filho recorta o conteúdo.
+  // Fechada, ela some do leitor de tela pelo aria-expanded da cabeça.
   const caixa = criar('div', 'linha-detalhe');
-  caixa.appendChild(detalhe);
-  caixa.hidden = !estado.abertos.has(chave);
+  const dentro = criar('div', 'linha-detalhe-dentro');
+  dentro.appendChild(detalhe);
+  caixa.appendChild(dentro);
+  el.classList.toggle('aberta', estado.abertos.has(chave));
   el.appendChild(caixa);
 
   cabeca.onclick = () => {
-    const aberto = !caixa.hidden;
-    caixa.hidden = aberto;
-    cabeca.setAttribute('aria-expanded', String(!aberto));
-    if (aberto) estado.abertos.delete(chave); else estado.abertos.add(chave);
+    const aberto = el.classList.toggle('aberta');
+    cabeca.setAttribute('aria-expanded', String(aberto));
+    if (aberto) estado.abertos.add(chave); else estado.abertos.delete(chave);
   };
   return el;
 }
@@ -513,13 +517,13 @@ function definicoes(pares) {
    não subiu ao SNGPC não é a mesma coisa que uma contagem que não fecha. A
    tarja diz qual é qual; o agente classifica em farmacia/inventario. */
 const MOTIVO_SALDO = {
-  sem_ms: ['Produto sem registro M.S. no Digifarma', 'falta',
+  sem_ms: ['Sem registro M.S.', 'falta',
     'A conferência casa por registro M.S. + lote. Sem M.S. no cadastro, este item não pode casar com a ANVISA de jeito nenhum — a diferença aqui é do cadastro, não do estoque. Cadastre o registro no Digifarma e ele volta a ser conferível.'],
-  anvisa_zerada_produto: ['Zerado na ANVISA — nenhum lote deste registro', 'sobra',
+  anvisa_zerada_produto: ['Zerado na ANVISA', 'sobra',
     'A ANVISA não tem saldo em lote nenhum deste registro M.S. Pode ser entrada que não subiu, ou saldo errado no Digifarma. Confira o estoque físico antes de mexer na escrituração.'],
-  anvisa_zerada_lote: ['Zerado na ANVISA — o registro tem outros lotes', 'sobra',
+  anvisa_zerada_lote: ['Lote zerado na ANVISA', 'sobra',
     'A ANVISA tem saldo em outros lotes deste medicamento, mas não neste. Confira o número do lote e a entrada dele.'],
-  quantidade: ['Quantidade diferente do SNGPC', 'sobra',
+  quantidade: ['Quantidade diferente', 'sobra',
     'Os dois lados têm o lote, com contagens diferentes. É conferência de prateleira.'],
   so_na_anvisa: ['Só no inventário SNGPC', 'falta',
     'A ANVISA tem saldo deste lote e o Digifarma não. Costuma ser saída lançada só de um lado.'],
@@ -572,7 +576,7 @@ function pintarSemMs() {
         i.lote && 'Lote ' + i.lote,
         i.validade && 'Val. ' + i.validade
       ],
-      tarja: ['Cadastrar o registro M.S. no Digifarma', i.saldoDigifarma + ' em estoque'],
+      tarja: ['Cadastrar o registro M.S.', i.saldoDigifarma + ' em estoque'],
       tarjaClasse: 'falta',
       detalhe: definicoes([
         ['Código', i.codigo],
@@ -601,7 +605,7 @@ function pintarSaldo() {
       || [dif < 0 ? 'Falta no Digifarma' : 'Sobra no Digifarma', dif < 0 ? 'falta' : 'sobra', ''];
     const detalhe = definicoes([
       ['Código', i.codigo],
-      ['Saldo Digifarma (só este lote)', i.saldoDigifarma],
+      ['Digifarma (este lote)', i.saldoDigifarma],
       // só vêm quando LOTES é tabela de movimento: mostram de onde
       // o saldo saiu, para conferir contra a tela do Digifarma
       ['Entrou no lote', i.entradas],
@@ -609,7 +613,7 @@ function pintarSaldo() {
       // a conta, na ordem em que se lê: a foto do último envio, o que se
       // moveu desde então, o que o SNGPC deveria mostrar, e o que o
       // Digifarma mostra. A diferença é do último par, não do primeiro.
-      ['Saldo do inventário SNGPC (último envio)', i.saldoSngpc],
+      ['SNGPC no último envio', i.saldoSngpc],
       ['Movimento desde o envio', i.movimentoDesdeEnvio === undefined ? undefined
         : (i.movimentoDesdeEnvio > 0 ? '+' : '') + i.movimentoDesdeEnvio],
       ['Esperado no SNGPC hoje', i.esperadoSngpc],
@@ -617,8 +621,8 @@ function pintarSaldo() {
       // a tela do Digifarma mostra o produto inteiro; a conferência é por
       // lote. Sem estes dois, o número do app não bate com o da tela e
       // parece errado quando está certo.
-      ['Digifarma — todos os lotes deste M.S.', i.saldoDigifarmaMs],
-      ['SNGPC — todos os lotes deste M.S.', i.saldoSngpcMs],
+      ['Digifarma (todos os lotes)', i.saldoDigifarmaMs],
+      ['SNGPC (todos os lotes)', i.saldoSngpcMs],
       ['Registro M.S.', i.ms],
       ['Código de barras', i.ean],
       ['Lote', i.lote],
@@ -809,7 +813,7 @@ function pintarSemReceita() {
         v.ms && 'M.S. ' + v.ms,
         v.lote ? 'Lote ' + v.lote : 'Sem lote'
       ],
-      tarja: ['Escriturar a receita antes de transmitir', 'Venda ' + (v.venda ?? '—')],
+      tarja: ['Escriturar a receita', 'Venda ' + (v.venda ?? '—')],
       tarjaClasse: 'falta',
       detalhe: definicoes([
         ['Venda', v.venda],
