@@ -14,6 +14,7 @@ Modos:
     python agente_auto.py 31/07/2026        usa o inventário daquela data
     python agente_auto.py --schema          confere se as tabelas/campos existem
     python agente_auto.py --saldo TEXTO     mostra como o saldo de um lote foi apurado
+    python agente_auto.py --linhas LOTE     despeja todas as colunas de LOTES de um lote
     python agente_auto.py --teste           testa conexão com Firebird e Firebase
 
 Não gera .exe. Atualizar o agente = trocar este arquivo.
@@ -236,6 +237,28 @@ CONSULTAS = {
           FROM PERDAS_PSICOTROPICOS PP
           JOIN PRODUTOS P ON (P.PRODUTO_ID = PP.PRODUTO_ID)
          GROUP BY P.REGISTRO_MS, PP.LOTE
+    """,
+
+    # --- diagnóstico: TUDO que existe sobre um lote (--linhas) ---
+    # SELECT * sem join: aqui o que interessa são as colunas de LOTES como
+    # elas são, inclusive as que o agente ainda não conhece.
+    "linhas_do_lote": """
+        SELECT * FROM LOTES L
+         WHERE UPPER(CAST(L.NUM_LOTE AS VARCHAR(500))) = ?
+    """,
+
+    "vendas_do_lote": """
+        SELECT C.VENDA_NOTA_ID,
+               CAST(C.VENDA_DATA_HORA AS DATE) AS DATA,
+               IVL.QUANTIDADE, I.CANCELADO,
+               (C.VENDA_RECEBIDO + C.SUBSIDIO + COALESCE(C.SUBSIDIO_ASSEFAZ, 0)) AS RECEBIDO
+          FROM ITEM_VENDAS_LOTES IVL
+          JOIN ITEM_VENDAS I ON (I.VENDA_NOTA_ID = IVL.VENDA_NOTA_ID)
+                            AND (I.ITEM_VENDA_ID = IVL.ITEM_VENDA_ID)
+                            AND (I.PRODUTO_ID = IVL.PRODUTO_ID)
+          JOIN CAB_VENDAS C ON (C.VENDA_NOTA_ID = I.VENDA_NOTA_ID)
+         WHERE UPPER(CAST(IVL.NUM_LOTE AS VARCHAR(500))) = ?
+         ORDER BY C.VENDA_NOTA_ID
     """,
 
     # --- diagnóstico: linhas cruas de LOTES de um produto (--saldo) ---
@@ -1126,6 +1149,52 @@ def modo_conferir_saldo(config, filtro):
         fechar(conexao)
 
 
+def modo_linhas(config, lote):
+    """Despeja TUDO que a base guarda sobre um lote: cada linha de LOTES com
+    todas as suas colunas, e cada venda daquele lote. É o que mostra se
+    existe uma coluna de saldo que o agente ainda não conhece."""
+    conexao = conectar_firebird(config)
+    try:
+        alvo = str(lote or '').strip().upper()
+        linhas = consultar(conexao, CONSULTAS['linhas_do_lote'], (alvo,))
+        if not linhas:
+            print('Nenhuma linha em LOTES com o lote "%s".' % alvo)
+            return False
+
+        print('LOTES — %d linha(s) do lote %s\n' % (len(linhas), alvo))
+        for i, linha in enumerate(linhas, 1):
+            print('  linha %d' % i)
+            for campo in sorted(linha):
+                valor = texto(linha[campo])
+                if valor:
+                    print('    %-26s %s' % (campo, valor))
+            print('')
+
+        try:
+            vendas = consultar(conexao, CONSULTAS['vendas_do_lote'], (alvo,))
+        except Exception as e:
+            registrar('Não consegui listar as vendas do lote: %s' % e)
+            vendas = []
+
+        print('ITEM_VENDAS_LOTES — %d venda(s) do lote %s' % (len(vendas), alvo))
+        total = 0.0
+        for v in vendas:
+            contada = (texto(v.get('CANCELADO')).upper() != 'S'
+                       and numero(v.get('RECEBIDO')) > 0)
+            if contada:
+                total += numero(v.get('QUANTIDADE'))
+            print('    venda %-10s %s  qtd %-6g %s' % (
+                texto(v.get('VENDA_NOTA_ID')), texto(v.get('DATA')),
+                numero(v.get('QUANTIDADE')),
+                '' if contada else '(fora da conta: cancelada ou não recebida)'))
+        print('\n  total descontado pelo agente: %g' % total)
+        print('\nCompare com a tela do Digifarma. Se o saldo de lá for outro,')
+        print('alguma coluna acima é o saldo verdadeiro — me diga qual.')
+        return True
+    finally:
+        fechar(conexao)
+
+
 def modo_teste(config):
     print('Banco Firebird: %s' % config['banco'])
     conexao = conectar_firebird(config)
@@ -1161,6 +1230,8 @@ def principal():
     parser.add_argument('--colunas', metavar='TABELA', help='lista as colunas de uma tabela')
     parser.add_argument('--saldo', metavar='TEXTO', nargs='?', const='',
                         help='mostra como o saldo de um lote foi apurado')
+    parser.add_argument('--linhas', metavar='LOTE',
+                        help='despeja todas as colunas de LOTES de um lote')
     args = parser.parse_args()
 
     config = carregar_config()
@@ -1176,6 +1247,8 @@ def principal():
     try:
         if args.colunas:
             raise SystemExit(0 if modo_colunas(config, args.colunas) else 1)
+        if args.linhas:
+            raise SystemExit(0 if modo_linhas(config, args.linhas) else 1)
         if args.saldo is not None:
             raise SystemExit(0 if modo_conferir_saldo(config, args.saldo) else 1)
         if args.schema:
