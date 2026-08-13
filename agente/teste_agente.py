@@ -100,6 +100,10 @@ RESPOSTAS = {
         # lote zerado dos dois lados: não é divergência, não vai para o app
         {'PRODUTO_ID': 400, 'PRODUTO': 'CLONAZEPAM', 'REGISTRO_MS': '1777700010001',
          'COD_BARRAS': '792', 'NUM_LOTE': 'VAZIO', 'LOTE_VENCIMENTO': datetime.date(2027, 1, 31), 'SALDO': 0},
+        # negativo no próprio Digifarma: saiu do lote por fora de venda e perda
+        {'PRODUTO_ID': 500, 'PRODUTO': 'LAMOTRIGINA 100 MG', 'REGISTRO_MS': '1564900090034',
+         'COD_BARRAS': '793', 'NUM_LOTE': 'BLGH23013',
+         'LOTE_VENCIMENTO': datetime.date(2027, 2, 28), 'SALDO': -3},
     ],
     # LOTES como tabela de movimento: aqui SALDO é o que o SQL somou das
     # linhas de LOTES (entradas − saídas de nota), ainda SEM as vendas
@@ -325,6 +329,9 @@ def principal():
     conferir('saldo negativo é dado torto no Digifarma, não sobra',
              ag.classificar_divergencia(
                  {'saldoDigifarma': -2, 'ms': '111'}, 0.0, {'111'}) == 'negativo')
+    negativo = next(i for i in dados['itens'] if i['lote'] == 'BLGH23013')
+    conferir('lote negativo não é classificado como sobra',
+             negativo.get('motivo') == 'negativo', negativo)
 
     zerados = [i for i in dados['itens'] if i['ms'] == '1777700010001']
     conferir('lote zerado nos dois lados não vai para o app', not zerados, zerados)
@@ -395,6 +402,8 @@ def principal():
              'já estão na fila do próximo envio' in texto_saida)
     conferir('a lista deixa claro que nada foi alterado no Digifarma',
              'só lê' in texto_saida)
+    conferir('o negativo mostra quanto saiu por fora de venda e perda',
+             'outras saídas' in texto_saida, texto_saida[:200])
 
     # ------------------------------------------------------------
     # a LOTES real do Digifarma tem saldo por lote: usar a compra é erro

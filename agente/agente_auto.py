@@ -241,6 +241,23 @@ CONSULTAS = {
          GROUP BY P.REGISTRO_MS, PP.LOTE
     """,
 
+    # --- quando cada lote entrou, e por qual nota ---
+    # Comparar a nota com ULT_ENTRADA_CAB_NOTA_ID diz se aquela entrada já
+    # foi transmitida. Um lote que o SNGPC não tem mas cuja nota já passou
+    # pelo ponteiro não é pendência de escrituração: ou o envio daquele
+    # período foi recusado, ou o inventário da ANVISA não veio inteiro.
+    "entradas_por_lote": """
+        SELECT P.REGISTRO_MS, L.NUM_LOTE,
+               MAX(C.CAB_NOTA_ID) AS CAB_NOTA_ID,
+               MAX(C.DATA_RECEBIMENTO) AS DATA
+          FROM LOTES L
+          JOIN PRODUTOS P ON (P.PRODUTO_ID = L.PRODUTO_ID)
+          JOIN CAB_NOTAS C ON (C.CAB_NOTA_ID = L.CAB_NOTA_ID)
+         WHERE ((P.PSICOTROPICO = 'S') OR (P.ANTIMICROBIANO = 'S'))
+           AND C.ENTRADA_SAIDA = 'E'
+         GROUP BY P.REGISTRO_MS, L.NUM_LOTE
+    """,
+
     # --- diagnóstico: TUDO que existe sobre um lote (--linhas) ---
     # SELECT * sem join: aqui o que interessa são as colunas de LOTES como
     # elas são, inclusive as que o agente ainda não conhece.
@@ -1224,8 +1241,20 @@ def modo_tarefas(config):
             compras = total_por_lote(conexao, dict(info, coluna='QUANTIDADE_COMPRA',
                                                    modo='movimento'))
         baixas = baixas_por_lote(conexao)
+        entradas = {}
+        try:
+            for linha in consultar(conexao, CONSULTAS['entradas_por_lote']):
+                entradas[(so_digitos(linha.get('REGISTRO_MS')),
+                          texto(linha.get('NUM_LOTE')).upper())] = {
+                    'nota': int(numero(linha.get('CAB_NOTA_ID'))),
+                    'data': texto(linha.get('DATA')),
+                }
+        except Exception as e:
+            registrar('Não consegui datar as entradas dos lotes: %s' % e)
     finally:
         fechar(conexao)
+
+    ponteiro_entrada = int(numero(dados.get('envio', {}).get('ULT_ENTRADA_CAB_NOTA_ID')))
 
     por_motivo = {}
     for item in dados.get('itens', []):
@@ -1255,15 +1284,20 @@ def modo_tarefas(config):
     negativos = sorted(por_motivo.get('negativo', []), key=lambda i: i['saldoDigifarma'])
     escrever('')
     escrever('1. CORRIGIR NO DIGIFARMA — %d lote(s) com saldo negativo' % len(negativos))
-    escrever('   Estoque físico não fica negativo: é saída lançada sem a entrada.')
-    escrever('   Enquanto não corrigir, reaparece em toda conferência.')
+    escrever('   Estoque físico não fica negativo. "Outras saídas" é quanto saiu do')
+    escrever('   lote sem ser venda nem perda registrada — é esse número que se')
+    escrever('   procura na tela de movimento do lote, no Digifarma.')
     escrever('')
     for i in negativos:
         chave = chave_do(i)
+        comprado = compras.get(chave, 0.0)
+        baixado = baixas.get(chave, 0.0)
+        # o que o Digifarma tirou do lote por fora do que sabemos ler
+        outras = round(comprado - baixado - i['saldoDigifarma'], 3)
         escrever('   %-42s lote %-14s saldo %g' % (
             i['descricao'][:42], i['lote'] or '(vazio)', i['saldoDigifarma']))
-        escrever('   %-42s M.S. %-14s comprado %g · baixado %g' % (
-            '', i['ms'], compras.get(chave, 0.0), baixas.get(chave, 0.0)))
+        escrever('   %-42s M.S. %-14s comprado %g · vendas e perdas %g · outras saídas %g'
+                 % ('', i['ms'] or '(sem M.S.)', comprado, baixado, outras))
 
     # ---------- 2 ----------
     escrituracao = (sorted(por_motivo.get('nao_transmitido', []),
@@ -1272,16 +1306,43 @@ def modo_tarefas(config):
                              key=lambda i: -i['saldoDigifarma']))
     esperando = [i for i in escrituracao if chave_do(i) in na_fila]
     faltando = [i for i in escrituracao if chave_do(i) not in na_fila]
+    ja_transmitidas = [i for i in faltando
+                       if entradas.get(chave_do(i), {}).get('nota', 0)
+                       and entradas[chave_do(i)]['nota'] <= ponteiro_entrada]
+    datas = sorted(entradas[chave_do(i)]['data'] for i in ja_transmitidas
+                   if entradas.get(chave_do(i), {}).get('data'))
+
     escrever('')
     escrever('2. CONFERIR A TRANSMISSÃO — %d lote(s) que o SNGPC não tem' % len(escrituracao))
     escrever('   %d já estão na fila do próximo envio: o envio resolve sozinho.'
              % len(esperando))
     escrever('   %d NÃO estão na fila — estes precisam de alguém.' % len(faltando))
+    if ja_transmitidas:
+        escrever('')
+        escrever('   ATENÇÃO: %d destes entraram por nota que JÁ passou pelo ponteiro'
+                 % len(ja_transmitidas))
+        escrever('   de transmissão (%d). A entrada foi transmitida e mesmo assim o'
+                 % ponteiro_entrada)
+        escrever('   SNGPC não tem o lote. Isso não se resolve transmitindo de novo:')
+        escrever('   ou o envio daquele período foi RECUSADO, ou o inventário da')
+        escrever('   ANVISA não veio inteiro do site.')
+        if datas:
+            escrever('   Entradas de %s a %s — confira o aceite desses envios na aba'
+                     % (br(datas[0]), br(datas[-1])))
+            escrever('   Aceites, e o anvisa.log do dia em que o inventário foi baixado.')
     escrever('')
     for i in faltando:
+        entrada = entradas.get(chave_do(i), {})
+        marca = ''
+        if entrada.get('nota'):
+            marca = ('nota %d de %s · %s' % (
+                entrada['nota'], br(entrada.get('data')),
+                'já transmitida' if entrada['nota'] <= ponteiro_entrada else 'não transmitida'))
         escrever('   %-42s lote %-14s Digifarma %g · SNGPC %g' % (
             i['descricao'][:42], i['lote'] or '(vazio)',
             i['saldoDigifarma'], i['saldoSngpc']))
+        if marca:
+            escrever('   %-42s %s' % ('', marca))
     if esperando:
         escrever('')
         escrever('   — já na fila do próximo envio, só conferir depois que subir —')
