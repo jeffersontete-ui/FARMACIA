@@ -381,11 +381,24 @@ function avisarSobreAnvisa() {
   barra.hidden = false;
 }
 
+const ROTULO_MODO_SALDO = {
+  saldo: 'saldo do lote, direto da coluna',
+  movimento: 'movimentos de estoque menos vendas e perdas'
+};
+
+function baseDoSaldo() {
+  const inv = estado.inventario?.inventario || {};
+  if (!inv.colunaSaldo) return '—';
+  const modo = ROTULO_MODO_SALDO[inv.modoSaldo];
+  return 'LOTES.' + inv.colunaSaldo + (modo ? ' — ' + modo : '');
+}
+
 function pintarEnvio() {
   const e = estado.inventario?.envio || {};
   const dl = $('dados-envio');
   dl.innerHTML = '';
   const linhas = [
+    ['Como o saldo é apurado', baseDoSaldo()],
     ['Data do envio', dataBR(e.data)],
     ['Movimentos de', e.movimentosDe ? dataBR(e.movimentosDe) + ' a ' + dataBR(e.movimentosAte) : '—'],
     ['Envio por API', e.envioPorApi ? 'ligado no Digifarma' : 'desligado (envio manual)'],
@@ -445,7 +458,25 @@ function definicoes(pares) {
   return d;
 }
 
+function pintarAlertaSaldo() {
+  const barra = $('saldo-alerta');
+  const inv = estado.inventario?.inventario;
+  if (!inv) { barra.hidden = true; return; }
+  // Sem o lado ANVISA, TODO lote do Digifarma aparece como sobra. São
+  // milhares de divergências que não são divergência nenhuma — o app
+  // precisa dizer isso, senão o número vira ruído.
+  if (!inv.itens) {
+    barra.textContent = 'O inventário da ANVISA está vazio, então todo lote do Digifarma '
+      + 'aparece aqui como sobra. Rode o Anvisa.exe no servidor e faça o login no site do '
+      + 'SNGPC antes de conferir estes números.';
+    barra.hidden = false;
+    return;
+  }
+  barra.hidden = true;
+}
+
 function pintarSaldo() {
+  pintarAlertaSaldo();
   const alvo = $('lista-saldo');
   alvo.innerHTML = '';
   const itens = divergenciasDeSaldo()
@@ -469,6 +500,10 @@ function pintarSaldo() {
       detalhe: definicoes([
         ['Código', i.codigo],
         ['Saldo Digifarma', i.saldoDigifarma],
+        // só vêm quando LOTES é tabela de movimento: mostram de onde
+        // o saldo saiu, para conferir contra a tela do Digifarma
+        ['Entrou no lote', i.entradas],
+        ['Baixado (vendas e perdas)', i.baixas],
         ['Saldo do inventário SNGPC', i.saldoSngpc],
         ['Diferença', (dif > 0 ? '+' : '') + dif],
         ['Registro M.S.', i.ms],

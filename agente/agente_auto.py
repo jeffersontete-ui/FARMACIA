@@ -13,6 +13,7 @@ Modos:
     python agente_auto.py --envio           usa o inventário vigente no último envio
     python agente_auto.py 31/07/2026        usa o inventário daquela data
     python agente_auto.py --schema          confere se as tabelas/campos existem
+    python agente_auto.py --saldo TEXTO     mostra como o saldo de um lote foi apurado
     python agente_auto.py --teste           testa conexão com Firebird e Firebase
 
 Não gera .exe. Atualizar o agente = trocar este arquivo.
@@ -38,7 +39,17 @@ CONFIG_PADRAO = {
     "pasta_xml": r"C:\Digifarma\Aplicativos\VerificaXML",
     "chave_firebase": os.path.join(PASTA, "chave-firebase.json"),
     "url_banco": "https://estoque-remedios-7b785-default-rtdb.firebaseio.com",
-    "uid_agente": "agente-sngpc"
+    "uid_agente": "agente-sngpc",
+    # Saldo por lote. Em branco, o agente descobre sozinho (veja
+    # detectar_coluna_saldo). Se a instalação tiver uma coluna com nome
+    # diferente, ou se o agente escolher a errada, fixe aqui:
+    #   "coluna_saldo": "QUANTIDADE"
+    #   "modo_saldo":   "saldo"      a coluna JÁ é o saldo do lote
+    #                   "movimento"  a coluna é a quantidade de cada movimento,
+    #                                e o saldo é apurado descontando as baixas
+    #                   "auto"       decide pelo nome da coluna
+    "coluna_saldo": "",
+    "modo_saldo": "auto"
 }
 
 
@@ -182,24 +193,74 @@ CONSULTAS = {
     "inventario_sngpc": "SELECT * FROM INVENTARIO_SNGPC",
 
     # --- saldo por lote no Digifarma ---
-    # a coluna de saldo é descoberta em tempo de execução; veja
-    # detectar_coluna_saldo(). {SALDO} é trocado antes de executar.
+    # A coluna e a EXPRESSÃO são montadas em tempo de execução; veja
+    # detectar_coluna_saldo() e montar_expressao_saldo(). {EXPRESSAO} e
+    # {FILTROS} são trocados antes de executar.
+    #
+    # LOTES é tabela de MOVIMENTO: cada entrada de nota gera uma linha, e
+    # ENTRADA_SAIDA diz se aquela linha soma ou subtrai (a consulta
+    # entradas_pendentes, acima, já filtra por 'E'). Somar a coluna crua,
+    # sem sinal, devolvia o total comprado na vida do lote em vez do saldo —
+    # era daí que saíam 200 comprimidos num lote vencido em 2024.
     "saldo_digifarma": """
         SELECT P.PRODUTO_ID, P.PRODUTO, P.REGISTRO_MS, P.COD_BARRAS,
                L.NUM_LOTE, L.LOTE_VENCIMENTO,
-               SUM(L.{SALDO}) AS SALDO
+               SUM({EXPRESSAO}) AS SALDO
           FROM LOTES L
           JOIN PRODUTOS P ON (P.PRODUTO_ID = L.PRODUTO_ID)
          WHERE ((P.PSICOTROPICO = 'S') OR (P.ANTIMICROBIANO = 'S'))
+               {FILTROS}
          GROUP BY P.PRODUTO_ID, P.PRODUTO, P.REGISTRO_MS, P.COD_BARRAS,
                   L.NUM_LOTE, L.LOTE_VENCIMENTO
-        HAVING SUM(L.{SALDO}) <> 0
+    """,
+
+    # --- baixas por lote, para o modo "movimento" ---
+    # A venda de controlado NÃO passa por LOTES: ela fica em
+    # ITEM_VENDAS_LOTES. Sem descontar isto, o lote nunca baixa.
+    "vendas_por_lote": """
+        SELECT P.REGISTRO_MS, IVL.NUM_LOTE, SUM(IVL.QUANTIDADE) AS QUANTIDADE
+          FROM ITEM_VENDAS_LOTES IVL
+          JOIN ITEM_VENDAS I ON (I.VENDA_NOTA_ID = IVL.VENDA_NOTA_ID)
+                            AND (I.ITEM_VENDA_ID = IVL.ITEM_VENDA_ID)
+                            AND (I.PRODUTO_ID = IVL.PRODUTO_ID)
+                            AND ((I.CANCELADO = 'N') OR (I.CANCELADO IS NULL))
+          JOIN CAB_VENDAS C ON (C.VENDA_NOTA_ID = I.VENDA_NOTA_ID)
+          JOIN PRODUTOS P ON (P.PRODUTO_ID = I.PRODUTO_ID)
+         WHERE (C.VENDA_RECEBIDO + C.SUBSIDIO + COALESCE(C.SUBSIDIO_ASSEFAZ, 0)) > 0
+           AND ((P.PSICOTROPICO = 'S') OR (P.ANTIMICROBIANO = 'S'))
+         GROUP BY P.REGISTRO_MS, IVL.NUM_LOTE
+    """,
+
+    "perdas_por_lote": """
+        SELECT P.REGISTRO_MS, PP.LOTE AS NUM_LOTE, SUM(PP.QUANTIDADE) AS QUANTIDADE
+          FROM PERDAS_PSICOTROPICOS PP
+          JOIN PRODUTOS P ON (P.PRODUTO_ID = PP.PRODUTO_ID)
+         GROUP BY P.REGISTRO_MS, PP.LOTE
+    """,
+
+    # --- diagnóstico: linhas cruas de LOTES de um produto (--saldo) ---
+    # {COLUNAS} é montado com as colunas que existem na LOTES desta
+    # instalação; um SELECT * traria junto as de PRODUTOS, e uma coluna de
+    # mesmo nome nas duas tabelas estragaria a conta.
+    "lotes_detalhe": """
+        SELECT P.PRODUTO, P.REGISTRO_MS, {COLUNAS}
+          FROM LOTES L
+          JOIN PRODUTOS P ON (P.PRODUTO_ID = L.PRODUTO_ID)
+         WHERE UPPER(P.PRODUTO) LIKE ?
+            OR P.REGISTRO_MS LIKE ?
+            OR UPPER(L.NUM_LOTE) LIKE ?
     """,
 }
 
-# candidatas a coluna de saldo por lote, em ordem de preferência
-COLUNAS_SALDO = ('SALDO', 'SALDO_LOTE', 'QUANTIDADE_ATUAL', 'ESTOQUE',
-                 'QUANTIDADE', 'QUANTIDADE_COMPRA')
+# candidatas a coluna de saldo por lote, em ordem de preferência.
+# COLUNAS_SALDO já é o saldo remanescente do lote: soma direto.
+# COLUNAS_MOVIMENTO é a quantidade de CADA movimento: o saldo só sai
+# depois de descontar vendas, perdas e saídas.
+COLUNAS_SALDO = ('SALDO', 'SALDO_LOTE', 'SALDO_ATUAL', 'ESTOQUE', 'ESTOQUE_ATUAL',
+                 'QUANTIDADE_ATUAL', 'QTD_ATUAL', 'QUANTIDADE_ESTOQUE',
+                 'QUANTIDADE_ATU', 'QTD_SALDO')
+COLUNAS_MOVIMENTO = ('QUANTIDADE', 'QUANTIDADE_COMPRA', 'QTDE', 'QTD',
+                     'QUANTIDADE_ENTRADA')
 
 TABELAS_ESPERADAS = [
     'SNGPC', 'CONFIG', 'PRODUTOS', 'CAB_VENDAS', 'ITEM_VENDAS',
@@ -352,48 +413,204 @@ def colunas_da_tabela(conexao, tabela):
     return [str(l['CAMPO']).strip().upper() for l in linhas]
 
 
-def detectar_coluna_saldo(conexao):
-    """Descobre como se chama o saldo por lote na tabela LOTES.
-    Sem isso, teríamos que chutar o nome da coluna."""
+def detectar_coluna_saldo(conexao, config=None):
+    """Descobre como se chama o saldo por lote na tabela LOTES e, o que é
+    tão importante quanto, o que aquela coluna significa.
+
+    Devolve {'coluna', 'modo', 'campos'}. 'modo' é:
+      'saldo'      a coluna já é o que resta do lote — soma direto;
+      'movimento'  a coluna é a quantidade de cada movimento — o saldo é
+                   apurado descontando vendas, perdas e saídas.
+
+    O agente antigo só procurava o nome e somava. Quando a base não tinha
+    coluna de saldo, ele caía em QUANTIDADE/QUANTIDADE_COMPRA e publicava o
+    total comprado como se fosse estoque."""
+    config = config or {}
     campos = colunas_da_tabela(conexao, 'LOTES')
-    for candidata in COLUNAS_SALDO:
-        if candidata in campos:
-            return candidata
-    raise RuntimeError(
-        'Não achei a coluna de saldo em LOTES. Campos existentes: %s.\n'
-        'Acrescente o nome certo em COLUNAS_SALDO, no topo do agente_auto.py.'
-        % ', '.join(campos))
+
+    escolhida = str(config.get('coluna_saldo') or '').strip().upper()
+    if escolhida:
+        if escolhida not in campos:
+            raise RuntimeError(
+                'coluna_saldo do agente_config.json é "%s", que não existe em '
+                'LOTES. Campos existentes: %s.' % (escolhida, ', '.join(campos)))
+    else:
+        escolhida = next((c for c in COLUNAS_SALDO if c in campos), None) \
+            or next((c for c in COLUNAS_MOVIMENTO if c in campos), None)
+
+    if not escolhida:
+        raise RuntimeError(
+            'Não achei a coluna de saldo em LOTES. Campos existentes: %s.\n'
+            'Acrescente o nome certo em COLUNAS_SALDO, no topo do agente_auto.py,\n'
+            'ou fixe "coluna_saldo" no agente_config.json.' % ', '.join(campos))
+
+    modo = str(config.get('modo_saldo') or 'auto').strip().lower()
+    if modo not in ('saldo', 'movimento'):
+        modo = 'saldo' if escolhida in COLUNAS_SALDO else 'movimento'
+
+    return {'coluna': escolhida, 'modo': modo, 'campos': campos}
+
+
+def montar_expressao_saldo(info):
+    """A expressão que vai dentro do SUM(). LOTES guarda movimento: sem o
+    sinal de ENTRADA_SAIDA, uma devolução ao fornecedor SOMA ao estoque."""
+    coluna = 'COALESCE(L.%s, 0)' % info['coluna']
+    if 'ENTRADA_SAIDA' not in info['campos']:
+        return coluna
+    if info['modo'] == 'saldo':
+        # o que resta do lote mora na linha da entrada; linha de saída não é saldo
+        return "CASE WHEN L.ENTRADA_SAIDA = 'S' THEN 0 ELSE %s END" % coluna
+    return "CASE WHEN L.ENTRADA_SAIDA = 'S' THEN -%s ELSE %s END" % (coluna, coluna)
+
+
+def montar_filtros_lotes(info):
+    filtros = []
+    if 'CANCELADO' in info['campos']:
+        filtros.append("AND ((L.CANCELADO = 'N') OR (L.CANCELADO IS NULL))")
+    return '\n               '.join(filtros)
+
+
+def baixas_por_lote(conexao):
+    """Saídas que NÃO passam por LOTES: venda de controlado
+    (ITEM_VENDAS_LOTES) e perda (PERDAS_PSICOTROPICOS)."""
+    baixas = {}
+    for nome in ('vendas_por_lote', 'perdas_por_lote'):
+        try:
+            linhas = consultar(conexao, CONSULTAS[nome])
+        except Exception as e:
+            registrar('Não consegui somar %s: %s' % (nome, e))
+            continue
+        for linha in linhas:
+            chave = (so_digitos(linha.get('REGISTRO_MS')),
+                     texto(linha.get('NUM_LOTE')).upper())
+            baixas[chave] = baixas.get(chave, 0.0) + numero(linha.get('QUANTIDADE'))
+    return baixas
+
+
+def saldo_por_lote(conexao, config):
+    """Saldo do Digifarma por M.S. + lote — a chave da comparação com a ANVISA.
+
+    O SQL agrupa por PRODUTO_ID e LOTE_VENCIMENTO também, mas a comparação
+    com a ANVISA é só por M.S. + lote. Dois cadastros com o mesmo registro,
+    ou o mesmo lote gravado com validades diferentes, viravam DUAS linhas com
+    a mesma chave: a primeira levava todo o saldo do SNGPC e a segunda ficava
+    com zero, inventando divergência dos dois lados. Somamos pela chave da
+    comparação antes de comparar."""
+    info = detectar_coluna_saldo(conexao, config)
+    sql = (CONSULTAS['saldo_digifarma']
+           .replace('{EXPRESSAO}', montar_expressao_saldo(info))
+           .replace('{FILTROS}', montar_filtros_lotes(info)))
+
+    por_chave = {}
+    for linha in consultar(conexao, sql):
+        chave = (so_digitos(linha.get('REGISTRO_MS')),
+                 texto(linha.get('NUM_LOTE')).upper())
+        registro = por_chave.get(chave)
+        if registro is None:
+            registro = por_chave[chave] = {
+                'codigo': texto(linha.get('PRODUTO_ID')),
+                'descricao': texto(linha.get('PRODUTO')),
+                'ms': chave[0],
+                'ean': texto(linha.get('COD_BARRAS')),
+                'lote': chave[1],
+                'validade': texto(linha.get('LOTE_VENCIMENTO')),
+                'saldoDigifarma': 0.0,
+            }
+        registro['saldoDigifarma'] += numero(linha.get('SALDO'))
+
+    if info['modo'] == 'movimento':
+        baixas = baixas_por_lote(conexao)
+        for chave, registro in por_chave.items():
+            baixado = baixas.get(chave, 0.0)
+            registro['entradas'] = round(registro['saldoDigifarma'], 3)
+            registro['baixas'] = round(baixado, 3)
+            registro['saldoDigifarma'] -= baixado
+
+    for registro in por_chave.values():
+        registro['saldoDigifarma'] = round(registro['saldoDigifarma'], 3)
+
+    return por_chave, info
+
+
+# colunas de INVENTARIO_SNGPC, que mudam de nome entre versões.
+# 'exatos' vale mais que 'pedacos': procurar só o pedaço 'LOTE' devolvia
+# LOTE_VENCIMENTO quando ela vinha antes de NUM_LOTE na tabela — a chave
+# virava uma data, nada casava com o Digifarma e TODO item aparecia como
+# sobra, com o saldo do SNGPC zerado.
+CAMPOS_INVENTARIO = {
+    'ms': {
+        'exatos': ('REGISTRO_MS', 'REGISTROMS', 'NUM_REGISTRO_MS', 'REGISTRO_ANVISA',
+                   'NUM_REGISTRO', 'REGISTRO', 'MS'),
+        'pedacos': ('REGISTRO_MS', 'REGISTRO'),
+        'proibidas': ('DATA', 'NOME', 'DESCRICAO'),
+    },
+    'lote': {
+        'exatos': ('NUM_LOTE', 'NUMERO_LOTE', 'LOTE', 'LOTE_MEDICAMENTO',
+                   'NUM_LOTE_MEDICAMENTO'),
+        'pedacos': ('NUM_LOTE', 'LOTE'),
+        'proibidas': ('VENC', 'VALID', 'DATA', 'QUANT', 'SALDO'),
+    },
+    'quantidade': {
+        'exatos': ('QUANTIDADE', 'QUANTIDADE_ESTOQUE', 'QUANTIDADE_INVENTARIO',
+                   'QUANTIDADE_ATUAL', 'SALDO', 'ESTOQUE', 'QTDE', 'QTD'),
+        'pedacos': ('QUANT', 'SALDO', 'ESTOQUE'),
+        'proibidas': ('DATA', 'LOTE', 'VENC'),
+    },
+    'descricao': {
+        'exatos': ('MEDICAMENTO', 'DESCRICAO', 'PRODUTO', 'NOME_MEDICAMENTO',
+                   'DESCRICAO_MEDICAMENTO', 'NOME'),
+        'pedacos': ('MEDICAMENTO', 'PRODUTO', 'DESCRICAO', 'NOME'),
+        'proibidas': ('REGISTRO', 'CODIGO', 'LOTE', 'DATA'),
+    },
+    'data': {
+        'exatos': ('DATA_ATUALIZACAO', 'DATA_INVENTARIO', 'DATA_SALDO',
+                   'ATUALIZADO_EM', 'DATA'),
+        'pedacos': ('ATUALIZ', 'DATA'),
+        'proibidas': ('VALID', 'VENC', 'FABRIC'),
+    },
+}
+
+
+def escolher_campo(campos, regras):
+    """Casa o nome da coluna por igualdade primeiro e só depois por pedaço do
+    nome — e, no pedaço, o nome mais curto ganha. Sem isso quem decidia era a
+    ORDEM das colunas na tabela, que ninguém controla."""
+    mapa = {}
+    for campo in campos:
+        mapa.setdefault(str(campo).strip().upper(), campo)
+
+    for nome in regras['exatos']:
+        if nome in mapa:
+            return mapa[nome]
+    for pedaco in regras.get('pedacos', ()):
+        for nome in sorted(mapa, key=lambda n: (len(n), n)):
+            if pedaco in nome and not any(p in nome for p in regras.get('proibidas', ())):
+                return mapa[nome]
+    return None
 
 
 def ler_inventario_anvisa(conexao):
     """Lê INVENTARIO_SNGPC — a tabela que o Anvisa.exe regrava com o
-    inventário do site da ANVISA. Os nomes das colunas variam entre
-    versões, então casamos por palavra-chave."""
+    inventário do site da ANVISA. Devolve (saldo, data, colunas usadas)."""
     try:
         linhas = consultar(conexao, CONSULTAS['inventario_sngpc'])
     except Exception as e:
         registrar('Não consegui ler INVENTARIO_SNGPC: %s' % e)
-        return {}, None
+        return {}, None, {}
     if not linhas:
-        return {}, None
+        registrar('INVENTARIO_SNGPC está vazia — sem o lado ANVISA, todo lote do '
+                  'Digifarma vira "sobra". Rode o Anvisa.exe e faça o login no site.')
+        return {}, None, {}
 
     campos = list(linhas[0])
-
-    def achar(*palavras):
-        for campo in campos:
-            if any(p in campo for p in palavras):
-                return campo
-        return None
-
-    campo_ms = achar('REGISTRO_MS', 'REGISTRO', 'MS')
-    campo_lote = achar('LOTE')
-    campo_qtd = achar('QUANT', 'SALDO', 'ESTOQUE')
-    campo_desc = achar('MEDICAMENTO', 'PRODUTO', 'DESCRICAO')
-    campo_data = achar('DATA', 'ATUALIZ')
+    usados = {chave: escolher_campo(campos, regras)
+              for chave, regras in CAMPOS_INVENTARIO.items()}
+    campo_ms, campo_lote = usados['ms'], usados['lote']
+    campo_qtd, campo_desc, campo_data = usados['quantidade'], usados['descricao'], usados['data']
 
     if not (campo_ms and campo_qtd):
         registrar('INVENTARIO_SNGPC tem colunas inesperadas: %s' % ', '.join(campos))
-        return {}, None
+        return {}, None, {'colunas': campos}
 
     saldo = {}
     atualizado = None
@@ -406,7 +623,7 @@ def ler_inventario_anvisa(conexao):
         if campo_data and linha.get(campo_data):
             valor = texto(linha.get(campo_data))
             atualizado = max(atualizado, valor) if atualizado else valor
-    return saldo, atualizado
+    return saldo, atualizado, usados
 
 
 DESCRICOES = {}
@@ -500,7 +717,7 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
     # ------------------------------------------------------------
     # 4. saldo do Digifarma × inventário da ANVISA
     # ------------------------------------------------------------
-    saldo_anvisa, inventario_em = ler_inventario_anvisa(conexao)
+    saldo_anvisa, inventario_em, campos_anvisa = ler_inventario_anvisa(conexao)
     # data do inventário: prioridade é a data pedida na linha de comando;
     # senão, se veio de "--envio"/botão "Atualizar envio", a data do último
     # envio ao SNGPC; senão, o carimbo que o próprio Anvisa.exe deixou.
@@ -514,40 +731,21 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
         'data': data_do_inventario,
         'origem': 'INVENTARIO_SNGPC (site da ANVISA, via Anvisa.exe)',
         'itens': len(saldo_anvisa),
+        'camposAnvisa': {k: texto(v) for k, v in (campos_anvisa or {}).items() if v},
     }
 
     itens = []
     try:
-        coluna = detectar_coluna_saldo(conexao)
-        sql = CONSULTAS['saldo_digifarma'].replace('{SALDO}', coluna)
-        resultado['inventario']['colunaSaldo'] = coluna
-
-        # O SQL agrupa por PRODUTO_ID e LOTE_VENCIMENTO também, mas a
-        # comparação com a ANVISA é só por M.S. + lote. Dois cadastros com o
-        # mesmo registro, ou o mesmo lote gravado com validades diferentes,
-        # viravam DUAS linhas com a mesma chave: a primeira levava todo o
-        # saldo do SNGPC e a segunda ficava com zero, inventando divergência
-        # dos dois lados. Somamos pela chave da comparação antes de comparar.
-        por_chave = {}
-        for linha in consultar(conexao, sql):
-            chave = (so_digitos(linha.get('REGISTRO_MS')),
-                     texto(linha.get('NUM_LOTE')).upper())
-            registro = por_chave.get(chave)
-            if registro is None:
-                registro = por_chave[chave] = {
-                    'codigo': texto(linha.get('PRODUTO_ID')),
-                    'descricao': texto(linha.get('PRODUTO')),
-                    'ms': chave[0],
-                    'ean': texto(linha.get('COD_BARRAS')),
-                    'lote': chave[1],
-                    'validade': texto(linha.get('LOTE_VENCIMENTO')),
-                    'saldoDigifarma': 0.0,
-                }
-            registro['saldoDigifarma'] += numero(linha.get('SALDO'))
+        por_chave, info_saldo = saldo_por_lote(conexao, config)
+        resultado['inventario']['colunaSaldo'] = info_saldo['coluna']
+        resultado['inventario']['modoSaldo'] = info_saldo['modo']
 
         for chave, registro in por_chave.items():
             anvisa = saldo_anvisa.pop(chave, 0.0)
-            registro['saldoDigifarma'] = round(registro['saldoDigifarma'], 3)
+            # lote zerado dos dois lados não é divergência nem notícia:
+            # publicar tudo só engorda o farmacia/inventario
+            if not registro['saldoDigifarma'] and not anvisa:
+                continue
             registro['saldoSngpc'] = round(anvisa, 3)
             registro['diferenca'] = round(registro['saldoDigifarma'] - anvisa, 3)
             itens.append(registro)
@@ -682,10 +880,16 @@ def br(data_iso):
 # ============================================================
 def publicar(db, dados):
     db.reference('farmacia/inventario').set(dados)
+    inventario = dados.get('inventario', {})
     registrar('Publicado: %d itens, %d divergências de XML, %d vendas com problema.' % (
         len(dados.get('itens', [])),
         len(dados.get('conferencia_xml', [])),
         len(dados.get('vendas_problema', [])),
+    ))
+    registrar('Saldo apurado por LOTES.%s (modo %s); inventário da ANVISA com %d lote(s).' % (
+        inventario.get('colunaSaldo', '?'),
+        inventario.get('modoSaldo', '?'),
+        inventario.get('itens', 0),
     ))
 
 
@@ -742,13 +946,23 @@ def modo_schema(config):
 
         if 'LOTES' in existentes:
             try:
-                print('\n  coluna de saldo em LOTES: %s' % detectar_coluna_saldo(conexao))
+                info = detectar_coluna_saldo(conexao, config)
+                print('\n  coluna de saldo em LOTES: %s (modo %s)'
+                      % (info['coluna'], info['modo']))
+                print('  expressão somada: SUM(%s)' % montar_expressao_saldo(info))
+                if info['modo'] == 'movimento':
+                    print('  -> a coluna é quantidade de movimento, não saldo:')
+                    print('     o saldo desconta vendas (ITEM_VENDAS_LOTES) e perdas.')
+                    print('     Confira um lote com: python agente_auto.py --saldo NOME')
             except Exception as e:
                 print('\n  %s' % e)
 
         if 'INVENTARIO_SNGPC' in existentes:
-            print('  colunas de INVENTARIO_SNGPC: %s'
-                  % ', '.join(colunas_da_tabela(conexao, 'INVENTARIO_SNGPC')))
+            campos = colunas_da_tabela(conexao, 'INVENTARIO_SNGPC')
+            print('  colunas de INVENTARIO_SNGPC: %s' % ', '.join(campos))
+            print('  colunas escolhidas: %s' % ', '.join(
+                '%s=%s' % (k, escolher_campo(campos, r) or '(nenhuma)')
+                for k, r in CAMPOS_INVENTARIO.items()))
         else:
             print('\n  INVENTARIO_SNGPC não existe ainda — ela só aparece depois')
             print('  que o Anvisa.exe rodar uma vez e trazer o inventário do site.')
@@ -782,6 +996,73 @@ def modo_colunas(config, tabela):
         conexao.close()
 
 
+def modo_conferir_saldo(config, filtro):
+    """Mostra, para os lotes que casam com o texto, COMO o saldo foi apurado:
+    as linhas cruas de LOTES, a soma de cada coluna candidata, as baixas e o
+    que a ANVISA tem. É com isto que se confere o número contra a tela do
+    Digifarma antes de confiar no app."""
+    conexao = conectar_firebird(config)
+    try:
+        info = detectar_coluna_saldo(conexao, config)
+        print('coluna de saldo: %s (modo %s)' % (info['coluna'], info['modo']))
+        print('expressão somada: SUM(%s)\n' % montar_expressao_saldo(info))
+
+        candidatas = [c for c in (COLUNAS_SALDO + COLUNAS_MOVIMENTO) if c in info['campos']]
+        colunas = ['NUM_LOTE'] + candidatas
+        if 'ENTRADA_SAIDA' in info['campos']:
+            colunas.append('ENTRADA_SAIDA')
+        sql = CONSULTAS['lotes_detalhe'].replace(
+            '{COLUNAS}', ', '.join('L.%s' % c for c in colunas))
+
+        alvo = '%' + str(filtro or '').strip().upper() + '%'
+        linhas = consultar(conexao, sql, (alvo, alvo, alvo))
+        if not linhas:
+            print('Nenhum lote casa com "%s".' % filtro)
+            return False
+
+        baixas = baixas_por_lote(conexao)
+        por_lote = {}
+        for linha in linhas[:4000]:
+            chave = (so_digitos(linha.get('REGISTRO_MS')), texto(linha.get('NUM_LOTE')).upper())
+            grupo = por_lote.setdefault(chave, {
+                'produto': texto(linha.get('PRODUTO')), 'linhas': 0,
+                'entradas': 0.0, 'saidas': 0.0,
+                'colunas': dict.fromkeys(candidatas, 0.0),
+            })
+            grupo['linhas'] += 1
+            saida = texto(linha.get('ENTRADA_SAIDA')).upper() == 'S'
+            for c in candidatas:
+                grupo['colunas'][c] += numero(linha.get(c))
+            quantidade = numero(linha.get(info['coluna']))
+            grupo['saidas' if saida else 'entradas'] += quantidade
+
+        saldo_anvisa, _, _ = ler_inventario_anvisa(conexao)
+        ordenados = sorted(por_lote.items(), key=lambda x: -abs(x[1]['entradas']))
+        if len(ordenados) > 40:
+            print('%d lotes casam com "%s"; mostrando os 40 maiores.\n'
+                  % (len(ordenados), filtro))
+        for chave, g in ordenados[:40]:
+            print('%s  |  M.S. %s  |  lote %s' % (g['produto'], chave[0] or '—', chave[1] or '—'))
+            print('  linhas em LOTES: %d   entradas %g   saídas %g'
+                  % (g['linhas'], g['entradas'], g['saidas']))
+            print('  somas por coluna: %s'
+                  % ', '.join('%s=%g' % (c, v) for c, v in g['colunas'].items()))
+            baixado = baixas.get(chave, 0.0)
+            # a conta aqui tem que ser a MESMA de montar_expressao_saldo:
+            # no modo 'saldo' a linha de saída não é saldo e fica de fora
+            saldo = g['entradas']
+            if info['modo'] == 'movimento':
+                print('  baixas fora de LOTES (vendas + perdas): %g' % baixado)
+                saldo -= g['saidas'] + baixado
+            print('  SALDO PUBLICADO: %g     ANVISA: %g\n'
+                  % (round(saldo, 3), round(saldo_anvisa.get(chave, 0.0), 3)))
+        print('Se o SALDO PUBLICADO não bater com a tela do Digifarma, fixe a coluna')
+        print('certa em agente_config.json ("coluna_saldo" e "modo_saldo").')
+        return True
+    finally:
+        conexao.close()
+
+
 def modo_teste(config):
     print('Banco Firebird: %s' % config['banco'])
     conexao = conectar_firebird(config)
@@ -809,6 +1090,8 @@ def principal():
     parser.add_argument('--schema', action='store_true', help='confere as tabelas da base')
     parser.add_argument('--teste', action='store_true', help='testa Firebird e Firebase')
     parser.add_argument('--colunas', metavar='TABELA', help='lista as colunas de uma tabela')
+    parser.add_argument('--saldo', metavar='TEXTO', nargs='?', const='',
+                        help='mostra como o saldo de um lote foi apurado')
     args = parser.parse_args()
 
     config = carregar_config()
@@ -824,6 +1107,8 @@ def principal():
     try:
         if args.colunas:
             raise SystemExit(0 if modo_colunas(config, args.colunas) else 1)
+        if args.saldo is not None:
+            raise SystemExit(0 if modo_conferir_saldo(config, args.saldo) else 1)
         if args.schema:
             raise SystemExit(0 if modo_schema(config) else 1)
         if args.teste:

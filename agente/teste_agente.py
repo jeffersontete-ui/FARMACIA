@@ -97,8 +97,29 @@ RESPOSTAS = {
          'COD_BARRAS': '791', 'NUM_LOTE': 'K1', 'LOTE_VENCIMENTO': datetime.date(2027, 5, 31), 'SALDO': 4},
         {'PRODUTO_ID': 301, 'PRODUTO': 'DIAZEPAM 10MG', 'REGISTRO_MS': '1122233340001',
          'COD_BARRAS': '791', 'NUM_LOTE': 'K1', 'LOTE_VENCIMENTO': datetime.date(2027, 6, 30), 'SALDO': 6},
+        # lote zerado dos dois lados: não é divergência, não vai para o app
+        {'PRODUTO_ID': 400, 'PRODUTO': 'CLONAZEPAM', 'REGISTRO_MS': '1777700010001',
+         'COD_BARRAS': '792', 'NUM_LOTE': 'VAZIO', 'LOTE_VENCIMENTO': datetime.date(2027, 1, 31), 'SALDO': 0},
+    ],
+    # LOTES como tabela de movimento: aqui SALDO é o que o SQL somou das
+    # linhas de LOTES (entradas − saídas de nota), ainda SEM as vendas
+    'saldo_movimento': [
+        # 200 comprados no lote, 96 ainda não vendidos
+        {'PRODUTO_ID': 67059, 'PRODUTO': 'ESCITALOPRAM 10MG', 'REGISTRO_MS': '1438102690063',
+         'COD_BARRAS': '7896523200934', 'NUM_LOTE': '2300404',
+         'LOTE_VENCIMENTO': datetime.date(2024, 12, 30), 'SALDO': 200},
+    ],
+    'vendas_por_lote': [
+        {'REGISTRO_MS': '1438102690063', 'NUM_LOTE': '2300404', 'QUANTIDADE': 100},
+    ],
+    'perdas_por_lote': [
+        {'REGISTRO_MS': '1438102690063', 'NUM_LOTE': '2300404', 'QUANTIDADE': 4},
     ],
 }
+
+CAMPOS_LOTES_SALDO = ('LOTE_ID', 'PRODUTO_ID', 'NUM_LOTE', 'SALDO')
+CAMPOS_LOTES_MOVIMENTO = ('LOTE_ID', 'PRODUTO_ID', 'NUM_LOTE', 'ENTRADA_SAIDA',
+                          'CAB_NOTA_ID', 'QUANTIDADE_COMPRA')
 
 falhas = []
 
@@ -151,10 +172,10 @@ def principal():
 
     def consultar_falso(conexao, sql, parametros=()):
         if 'RDB$RELATION_FIELDS' in sql:
-            return [{'CAMPO': c} for c in ('LOTE_ID', 'PRODUTO_ID', 'NUM_LOTE', 'SALDO')]
+            return [{'CAMPO': c} for c in CAMPOS_LOTES_SALDO]
         if sql in por_sql:
             return por_sql[sql]
-        # saldo_digifarma tem o {SALDO} trocado antes de rodar
+        # saldo_digifarma tem a {EXPRESSAO} trocada antes de rodar
         if 'FROM LOTES' in sql:
             return RESPOSTAS['saldo_digifarma']
         raise AssertionError('consulta não simulada:\n' + sql[:120])
@@ -188,6 +209,9 @@ def principal():
              repetidos and repetidos[0]['saldoDigifarma'] == 10.0, repetidos)
     conferir('cadastro repetido que bate com a ANVISA não vira divergência',
              repetidos and repetidos[0]['diferenca'] == 0.0, repetidos)
+
+    zerados = [i for i in dados['itens'] if i['ms'] == '1777700010001']
+    conferir('lote zerado nos dois lados não vai para o app', not zerados, zerados)
 
     conferir('vendas pendentes saem pelo ponteiro, não por data',
              dados['resumoPendentes']['vendas'] == 1, dados['resumoPendentes'])
@@ -232,6 +256,69 @@ def principal():
              dados_envio['inventario']['data'] == '2026-08-01', dados_envio['inventario'])
     conferir('sem --envio, a data do inventário continua vindo do Anvisa.exe',
              dados['inventario']['data'] == '2026-08-05', dados['inventario'])
+
+    # ------------------------------------------------------------
+    # LOTES sem coluna de saldo: é tabela de MOVIMENTO
+    # ------------------------------------------------------------
+    conferir('sem ENTRADA_SAIDA, soma a coluna crua',
+             ag.montar_expressao_saldo(
+                 {'coluna': 'SALDO', 'modo': 'saldo', 'campos': list(CAMPOS_LOTES_SALDO)}
+             ) == 'COALESCE(L.SALDO, 0)')
+    expressao = ag.montar_expressao_saldo(
+        {'coluna': 'QUANTIDADE_COMPRA', 'modo': 'movimento',
+         'campos': list(CAMPOS_LOTES_MOVIMENTO)})
+    conferir('linha de saída entra com sinal negativo',
+             "THEN -COALESCE(L.QUANTIDADE_COMPRA, 0)" in expressao, expressao)
+
+    por_sql_mov = dict(por_sql)
+    por_sql_mov[ag.CONSULTAS['vendas_por_lote']] = RESPOSTAS['vendas_por_lote']
+    por_sql_mov[ag.CONSULTAS['perdas_por_lote']] = RESPOSTAS['perdas_por_lote']
+
+    def consultar_falso_movimento(conexao, sql, parametros=()):
+        if 'RDB$RELATION_FIELDS' in sql:
+            return [{'CAMPO': c} for c in CAMPOS_LOTES_MOVIMENTO]
+        if sql in por_sql_mov:
+            return por_sql_mov[sql]
+        if 'FROM LOTES' in sql:
+            return RESPOSTAS['saldo_movimento']
+        raise AssertionError('consulta não simulada:\n' + sql[:120])
+
+    ag.consultar = consultar_falso_movimento
+    dados_mov = ag.montar_inventario(conexao=None, config=config)
+    conferir('sem coluna de saldo, LOTES é lida como movimento',
+             dados_mov['inventario'].get('modoSaldo') == 'movimento', dados_mov['inventario'])
+
+    escitalopram = [i for i in dados_mov['itens'] if i['ms'] == '1438102690063']
+    conferir('o saldo desconta as vendas, que não passam por LOTES',
+             escitalopram and escitalopram[0]['saldoDigifarma'] == 96.0, escitalopram)
+    conferir('o app recebe o que entrou e o que baixou, para conferência',
+             escitalopram and escitalopram[0]['entradas'] == 200.0
+             and escitalopram[0]['baixas'] == 104.0, escitalopram)
+
+    # coluna fixada à mão no agente_config.json vence a detecção
+    ag.consultar = consultar_falso_movimento
+    info = ag.detectar_coluna_saldo(None, {'coluna_saldo': 'quantidade_compra',
+                                           'modo_saldo': 'saldo'})
+    conferir('coluna_saldo do config manda na detecção',
+             info == {'coluna': 'QUANTIDADE_COMPRA', 'modo': 'saldo',
+                      'campos': list(CAMPOS_LOTES_MOVIMENTO)}, info)
+
+    # ------------------------------------------------------------
+    # colunas de INVENTARIO_SNGPC: nome exato vence pedaço do nome
+    # ------------------------------------------------------------
+    campos_inv = ['ID', 'LOTE_VENCIMENTO', 'DATA_VALIDADE', 'NUM_LOTE',
+                  'REGISTRO_MS', 'QUANTIDADE_VENDIDA', 'QUANTIDADE',
+                  'NOME_MEDICAMENTO', 'DATA_ATUALIZACAO']
+    conferir('lote é NUM_LOTE, não LOTE_VENCIMENTO',
+             ag.escolher_campo(campos_inv, ag.CAMPOS_INVENTARIO['lote']) == 'NUM_LOTE',
+             ag.escolher_campo(campos_inv, ag.CAMPOS_INVENTARIO['lote']))
+    conferir('quantidade é QUANTIDADE, não QUANTIDADE_VENDIDA',
+             ag.escolher_campo(campos_inv, ag.CAMPOS_INVENTARIO['quantidade']) == 'QUANTIDADE')
+    conferir('data é a de atualização, não a de validade',
+             ag.escolher_campo(campos_inv, ag.CAMPOS_INVENTARIO['data']) == 'DATA_ATUALIZACAO',
+             ag.escolher_campo(campos_inv, ag.CAMPOS_INVENTARIO['data']))
+    conferir('registro M.S. sai da coluna certa',
+             ag.escolher_campo(campos_inv, ag.CAMPOS_INVENTARIO['ms']) == 'REGISTRO_MS')
 
     shutil.rmtree(pasta, ignore_errors=True)
     print('\n%s\n' % ('%d falha(s)' % len(falhas) if falhas else 'Tudo passou.'))

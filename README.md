@@ -99,6 +99,7 @@ python agente_auto.py --envio         inventário vigente no último envio
 python agente_auto.py 31/07/2026      inventário daquela data
 python agente_auto.py --schema        confere as tabelas da base
 python agente_auto.py --colunas LOTES lista as colunas de uma tabela
+python agente_auto.py --saldo TEXTO   mostra como o saldo de um lote foi apurado
 python agente_auto.py --teste         testa Firebird e Firebase
 python teste_agente.py                roda tudo com banco simulado
 ```
@@ -139,13 +140,59 @@ entre instalações: o nome da coluna de saldo em `LOTES` e as colunas de
 ```
 python agente_auto.py --schema             confere as tabelas e mostra o que achou
 python agente_auto.py --colunas LOTES      lista as colunas de uma tabela
+python agente_auto.py --saldo ESCITALOPRAM abre a conta do saldo, lote por lote
 ```
+
+### Como o saldo por lote é apurado
+
+`LOTES` é tabela de **movimento**, não de saldo: cada entrada de nota gera
+uma linha e `ENTRADA_SAIDA` diz se aquela linha soma ou subtrai. Duas
+consequências, e as duas já morderam:
+
+1. somar a coluna sem olhar o `ENTRADA_SAIDA` faz devolução ao fornecedor
+   **somar** ao estoque;
+2. a **venda** de controlado não passa por `LOTES` — ela fica em
+   `ITEM_VENDAS_LOTES`. Sem descontar isso, o lote nunca baixa e o app
+   publica o total comprado na vida do lote como se fosse estoque (era daí
+   que saíam 200 comprimidos num lote vencido em 2024).
+
+Por isso o agente separa dois casos:
+
+| Modo | Quando | Conta |
+|---|---|---|
+| `saldo` | `LOTES` tem coluna de saldo (`SALDO`, `SALDO_LOTE`, `ESTOQUE`, `QUANTIDADE_ATUAL`…) | soma a coluna, só das linhas de entrada |
+| `movimento` | só há coluna de quantidade (`QUANTIDADE`, `QUANTIDADE_COMPRA`…) | entradas − saídas − vendas (`ITEM_VENDAS_LOTES`) − perdas (`PERDAS_PSICOTROPICOS`) |
+
+O modo escolhido vai para `farmacia/inventario/inventario/modoSaldo` e o app
+mostra na aba Situação, em **Como o saldo é apurado**. No modo `movimento`
+cada item leva também `entradas` e `baixas`, que aparecem no detalhe da
+divergência — é o que permite bater o número com a tela do Digifarma.
+
+Se a instalação usar outro nome, ou se o agente escolher a coluna errada,
+rode `--saldo` para ver a conta e fixe no `agente_config.json`:
+
+```json
+{ "coluna_saldo": "QUANTIDADE", "modo_saldo": "saldo" }
+```
+
+Do lado da ANVISA, as colunas de `INVENTARIO_SNGPC` são casadas **por nome
+exato primeiro** e só depois por pedaço do nome. Procurar só o pedaço `LOTE`
+devolvia `LOTE_VENCIMENTO` quando ela vinha antes de `NUM_LOTE` na tabela: a
+chave da comparação virava uma data, nada casava com o Digifarma e todo item
+aparecia como sobra com o saldo do SNGPC zerado. As colunas efetivamente
+usadas vão para `farmacia/inventario/inventario/camposAnvisa`.
+
+Quando `INVENTARIO_SNGPC` está vazia — o `Anvisa.exe` nunca completou o
+login — não existe lado ANVISA para comparar, e o app agora avisa isso no
+topo da aba Saldo em vez de mostrar milhares de "sobras" que não são
+divergência nenhuma.
 
 ## Firebase
 
 ```
 farmacia/inventario   escrito só pelo agente; lido pelo app
-                      { atualizadoEm, inventario{data,origem,colunaSaldo},
+                      { atualizadoEm,
+                        inventario{data,origem,itens,colunaSaldo,modoSaldo,camposAnvisa},
                         itens[], envio{}, xml_envio{},
                         pendentes{vendas,entradas,perdas,transferencias},
                         resumoPendentes{}, conferencia_xml[],
