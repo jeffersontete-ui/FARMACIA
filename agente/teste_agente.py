@@ -121,6 +121,15 @@ CAMPOS_LOTES_SALDO = ('LOTE_ID', 'PRODUTO_ID', 'NUM_LOTE', 'SALDO')
 CAMPOS_LOTES_MOVIMENTO = ('LOTE_ID', 'PRODUTO_ID', 'NUM_LOTE', 'ENTRADA_SAIDA',
                           'CAB_NOTA_ID', 'QUANTIDADE_COMPRA')
 
+# a LOTES real do Digifarma6.fdb, lida com --colunas LOTES em 13/08/2026.
+# LOTE_QUANTIDADE é o saldo do lote; QUANTIDADE_COMPRA é o que entrou em
+# cada nota. Escolher a segunda publica compra como se fosse estoque.
+CAMPOS_LOTES_DIGIFARMA = ('PRODUTO_ID', 'LOTE_QUANTIDADE', 'LOTE_VENCIMENTO',
+                          'LOTE_FABRICACAO', 'COMPRA_NOTA_ID', 'LOTE_ID', 'NUM_LOTE',
+                          'LOTE_COMISSAO', 'ITEM_NOTA_ID', 'QUANTIDADE_COMPRA',
+                          'ENTRADA_SAIDA', 'NOTA_FISCAL', 'CAB_NOTA_ID',
+                          'ESTOQUE_CONTADO', 'ESTOQUE_MOVIMENTADO', 'REGISTRO_MS')
+
 class CursorFalso:
     def __init__(self, quebrar=False):
         self.fechado = False
@@ -330,6 +339,30 @@ def principal():
              dados_envio['inventario']['data'] == '2026-08-01', dados_envio['inventario'])
     conferir('sem --envio, a data do inventário continua vindo do Anvisa.exe',
              dados['inventario']['data'] == '2026-08-05', dados['inventario'])
+
+    # ------------------------------------------------------------
+    # a LOTES real do Digifarma tem saldo por lote: usar a compra é erro
+    # ------------------------------------------------------------
+    def campos_falsos(campos):
+        def consultar_campos(conexao, sql, parametros=()):
+            if 'RDB$RELATION_FIELDS' in sql:
+                return [{'CAMPO': c} for c in campos]
+            raise AssertionError('consulta não simulada')
+        return consultar_campos
+
+    ag.consultar = campos_falsos(CAMPOS_LOTES_DIGIFARMA)
+    info_real = ag.detectar_coluna_saldo(None)
+    conferir('na LOTES do Digifarma o saldo é LOTE_QUANTIDADE, não a compra',
+             (info_real['coluna'], info_real['modo']) == ('LOTE_QUANTIDADE', 'saldo'),
+             info_real)
+    conferir('ESTOQUE_CONTADO e LOTE_COMISSAO não são confundidos com saldo',
+             info_real['coluna'] not in ('ESTOQUE_CONTADO', 'ESTOQUE_MOVIMENTADO',
+                                         'LOTE_COMISSAO'))
+    conferir('a linha de saída não entra no saldo do lote',
+             ag.montar_expressao_saldo(info_real)
+             == "CASE WHEN L.ENTRADA_SAIDA = 'S' THEN 0 "
+                "ELSE COALESCE(L.LOTE_QUANTIDADE, 0) END",
+             ag.montar_expressao_saldo(info_real))
 
     # ------------------------------------------------------------
     # LOTES sem coluna de saldo: é tabela de MOVIMENTO

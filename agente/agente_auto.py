@@ -282,9 +282,16 @@ CONSULTAS = {
 # COLUNAS_SALDO já é o saldo remanescente do lote: soma direto.
 # COLUNAS_MOVIMENTO é a quantidade de CADA movimento: o saldo só sai
 # depois de descontar vendas, perdas e saídas.
-COLUNAS_SALDO = ('SALDO', 'SALDO_LOTE', 'SALDO_ATUAL', 'ESTOQUE', 'ESTOQUE_ATUAL',
-                 'QUANTIDADE_ATUAL', 'QTD_ATUAL', 'QUANTIDADE_ESTOQUE',
-                 'QUANTIDADE_ATU', 'QTD_SALDO')
+#
+# LOTE_QUANTIDADE encabeça a lista porque é o nome real no Digifarma6.fdb,
+# confirmado com --colunas LOTES na Drogaria Humanae. Ela é o saldo que o
+# Digifarma mostra na tela, já com as baixas que não passam por venda nem
+# por perda — o vencido que sai do estoque, por exemplo. Reconstruir isso
+# a partir das compras dá números inventados: o lote 3G4313 tem 63
+# comprados, 3 vendidos e LOTE_QUANTIDADE = 0.
+COLUNAS_SALDO = ('LOTE_QUANTIDADE', 'QUANTIDADE_LOTE', 'SALDO', 'SALDO_LOTE',
+                 'SALDO_ATUAL', 'ESTOQUE', 'ESTOQUE_ATUAL', 'QUANTIDADE_ATUAL',
+                 'QTD_ATUAL', 'QUANTIDADE_ESTOQUE', 'QUANTIDADE_ATU', 'QTD_SALDO')
 COLUNAS_MOVIMENTO = ('QUANTIDADE', 'QUANTIDADE_COMPRA', 'QTDE', 'QTD',
                      'QUANTIDADE_ENTRADA')
 
@@ -1165,9 +1172,9 @@ def modo_linhas(config, lote):
         for i, linha in enumerate(linhas, 1):
             print('  linha %d' % i)
             for campo in sorted(linha):
-                valor = texto(linha[campo])
-                if valor:
-                    print('    %-26s %s' % (campo, valor))
+                # coluna vazia também é notícia: esconder o que está nulo
+                # esconde justamente a coluna que a gente procura
+                print('    %-26s %s' % (campo, texto(linha[campo]) or '(vazio)'))
             print('')
 
         try:

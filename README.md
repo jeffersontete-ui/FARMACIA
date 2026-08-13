@@ -160,8 +160,18 @@ Por isso o agente separa dois casos:
 
 | Modo | Quando | Conta |
 |---|---|---|
-| `saldo` | `LOTES` tem coluna de saldo (`SALDO`, `SALDO_LOTE`, `ESTOQUE`, `QUANTIDADE_ATUAL`…) | soma a coluna, só das linhas de entrada |
-| `movimento` | só há coluna de quantidade (`QUANTIDADE`, `QUANTIDADE_COMPRA`…) | entradas − saídas − vendas (`ITEM_VENDAS_LOTES`) − perdas (`PERDAS_PSICOTROPICOS`) |
+| `saldo` | `LOTES` tem coluna de saldo — no Digifarma é **`LOTE_QUANTIDADE`** | soma a coluna, só das linhas de entrada |
+| `movimento` | só há coluna de quantidade (`QUANTIDADE_COMPRA`…) | entradas − saídas − vendas (`ITEM_VENDAS_LOTES`) − perdas (`PERDAS_PSICOTROPICOS`) |
+
+**No Digifarma o modo certo é `saldo`, com `LOTE_QUANTIDADE`.** Não tente
+reconstruir o estoque a partir das compras: o Digifarma dá baixa por
+caminhos que não aparecem em venda nem em perda — o vencido que sai do
+estoque é o caso comum. O lote 3G4313 do escitalopram tem 63 comprados, 3
+vendidos e `LOTE_QUANTIDADE = 0`; a reconstrução dava 60.
+
+`QUANTIDADE_COMPRA` é o que entrou em cada nota, e `ESTOQUE_CONTADO` /
+`ESTOQUE_MOVIMENTADO` / `LOTE_COMISSAO` não são saldo — o casamento é por
+nome exato justamente para não pegar nenhuma delas.
 
 O modo escolhido vai para `farmacia/inventario/inventario/modoSaldo` e o app
 mostra na aba Situação, em **Como o saldo é apurado**. No modo `movimento`
