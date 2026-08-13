@@ -15,12 +15,49 @@
   --ambar-claro:#F8EFDC;
   --verde:#1F6B4A;
   --verde-claro:#E4F0E9;
+  --detalhe:#FBFAF8;
+  --campo:#FFFFFF;
+  /* faixa sólida leva texto branco; --vermelho e --ambar são cor de TEXTO
+     sobre fundo claro. Confundir os dois quebra um dos dois modos. */
+  --faixa-falta:#9E1B1B;
+  --faixa-sobra:#8A5B00;
   --raio:8px;
   --sombra:0 1px 2px rgba(22,22,22,.08), 0 8px 24px rgba(22,22,22,.06);
   --fonte:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
+/* O celular do balcão costuma viver no modo escuro, e o app era a única
+   tela branca do aparelho. Só os tokens mudam: a tarja continua sendo a
+   assinatura, num tom que se enxerga tanto sobre o cartão quanto sobre o
+   papel — preto puro sumiria contra os dois. */
+@media (prefers-color-scheme: dark){
+  :root{
+    --tinta:#EDEBE6;
+    --tinta-fraca:#9C9A94;
+    --papel:#121211;
+    --cartao:#1C1C1A;
+    --linha:#34332F;
+    --tarja:#3B3A36;
+    --vermelho:#F08A80;
+    --vermelho-claro:#2E1B18;
+    --ambar:#E0A83E;
+    --ambar-claro:#2C2312;
+    --verde:#7BC79E;
+    --verde-claro:#152A20;
+    --detalhe:#171716;
+    --campo:#232320;
+    --faixa-falta:#7F2F28;
+    --faixa-sobra:#6E5015;
+    --sombra:0 1px 2px rgba(0,0,0,.5), 0 8px 24px rgba(0,0,0,.35);
+  }
+  /* no escuro o contorno some antes do preenchimento */
+  .cartao-numero,.bloco,.linha,.aceite{border-color:var(--linha)}
+}
+
 *{box-sizing:border-box}
+/* sem isto o teclado, os campos e a barra de rolagem do sistema continuam
+   claros dentro de um app escuro */
+html{color-scheme:light dark}
 html,body{margin:0;padding:0}
 body{
   font-family:var(--fonte);
@@ -64,7 +101,7 @@ h3{font-size:16px;text-transform:uppercase;letter-spacing:.08em}
   display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
   color:var(--tinta-fraca);margin-bottom:6px;font-weight:650;
 }
-.campo input{width:100%;padding:12px;border:1px solid var(--linha);border-radius:6px;background:#fff}
+.campo input{width:100%;padding:12px;border:1px solid var(--linha);border-radius:6px;background:var(--campo)}
 .campo input:focus,.botao:focus-visible,.nav-item:focus-visible,.cartao-numero:focus-visible{
   outline:3px solid var(--tarja);outline-offset:2px;
 }
@@ -75,11 +112,11 @@ h3{font-size:16px;text-transform:uppercase;letter-spacing:.08em}
 }
 .botao-principal{background:var(--tarja);color:#fff;width:100%}
 .cabeca-acoes .botao,.modal-acoes .botao{width:auto}
-.botao-secundario{background:#fff;border-color:var(--tinta);color:var(--tinta)}
-.botao-fantasma{color:var(--tinta-fraca);border-color:var(--linha);background:#fff}
-.botao-perigo{background:var(--vermelho);color:#fff}
+.botao-secundario{background:var(--campo);border-color:var(--tinta);color:var(--tinta)}
+.botao-fantasma{color:var(--tinta-fraca);border-color:var(--linha);background:var(--campo)}
+.botao-perigo{background:var(--vermelho);color:var(--papel)}
 .botao:disabled{opacity:.5;cursor:not-allowed}
-.chip{border:1px solid var(--linha);background:#fff;border-radius:999px;padding:8px 14px;cursor:pointer;min-height:40px}
+.chip{border:1px solid var(--linha);background:var(--campo);border-radius:999px;padding:8px 14px;cursor:pointer;min-height:40px}
 
 /* ---------- topo e navegação ---------- */
 .topo{
@@ -109,10 +146,10 @@ main{padding:16px 16px 96px;max-width:900px;margin:0 auto}
 .nav-ativo{color:var(--tinta);box-shadow:inset 0 3px 0 var(--tarja)}
 .selo{
   position:absolute;top:8px;left:50%;margin-left:12px;
-  background:var(--vermelho);color:#fff;font-size:10px;line-height:1;
+  background:var(--faixa-falta);color:#fff;font-size:10px;line-height:1;
   padding:3px 5px;border-radius:999px;
 }
-.busca{width:100%;padding:12px;margin:10px 0 14px;border:1px solid var(--linha);border-radius:6px;background:#fff}
+.busca{width:100%;padding:12px;margin:10px 0 14px;border:1px solid var(--linha);border-radius:6px;background:var(--campo)}
 
 /* ---------- placar ---------- */
 .placar{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0}
@@ -156,18 +193,27 @@ main{padding:16px 16px 96px;max-width:900px;margin:0 auto}
 .linha-tarja{
   background:var(--tarja);color:#fff;
   padding:6px 14px;font-size:12px;font-weight:700;
-  letter-spacing:.06em;text-transform:uppercase;
-  display:flex;justify-content:space-between;gap:12px;
+  letter-spacing:.04em;text-transform:uppercase;line-height:1.35;
+  display:flex;justify-content:space-between;gap:4px 12px;flex-wrap:wrap;
 }
-.linha-tarja.falta{background:var(--vermelho)}
-.linha-tarja.sobra{background:var(--ambar)}
-.linha-detalhe{padding:12px 14px;border-top:1px solid var(--linha);font-size:14px;background:#FBFAF8}
+.linha-tarja>span:first-child{flex:1 1 60%;min-width:0}
+.linha-tarja>span:last-child{flex:0 0 auto;font-variant-numeric:tabular-nums}
+.linha-tarja.falta{background:var(--faixa-falta)}
+.linha-tarja.sobra{background:var(--faixa-sobra)}
+.linha-detalhe{padding:12px 14px;border-top:1px solid var(--linha);font-size:14px;background:var(--detalhe)}
 .linha-detalhe dl{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;margin:0}
 .linha-detalhe dt{color:var(--tinta-fraca);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
 .linha-detalhe dd{margin:0;font-variant-numeric:tabular-nums}
 .motivo{
   margin:10px 0 0;padding:8px 10px;border-radius:6px;
   background:var(--vermelho-claro);color:var(--vermelho);font-size:13px;font-weight:600;
+}
+/* explicação de "por que este item está aqui" é informação, não alarme:
+   de vermelho, some no meio dos avisos que pedem ação */
+.nota-info{
+  margin:10px 0 0;padding:8px 10px;border-radius:6px;
+  background:var(--detalhe);border:1px solid var(--linha);
+  color:var(--tinta-fraca);font-size:13px;line-height:1.5;
 }
 
 /* ---------- aceites ---------- */

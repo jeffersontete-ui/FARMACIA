@@ -336,7 +336,8 @@ function pintar() {
   if (!estado.operador) return;
   const s = divergenciasDeSaldo().length, x = pendenciasXml().length, v = vendasProblema().length;
   [['selo-saldo', s], ['selo-xml', x], ['selo-vendas', v]].forEach(([id, n]) => {
-    const el = $(id); el.textContent = n; el.hidden = n === 0;
+    // 4 dígitos no selo transbordam por cima do item vizinho da navegação
+    const el = $(id); el.textContent = n > 999 ? '999+' : n; el.hidden = n === 0;
   });
   $('n-saldo').textContent = s;
   $('n-xml').textContent = x;
@@ -625,12 +626,12 @@ function pintarSaldo() {
       ['Classe', i.classe]
     ]);
     if (explicacao) {
-      const nota = criar('p', 'motivo');
+      const nota = criar('p', 'nota-info');
       nota.textContent = explicacao;
       detalhe.appendChild(nota);
     }
     if (i.movimentoDesdeEnvio !== undefined) {
-      const nota = criar('p', 'motivo');
+      const nota = criar('p', 'nota-info');
       nota.textContent = 'Este lote se moveu depois do último envio. O inventário do '
         + 'SNGPC é a foto daquele momento, então a conferência soma o que entrou e '
         + 'desconta o que saiu desde então — a diferença é contra o esperado, não '
@@ -638,7 +639,7 @@ function pintarSaldo() {
       detalhe.appendChild(nota);
     }
     if (i.saldoDigifarmaMs !== undefined) {
-      const nota = criar('p', 'motivo');
+      const nota = criar('p', 'nota-info');
       nota.textContent = 'Este medicamento tem mais de um lote. A tela do Digifarma soma '
         + 'todos; aqui a conferência é lote a lote, porque é assim que o SNGPC guarda. '
         + 'Os outros lotes não aparecem nesta lista quando batem com a ANVISA.';
