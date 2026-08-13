@@ -16,6 +16,7 @@ Modos:
     python agente_auto.py --saldo TEXTO     mostra como o saldo de um lote foi apurado
     python agente_auto.py --linhas LOTE     despeja todas as colunas de LOTES de um lote
     python agente_auto.py --resumo          separa divergência real de lote escrito diferente
+    python agente_auto.py --tarefas         três listas de trabalho, na ordem de resolver
     python agente_auto.py --teste           testa conexão com Firebird e Firebase
 
 Não gera .exe. Atualizar o agente = trocar este arquivo.
@@ -536,6 +537,20 @@ def baixas_por_lote(conexao):
                      texto(linha.get('NUM_LOTE')).upper())
             baixas[chave] = baixas.get(chave, 0.0) + numero(linha.get('QUANTIDADE'))
     return baixas
+
+
+def total_por_lote(conexao, info):
+    """Soma qualquer coluna de LOTES pela chave da comparação. Serve para
+    pôr a compra ao lado do saldo sem repetir o SQL."""
+    sql = (CONSULTAS['saldo_digifarma']
+           .replace('{EXPRESSAO}', montar_expressao_saldo(info))
+           .replace('{FILTROS}', montar_filtros_lotes(info)))
+    total = {}
+    for linha in consultar(conexao, sql):
+        chave = (so_digitos(linha.get('REGISTRO_MS')),
+                 texto(linha.get('NUM_LOTE')).upper())
+        total[chave] = total.get(chave, 0.0) + numero(linha.get('SALDO'))
+    return total
 
 
 def saldo_por_lote(conexao, config):
@@ -1192,6 +1207,115 @@ def chave_frouxa(chave):
     return (ms, ''.join(c for c in lote if c.isalnum()).lstrip('0'))
 
 
+def modo_tarefas(config):
+    """As divergências viram três listas de trabalho, na ordem em que se
+    resolvem: primeiro o que é dado torto no Digifarma (vai reaparecer em
+    toda conferência até ser corrigido), depois o que é escrituração, e por
+    último o que exige contar prateleira — que é o mais caro e o menor.
+
+    Não escreve no Digifarma nem transmite nada: só lista, com a evidência
+    de cada caso do lado, e grava um .txt para imprimir."""
+    conexao = conectar_firebird(config)
+    try:
+        dados = montar_inventario(conexao, config)
+        info = detectar_coluna_saldo(conexao, config)
+        compras = {}
+        if 'QUANTIDADE_COMPRA' in info['campos']:
+            compras = total_por_lote(conexao, dict(info, coluna='QUANTIDADE_COMPRA',
+                                                   modo='movimento'))
+        baixas = baixas_por_lote(conexao)
+    finally:
+        fechar(conexao)
+
+    por_motivo = {}
+    for item in dados.get('itens', []):
+        if item.get('motivo'):
+            por_motivo.setdefault(item['motivo'], []).append(item)
+
+    # lotes cuja entrada já está na fila do próximo envio: não é pendência
+    # de ninguém, o envio resolve sozinho
+    na_fila = {(so_digitos(p.get('ms')), texto(p.get('lote')).upper())
+               for p in dados.get('pendentes', {}).get('entradas', [])}
+
+    linhas = []
+
+    def escrever(texto_linha=''):
+        print(texto_linha)
+        linhas.append(texto_linha)
+
+    def chave_do(item):
+        return (item['ms'], item['lote'])
+
+    escrever('TAREFAS DE SALDO — %s' % datetime.datetime.now().strftime('%d/%m/%Y %H:%M'))
+    escrever('inventário da ANVISA de %s · saldo por LOTES.%s'
+             % (dados.get('inventario', {}).get('data') or '(sem data)', info['coluna']))
+    escrever('=' * 78)
+
+    # ---------- 1 ----------
+    negativos = sorted(por_motivo.get('negativo', []), key=lambda i: i['saldoDigifarma'])
+    escrever('')
+    escrever('1. CORRIGIR NO DIGIFARMA — %d lote(s) com saldo negativo' % len(negativos))
+    escrever('   Estoque físico não fica negativo: é saída lançada sem a entrada.')
+    escrever('   Enquanto não corrigir, reaparece em toda conferência.')
+    escrever('')
+    for i in negativos:
+        chave = chave_do(i)
+        escrever('   %-42s lote %-14s saldo %g' % (
+            i['descricao'][:42], i['lote'] or '(vazio)', i['saldoDigifarma']))
+        escrever('   %-42s M.S. %-14s comprado %g · baixado %g' % (
+            '', i['ms'], compras.get(chave, 0.0), baixas.get(chave, 0.0)))
+
+    # ---------- 2 ----------
+    escrituracao = (sorted(por_motivo.get('nao_transmitido', []),
+                           key=lambda i: -i['saldoDigifarma'])
+                    + sorted(por_motivo.get('lote_ausente', []),
+                             key=lambda i: -i['saldoDigifarma']))
+    esperando = [i for i in escrituracao if chave_do(i) in na_fila]
+    faltando = [i for i in escrituracao if chave_do(i) not in na_fila]
+    escrever('')
+    escrever('2. CONFERIR A TRANSMISSÃO — %d lote(s) que o SNGPC não tem' % len(escrituracao))
+    escrever('   %d já estão na fila do próximo envio: o envio resolve sozinho.'
+             % len(esperando))
+    escrever('   %d NÃO estão na fila — estes precisam de alguém.' % len(faltando))
+    escrever('')
+    for i in faltando:
+        escrever('   %-42s lote %-14s Digifarma %g · SNGPC %g' % (
+            i['descricao'][:42], i['lote'] or '(vazio)',
+            i['saldoDigifarma'], i['saldoSngpc']))
+    if esperando:
+        escrever('')
+        escrever('   — já na fila do próximo envio, só conferir depois que subir —')
+        for i in esperando:
+            escrever('   %-42s lote %-14s Digifarma %g' % (
+                i['descricao'][:42], i['lote'] or '(vazio)', i['saldoDigifarma']))
+
+    # ---------- 3 ----------
+    contar = sorted(por_motivo.get('quantidade', []) + por_motivo.get('so_na_anvisa', []),
+                    key=lambda i: -abs(i['diferenca']))
+    escrever('')
+    escrever('3. CONFERIR NA PRATELEIRA — %d lote(s) com contagem diferente' % len(contar))
+    escrever('   Os dois lados conhecem o lote e discordam do número.')
+    escrever('')
+    for i in contar:
+        escrever('   %-42s lote %-14s Digifarma %-6g SNGPC %-6g dif %+g' % (
+            i['descricao'][:42], i['lote'] or '(vazio)',
+            i['saldoDigifarma'], i['saldoSngpc'], i['diferenca']))
+
+    escrever('')
+    escrever('=' * 78)
+    escrever('Nada aqui foi alterado no Digifarma nem transmitido: esta lista só lê.')
+
+    caminho = os.path.join(PASTA, 'tarefas_saldo_%s.txt'
+                           % datetime.date.today().isoformat())
+    try:
+        with open(caminho, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(linhas) + '\n')
+        print('\nGravado em %s' % caminho)
+    except Exception as e:
+        registrar('Não consegui gravar o arquivo das tarefas: %s' % e)
+    return True
+
+
 def modo_resumo(config):
     """Divergência que sobra é diferença de estoque de verdade ou lote
     escrito diferente dos dois lados? Este resumo separa uma coisa da
@@ -1343,6 +1467,8 @@ def principal():
                         help='despeja todas as colunas de LOTES de um lote')
     parser.add_argument('--resumo', action='store_true',
                         help='separa divergência de verdade de lote escrito diferente')
+    parser.add_argument('--tarefas', action='store_true',
+                        help='as divergências em três listas de trabalho, na ordem de resolver')
     args = parser.parse_args()
 
     config = carregar_config()
@@ -1358,6 +1484,8 @@ def principal():
     try:
         if args.colunas:
             raise SystemExit(0 if modo_colunas(config, args.colunas) else 1)
+        if args.tarefas:
+            raise SystemExit(0 if modo_tarefas(config) else 1)
         if args.resumo:
             raise SystemExit(0 if modo_resumo(config) else 1)
         if args.linhas:

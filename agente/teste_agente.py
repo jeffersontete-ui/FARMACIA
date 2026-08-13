@@ -155,6 +155,13 @@ class ConexaoFalsa:
         return self.cursor_falso
 
 
+class ConexaoQueFechaSempre:
+    """Para os modos que abrem a conexão sozinhos: quem consulta é o
+    consultar() falso, então esta só precisa saber fechar."""
+    def close(self):
+        pass
+
+
 falhas = []
 
 
@@ -365,6 +372,29 @@ def principal():
              dados_envio['inventario']['data'] == '2026-08-01', dados_envio['inventario'])
     conferir('sem --envio, a data do inventário continua vindo do Anvisa.exe',
              dados['inventario']['data'] == '2026-08-05', dados['inventario'])
+
+    # ------------------------------------------------------------
+    # as três listas de trabalho
+    # ------------------------------------------------------------
+    ag.consultar = consultar_falso
+    saida = []
+    escrever_real = __builtins__['print'] if isinstance(__builtins__, dict) else print
+    import builtins
+    builtins.print = lambda *a, **k: saida.append(' '.join(str(x) for x in a))
+    try:
+        ag.conectar_firebird = lambda config: ConexaoQueFechaSempre()
+        ok = ag.modo_tarefas(dict(config, banco=':simulado:'))
+    finally:
+        builtins.print = escrever_real
+    texto_saida = '\n'.join(saida)
+    conferir('as tarefas saem nas três seções, na ordem de resolver',
+             ok and texto_saida.index('1. CORRIGIR NO DIGIFARMA')
+             < texto_saida.index('2. CONFERIR A TRANSMISSÃO')
+             < texto_saida.index('3. CONFERIR NA PRATELEIRA'), texto_saida[:400])
+    conferir('a lista separa o que já está na fila do próximo envio',
+             'já estão na fila do próximo envio' in texto_saida)
+    conferir('a lista deixa claro que nada foi alterado no Digifarma',
+             'só lê' in texto_saida)
 
     # ------------------------------------------------------------
     # a LOTES real do Digifarma tem saldo por lote: usar a compra é erro

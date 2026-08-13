@@ -209,7 +209,21 @@ prateleira:
 python agente_auto.py --resumo
 ```
 
-Ele separa quantos lotes casaram e batem, quantos divergem no valor,
+E para virar trabalho, na ordem em que se resolve:
+
+```
+python agente_auto.py --tarefas
+```
+
+Três listas, e a ordem não é gosto: **(1)** saldo negativo no Digifarma vem
+primeiro porque é dado torto que reaparece em toda conferência até alguém
+corrigir; **(2)** o que o SNGPC não tem é escrituração, e a lista já separa
+o que **já está na fila do próximo envio** (resolve sozinho) do que não
+está; **(3)** contar prateleira por último, que é o mais caro e costuma ser
+o menor grupo. Grava um `tarefas_saldo_AAAA-MM-DD.txt` na pasta do agente,
+para imprimir. Como tudo aqui, só lê.
+
+O `--resumo` separa quantos lotes casaram e batem, quantos divergem no valor,
 quantos só existem de um lado — e quantos **casariam se o número do lote
 fosse comparado sem zero à esquerda e sem pontuação**. Esse último número
 é o que diz se a divergência é de grafia (conserto no código) ou de
