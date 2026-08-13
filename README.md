@@ -185,6 +185,24 @@ rode `--saldo` para ver a conta e fixe no `agente_config.json`:
 { "coluna_saldo": "QUANTIDADE", "modo_saldo": "saldo" }
 ```
 
+### O que entra: só controlado, dos dois lados
+
+**Controlado é `PRODUTOS.PSICOTROPICO='S'` ou `PRODUTOS.ANTIMICROBIANO='S'`**,
+e esse é o único critério — nas vendas, nas entradas, nas perdas, no estoque
+e **também no inventário do SNGPC** que o `Anvisa.exe` grava em
+`INVENTARIO_SNGPC`.
+
+Esse último faltava. A tabela era lida inteira, então um item não marcado
+como controlado que estivesse lá virava divergência "só na ANVISA" —
+comparando lados que não se comparam. Agora ela é filtrada por `PRODUTO_ID`
+contra o cadastro, e quantas linhas ficaram de fora é publicado em
+`inventario.foraDoCriterio`.
+
+Uma exceção deliberada: linha do inventário que **não casa com nenhum
+produto do cadastro** continua entrando. Pode ser medicamento que o SNGPC
+tem e a farmácia não — divergência de verdade, que precisa aparecer. Só sai
+o que está no cadastro e está marcado como não controlado.
+
 ### A regra da comparação
 
 **Registro M.S. + número do lote → quantidade.** Dois lotes só são o mesmo

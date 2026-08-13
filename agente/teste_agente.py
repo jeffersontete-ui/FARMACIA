@@ -89,9 +89,20 @@ RESPOSTAS = {
          'PRODUTO': 'ALPRAZOLAM 1MG', 'REGISTRO_MS': '1444400010023',
          'NUM_LOTE': 'B77Z', 'QUANTIDADE': 1},
     ],
+    # quem é controlado: o inventário do SNGPC é filtrado por isto, igual
+    # às vendas e ao estoque
+    'produtos_controlados': [
+        {'PRODUTO_ID': 100, 'PSICOTROPICO': 'S', 'ANTIMICROBIANO': 'N'},
+        {'PRODUTO_ID': 200, 'PSICOTROPICO': 'S', 'ANTIMICROBIANO': 'N'},
+        {'PRODUTO_ID': 300, 'PSICOTROPICO': 'N', 'ANTIMICROBIANO': 'S'},
+        {'PRODUTO_ID': 700, 'PSICOTROPICO': 'N', 'ANTIMICROBIANO': 'N'},
+    ],
     'inventario_sngpc': [
-        {'REGISTRO_MS': '1023506630204', 'MEDICAMENTO': 'ALPRAZOLAM', 'LOTE': '5F9779',
-         'QUANTIDADE': 8, 'DATA_ATUALIZACAO': '2026-08-05'},
+        # PRODUTO_ID 700 não é controlado: não pode entrar na comparação
+        {'PRODUTO_ID': 700, 'REGISTRO_MS': '1999900000001', 'MEDICAMENTO': 'DIPIRONA',
+         'LOTE': 'X1', 'QUANTIDADE': 50, 'DATA_ATUALIZACAO': '2026-08-05'},
+        {'PRODUTO_ID': 100, 'REGISTRO_MS': '1023506630204', 'MEDICAMENTO': 'ALPRAZOLAM',
+         'LOTE': '5F9779', 'QUANTIDADE': 8, 'DATA_ATUALIZACAO': '2026-08-05'},
         {'REGISTRO_MS': '1023506630204', 'MEDICAMENTO': 'ALPRAZOLAM', 'LOTE': '6G1234',
          'QUANTIDADE': 2, 'DATA_ATUALIZACAO': '2026-08-05'},
         {'REGISTRO_MS': '1057306610050', 'MEDICAMENTO': 'ARIPIPRAZOL', 'LOTE': '2604608',
@@ -310,6 +321,16 @@ def principal():
              dados['inventario'].get('colunaSaldo') == 'SALDO', dados['inventario'])
     conferir('o inventário vem do INVENTARIO_SNGPC (lado ANVISA)',
              dados['inventario']['itens'] == 4, dados['inventario'])
+
+    # o inventário do SNGPC entra pelo MESMO critério das vendas: só
+    # psicotrópico e antimicrobiano. Um não controlado ali viraria
+    # divergência "só na ANVISA" comparando lados que não se comparam.
+    conferir('produto não controlado fica fora do inventário do SNGPC',
+             dados['inventario'].get('foraDoCriterio') == 1
+             and not any(i['ms'] == '1999900000001' for i in dados['itens']),
+             dados['inventario'])
+    conferir('linha do inventário sem PRODUTO_ID continua entrando',
+             any(i['ms'] == '1122233340001' for i in dados['itens']))
 
     # a chave é M.S. + LOTE: indexar só por M.S. faz um lote apagar o outro,
     # que é justamente o erro que este projeto passou a semana consertando

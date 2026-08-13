@@ -119,12 +119,17 @@ CONSULTAS = {
     """,
 
     # o ponteiro de perda fica sempre em 0, então aqui o corte é por DATA
+    # o LEFT JOIN e o "OR P.PRODUTO_ID IS NULL" são de propósito: perda cujo
+    # produto sumiu do cadastro continua sendo perda de controlado, e some
+    # da tela se a gente exigir a marcação
     "perdas_pendentes": """
         SELECT PP.PERDA_ID, PP.DATA, PP.LOTE AS NUM_LOTE, PP.QUANTIDADE,
                P.PRODUTO, P.REGISTRO_MS
           FROM PERDAS_PSICOTROPICOS PP
           LEFT JOIN PRODUTOS P ON (P.PRODUTO_ID = PP.PRODUTO_ID)
          WHERE PP.DATA >= ? AND PP.PERDA_ID > ?
+           AND ((P.PSICOTROPICO = 'S') OR (P.ANTIMICROBIANO = 'S')
+                OR (P.PRODUTO_ID IS NULL))
          ORDER BY PP.PERDA_ID
     """,
 
@@ -215,7 +220,16 @@ CONSULTAS = {
     """,
 
     # --- inventário lido do site da ANVISA pelo Anvisa.exe ---
+    # Lido inteiro de propósito: os nomes das colunas variam entre versões e
+    # são descobertos em tempo de execução. O filtro de controlado é aplicado
+    # depois, em Python, por PRODUTO_ID — veja ler_inventario_anvisa().
     "inventario_sngpc": "SELECT * FROM INVENTARIO_SNGPC",
+
+    # quem é controlado, para filtrar o inventário do SNGPC pelo mesmo
+    # critério das vendas: PSICOTROPICO='S' OU ANTIMICROBIANO='S'
+    "produtos_controlados": """
+        SELECT PRODUTO_ID, PSICOTROPICO, ANTIMICROBIANO FROM PRODUTOS
+    """,
 
     # --- saldo por lote no Digifarma ---
     # A coluna e a EXPRESSÃO são montadas em tempo de execução; veja
@@ -260,6 +274,7 @@ CONSULTAS = {
         SELECT P.REGISTRO_MS, PP.LOTE AS NUM_LOTE, SUM(PP.QUANTIDADE) AS QUANTIDADE
           FROM PERDAS_PSICOTROPICOS PP
           JOIN PRODUTOS P ON (P.PRODUTO_ID = PP.PRODUTO_ID)
+         WHERE ((P.PSICOTROPICO = 'S') OR (P.ANTIMICROBIANO = 'S'))
          GROUP BY P.REGISTRO_MS, PP.LOTE
     """,
 
@@ -713,20 +728,72 @@ def escolher_campo(campos, regras):
     return None
 
 
+def classes_dos_produtos(conexao):
+    """Quem é controlado, pelo mesmo critério das vendas.
+
+    Devolve (controlados, conhecidos). O segundo conjunto existe para separar
+    "produto marcado como não controlado" de "produto que não está no
+    cadastro" — descartar os dois é diferente, e só o primeiro é seguro."""
+    controlados, conhecidos = set(), set()
+    for linha in consultar(conexao, CONSULTAS['produtos_controlados']):
+        produto = texto(linha.get('PRODUTO_ID'))
+        if not produto:
+            continue
+        conhecidos.add(produto)
+        if (texto(linha.get('PSICOTROPICO')).upper() == 'S'
+                or texto(linha.get('ANTIMICROBIANO')).upper() == 'S'):
+            controlados.add(produto)
+    return controlados, conhecidos
+
+
 def ler_inventario_anvisa(conexao):
     """Lê INVENTARIO_SNGPC — a tabela que o Anvisa.exe regrava com o
-    inventário do site da ANVISA. Devolve (saldo, data, colunas usadas)."""
+    inventário do site da ANVISA.
+
+    Só entram os medicamentos marcados como PSICOTROPICO ou ANTIMICROBIANO,
+    o mesmo critério das vendas e do estoque. Sem isso, item não controlado
+    que estivesse na tabela virava divergência "só na ANVISA" — comparando
+    lados que não se comparam.
+
+    Devolve (saldo, data, colunas usadas, descartados)."""
     try:
         linhas = consultar(conexao, CONSULTAS['inventario_sngpc'])
     except Exception as e:
         registrar('Não consegui ler INVENTARIO_SNGPC: %s' % e)
-        return {}, None, {}
+        return {}, None, {}, 0
     if not linhas:
         registrar('INVENTARIO_SNGPC está vazia — sem o lado ANVISA, todo lote do '
                   'Digifarma vira "sobra". Rode o Anvisa.exe e faça o login no site.')
-        return {}, None, {}
+        return {}, None, {}, 0
 
     campos = list(linhas[0])
+
+    # filtro de controlado, por PRODUTO_ID. Linha que não casa com o cadastro
+    # fica: pode ser produto que o SNGPC tem e a farmácia não, que é
+    # divergência de verdade e precisa aparecer.
+    campo_produto = next((c for c in campos if c.strip().upper() == 'PRODUTO_ID'), None)
+    descartados = 0
+    if campo_produto:
+        try:
+            controlados, conhecidos = classes_dos_produtos(conexao)
+        except Exception as e:
+            registrar('Não consegui ler as marcações de controlado: %s' % e)
+            controlados, conhecidos = set(), set()
+        if conhecidos:
+            mantidas = []
+            for linha in linhas:
+                produto = texto(linha.get(campo_produto))
+                if produto in conhecidos and produto not in controlados:
+                    descartados += 1
+                    continue
+                mantidas.append(linha)
+            linhas = mantidas
+            if descartados:
+                registrar('INVENTARIO_SNGPC: %d linha(s) de produto não marcado como '
+                          'psicotrópico nem antimicrobiano ficaram de fora.' % descartados)
+    else:
+        registrar('INVENTARIO_SNGPC não tem PRODUTO_ID: não dá para filtrar por '
+                  'controlado, o inventário entra inteiro.')
     usados = {chave: escolher_campo(campos, regras)
               for chave, regras in CAMPOS_INVENTARIO.items()}
     campo_ms, campo_lote = usados['ms'], usados['lote']
@@ -734,7 +801,7 @@ def ler_inventario_anvisa(conexao):
 
     if not (campo_ms and campo_qtd):
         registrar('INVENTARIO_SNGPC tem colunas inesperadas: %s' % ', '.join(campos))
-        return {}, None, {'colunas': campos}
+        return {}, None, {'colunas': campos}, descartados
 
     saldo = {}
     atualizado = None
@@ -747,7 +814,7 @@ def ler_inventario_anvisa(conexao):
         if campo_data and linha.get(campo_data):
             valor = texto(linha.get(campo_data))
             atualizado = max(atualizado, valor) if atualizado else valor
-    return saldo, atualizado, usados
+    return saldo, atualizado, usados, descartados
 
 
 DESCRICOES = {}        # (ms, lote) -> descrição, vinda do inventário da ANVISA
@@ -900,7 +967,7 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
     # ------------------------------------------------------------
     # 4. saldo do Digifarma × inventário da ANVISA
     # ------------------------------------------------------------
-    saldo_anvisa, inventario_em, campos_anvisa = ler_inventario_anvisa(conexao)
+    saldo_anvisa, inventario_em, campos_anvisa, fora_do_criterio = ler_inventario_anvisa(conexao)
     # data do inventário: prioridade é a data pedida na linha de comando;
     # senão, se veio de "--envio"/botão "Atualizar envio", a data do último
     # envio ao SNGPC; senão, o carimbo que o próprio Anvisa.exe deixou.
@@ -915,6 +982,9 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
         'origem': 'INVENTARIO_SNGPC (site da ANVISA, via Anvisa.exe)',
         'itens': len(saldo_anvisa),
         'camposAnvisa': {k: texto(v) for k, v in (campos_anvisa or {}).items() if v},
+        # quantas linhas do inventário do SNGPC ficaram de fora por não
+        # estarem marcadas como psicotrópico nem antimicrobiano
+        'foraDoCriterio': fora_do_criterio,
     }
 
     # antes de consumir saldo_anvisa: saber se o M.S. aparece em ALGUM lote
@@ -1364,12 +1434,16 @@ def modo_conferir_saldo(config, filtro):
             quantidade = numero(linha.get(info['coluna']))
             grupo['saidas' if saida else 'entradas'] += quantidade
 
-        saldo_anvisa, inventario_em, campos_anvisa = ler_inventario_anvisa(conexao)
-        print('inventário da ANVISA: %d lote(s), colunas %s, carimbo %s\n' % (
+        saldo_anvisa, inventario_em, campos_anvisa, fora_do_criterio = ler_inventario_anvisa(conexao)
+        print('inventário da ANVISA: %d lote(s), colunas %s, carimbo %s' % (
             len(saldo_anvisa),
             ', '.join('%s=%s' % (k, v) for k, v in sorted((campos_anvisa or {}).items()) if v)
             or '(nenhuma reconhecida)',
             inventario_em or '(sem data)'))
+        if fora_do_criterio:
+            print('  (%d linha(s) fora do critério psicotrópico/antimicrobiano)'
+                  % fora_do_criterio)
+        print('')
 
         ordenados = sorted(por_lote.items(), key=lambda x: -abs(x[1]['entradas']))
         if len(ordenados) > 40:
@@ -1617,7 +1691,7 @@ def modo_resumo(config):
     conexao = conectar_firebird(config)
     try:
         por_chave, info = saldo_por_lote(conexao, config)
-        saldo_anvisa, inventario_em, _ = ler_inventario_anvisa(conexao)
+        saldo_anvisa, inventario_em, _, _ = ler_inventario_anvisa(conexao)
 
         digi = {k: v['saldoDigifarma'] for k, v in por_chave.items() if v['saldoDigifarma']}
         anvisa = {k: v for k, v in saldo_anvisa.items() if v}
