@@ -97,6 +97,16 @@
       <div class="cabeca-vista"><h2>Divergências de saldo</h2></div>
       <p class="sublinha">Saldo do Digifarma comparado com o inventário SNGPC vigente.</p>
       <div id="saldo-alerta" class="barra-comando" hidden></div>
+
+      <div id="bloco-sem-ms" class="bloco" hidden>
+        <h3>Sem registro M.S. — não entram no SNGPC</h3>
+        <p class="sublinha">O SNGPC recusa medicamento sem registro M.S., então estes
+        nunca são transmitidos: nem a entrada, nem a venda. Não são divergência de
+        estoque e não entram na contagem — enquanto o cadastro não for corrigido,
+        este controlado se movimenta sem escrituração.</p>
+        <div id="lista-sem-ms" class="pilha"></div>
+      </div>
+
       <input id="busca-saldo" class="busca" type="search" placeholder="Buscar por descrição, M.S., código de barras ou lote" autocomplete="off">
       <div id="lista-saldo" class="pilha"></div>
       <p id="saldo-vazio" class="vazio" hidden>Nenhuma divergência de saldo. Digifarma e inventário batem.</p>

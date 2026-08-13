@@ -1494,12 +1494,16 @@ def modo_tarefas(config):
     if sem_registro:
         escrever('')
         escrever('1b. CADASTRAR O REGISTRO M.S. — %d lote(s)' % len(sem_registro))
-        escrever('   A conferência casa por M.S. + lote. Estes não têm M.S. no cadastro')
-        escrever('   do Digifarma, então não podem casar com a ANVISA nem por acaso.')
+        escrever('   O SNGPC RECUSA medicamento sem registro M.S. Estes nunca foram')
+        escrever('   transmitidos — nem a entrada, nem a venda — e não têm como bater')
+        escrever('   com a ANVISA. Não é divergência de estoque: enquanto o cadastro')
+        escrever('   não for corrigido, é controlado se movimentando sem escrituração.')
         escrever('')
         for i in sem_registro:
             escrever('   %-42s lote %-14s Digifarma %g' % (
                 i['descricao'][:42], i['lote'] or '(vazio)', i['saldoDigifarma']))
+            escrever('   %-42s cód. %-14s EAN %s' % (
+                '', i['codigo'] or '—', i['ean'] or '—'))
 
     # ---------- 2 ----------
     escrituracao = (sorted(por_motivo.get('anvisa_zerada_produto', []),
@@ -1663,7 +1667,7 @@ def modo_resumo(config):
         sem_ms = [k for k in digi if not k[0]]
         if sem_ms:
             print('\n  lotes com saldo e SEM registro M.S. no cadastro: %d' % len(sem_ms))
-            print('  (não podem casar com a ANVISA: a chave é M.S. + lote)')
+            print('  (o SNGPC recusa medicamento sem M.S.: nunca foram transmitidos)')
             for k in sorted(sem_ms, key=lambda k: -digi[k])[:10]:
                 print('      %-40s lote %-12s %g'
                       % (descricao.get(k, '')[:40], k[1], digi[k]))

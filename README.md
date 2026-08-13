@@ -204,10 +204,16 @@ lotes que hoje casam. Na base da Drogaria Humanae a questão nem se coloca:
 `INVENTARIO_SNGPC` só tem `REGISTRO_MS`, `NUM_LOTE` e `SALDO_LOTE`, sem
 coluna de descrição. O nome existe para quem lê a linha.
 
-Corolário: **produto sem M.S. no cadastro não pode ser conferido.** A chave
-fica pela metade e o item nunca casa, apareça o que aparecer na tela. Esses
-saem com `motivo: sem_ms` e uma seção própria no `--tarefas`, porque o
-conserto é cadastrar o registro, não contar prateleira.
+Corolário: **produto sem M.S. no cadastro não pode ser conferido — e nem
+existe para o SNGPC.** O SNGPC recusa medicamento sem registro M.S., então
+esse produto nunca foi transmitido: nem a entrada, nem a venda. Não é
+divergência de estoque, é controlado se movimentando sem escrituração, e
+nenhuma conferência de prateleira resolve.
+
+Por isso eles ficam **fora da contagem de divergências**, num bloco próprio
+no topo da aba Saldo e numa seção própria do `--tarefas`. O conserto é
+cadastrar o registro no Digifarma; feito isso, o produto passa a ser
+transmitido e a ser conferível.
 
 ### Lote, não produto
 
@@ -262,7 +268,7 @@ mostra isso na tarja:
 
 | `motivo` | O que é | Por onde começar |
 |---|---|---|
-| `sem_ms` | o produto não tem registro M.S. no cadastro do Digifarma | cadastrar o M.S.: sem ele não há comparação possível |
+| `sem_ms` | o produto não tem registro M.S.; o SNGPC recusa, logo nunca foi transmitido | cadastrar o M.S. no Digifarma — fora da contagem de divergências |
 | `anvisa_zerada_produto` | a ANVISA não tem saldo em lote nenhum desse registro M.S. | conferir o estoque físico e o saldo do Digifarma |
 | `anvisa_zerada_lote` | a ANVISA tem outros lotes do medicamento, mas não esse | conferir o número do lote e a entrada dele |
 | `quantidade` | os dois lados têm o lote, com contagens diferentes | conferência de prateleira |

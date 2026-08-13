@@ -314,8 +314,16 @@ $('busca-vendas-recentes').oninput = (e) => { estado.buscaVendas = e.target.valu
 /* ============================================================
    10. DESENHO
    ============================================================ */
-function divergenciasDeSaldo() {
-  return lista('itens').filter((i) => Number(i.diferenca || 0) !== 0);
+/* Produto sem M.S. não é divergência de estoque: o SNGPC recusa medicamento
+   sem registro, então ele nunca é transmitido e não tem como bater. Contar
+   junto infla o número de divergências com item que nenhuma conferência de
+   prateleira resolve. */
+function divergenciasDeSaldo(itens) {
+  return (itens || lista('itens'))
+    .filter((i) => Number(i.diferenca || 0) !== 0 && i.motivo !== 'sem_ms');
+}
+function pendenciasDeCadastro(itens) {
+  return (itens || lista('itens')).filter((i) => i.motivo === 'sem_ms');
 }
 function pendenciasXml() {
   return lista('conferencia_xml').filter((c) => c && c.situacao !== 'ok');
@@ -501,7 +509,8 @@ function pintarAlertaSaldo() {
   const resumo = estado.inventario?.resumoSaldo;
   if (resumo) {
     const partes = Object.entries(resumo)
-      .filter(([, n]) => n > 0)
+      // o sem_ms tem bloco próprio logo abaixo; repetir aqui só polui
+      .filter(([motivo, n]) => n > 0 && motivo !== 'sem_ms')
       .sort((a, b) => b[1] - a[1])
       .map(([motivo, n]) => n + ' ' + (MOTIVO_SALDO[motivo]?.[0] || motivo).toLowerCase());
     if (partes.length) {
@@ -513,8 +522,36 @@ function pintarAlertaSaldo() {
   barra.hidden = true;
 }
 
+function pintarSemMs() {
+  const itens = pendenciasDeCadastro();
+  $('bloco-sem-ms').hidden = itens.length === 0;
+  const alvo = $('lista-sem-ms');
+  alvo.innerHTML = '';
+  itens.forEach((i, n) => {
+    alvo.appendChild(linha({
+      chave: 'semms:' + (i.codigo || n) + ':' + (i.lote || ''),
+      titulo: i.descricao || i.codigo || '(sem descrição)',
+      meta: [
+        i.ean && 'EAN ' + i.ean,
+        i.lote && 'Lote ' + i.lote,
+        i.validade && 'Val. ' + i.validade
+      ],
+      tarja: ['Cadastrar o registro M.S. no Digifarma', i.saldoDigifarma + ' em estoque'],
+      tarjaClasse: 'falta',
+      detalhe: definicoes([
+        ['Código', i.codigo],
+        ['Saldo Digifarma', i.saldoDigifarma],
+        ['Código de barras', i.ean],
+        ['Lote', i.lote],
+        ['Validade', i.validade]
+      ])
+    }));
+  });
+}
+
 function pintarSaldo() {
   pintarAlertaSaldo();
+  pintarSemMs();
   const alvo = $('lista-saldo');
   alvo.innerHTML = '';
   const itens = divergenciasDeSaldo()
@@ -846,5 +883,8 @@ window.addEventListener('online', () => { $('barra-estado').hidden = true; });
 
 /* exposto para o teste de fumaça */
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { normalizar, combina, dataBR };
+  module.exports = {
+    normalizar, combina, dataBR, horaBR,
+    divergenciasDeSaldo, pendenciasDeCadastro
+  };
 }
