@@ -297,6 +297,28 @@ def principal():
     conferir('cadastro repetido que bate com a ANVISA não vira divergência',
              repetidos and repetidos[0]['diferenca'] == 0.0, repetidos)
 
+    # cada divergência se resolve num lugar diferente; a etiqueta tem que
+    # dizer qual é qual em vez de chamar tudo de sobra
+    alpra = next(i for i in dados['itens'] if i['ms'] == '1023506630204')
+    conferir('contagem que não fecha dos dois lados é "quantidade"',
+             alpra.get('motivo') == 'quantidade', alpra)
+    so_anvisa = [i for i in dados['itens'] if i['ms'] == '1122233340001'
+                 and i['saldoDigifarma'] == 0]
+    conferir('o que só a ANVISA tem sai marcado',
+             all(i.get('motivo') == 'so_na_anvisa' for i in so_anvisa), so_anvisa)
+    conferir('lote sem divergência não recebe motivo',
+             not any(i.get('motivo') for i in dados['itens'] if not i['diferenca']))
+
+    conferir('M.S. que a ANVISA nem conhece é entrada não transmitida',
+             ag.classificar_divergencia(
+                 {'saldoDigifarma': 5, 'ms': '999'}, 0.0, {'111'}) == 'nao_transmitido')
+    conferir('M.S. conhecido, lote ausente, é outro caso',
+             ag.classificar_divergencia(
+                 {'saldoDigifarma': 5, 'ms': '111'}, 0.0, {'111'}) == 'lote_ausente')
+    conferir('saldo negativo é dado torto no Digifarma, não sobra',
+             ag.classificar_divergencia(
+                 {'saldoDigifarma': -2, 'ms': '111'}, 0.0, {'111'}) == 'negativo')
+
     zerados = [i for i in dados['itens'] if i['ms'] == '1777700010001']
     conferir('lote zerado nos dois lados não vai para o app', not zerados, zerados)
 

@@ -19,7 +19,7 @@ O estoque manual do balcão fica no repositório separado **ESTOQUE**.
 | Aba | O que traz |
 |---|---|
 | Situação | carimbo do último sincronismo, dados do último envio, botões que pedem ao agente |
-| Saldo | divergências entre o saldo do Digifarma e o inventário SNGPC vigente, com M.S., código de barras, lote e o detalhe de cada uma |
+| Saldo | divergências entre o saldo do Digifarma e o inventário SNGPC vigente, com M.S., código de barras, lote e o detalhe de cada uma — cada uma classificada pelo **tipo** (veja abaixo) |
 | XML | o que saiu no banco cruzado com o que subiu no XML, por registro M.S. + lote |
 | Vendas | controlado vendido sem receita escriturada ou sem lote — a causa clássica de recusa |
 | Aceites | marcar à mão o aceite ou a recusa de cada envio, com nome e horário |
@@ -184,6 +184,37 @@ rode `--saldo` para ver a conta e fixe no `agente_config.json`:
 ```json
 { "coluna_saldo": "QUANTIDADE", "modo_saldo": "saldo" }
 ```
+
+### Os tipos de divergência de saldo
+
+"Sobra no Digifarma" não diz o que fazer. Cada divergência se resolve num
+lugar diferente, então o agente classifica cada item em `motivo` e o app
+mostra isso na tarja:
+
+| `motivo` | O que é | Onde se resolve |
+|---|---|---|
+| `nao_transmitido` | o Digifarma tem o lote e a ANVISA não conhece nem o registro M.S. | escrituração: entrada de nota que não subiu |
+| `lote_ausente` | a ANVISA conhece o medicamento, mas não esse lote | escrituração: entrada daquele lote |
+| `quantidade` | os dois lados têm o lote, com contagens diferentes | conferência de prateleira |
+| `so_na_anvisa` | a ANVISA tem saldo e o Digifarma não | saída lançada só de um lado |
+| `negativo` | o próprio Digifarma está com saldo negativo | corrigir no Digifarma: saída sem entrada |
+
+`farmacia/inventario/resumoSaldo` traz a contagem por tipo, que o app
+mostra no topo da aba Saldo.
+
+Para medir de onde vem a divergência antes de mandar alguém conferir
+prateleira:
+
+```
+python agente_auto.py --resumo
+```
+
+Ele separa quantos lotes casaram e batem, quantos divergem no valor,
+quantos só existem de um lado — e quantos **casariam se o número do lote
+fosse comparado sem zero à esquerda e sem pontuação**. Esse último número
+é o que diz se a divergência é de grafia (conserto no código) ou de
+estoque (conserto na farmácia). Na Drogaria Humanae ele deu 0: a
+comparação exata está certa.
 
 Do lado da ANVISA, as colunas de `INVENTARIO_SNGPC` são casadas **por nome
 exato primeiro** e só depois por pedaço do nome. Procurar só o pedaço `LOTE`

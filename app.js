@@ -458,6 +458,22 @@ function definicoes(pares) {
   return d;
 }
 
+/* Cada divergência de saldo se resolve num lugar diferente: uma entrada que
+   não subiu ao SNGPC não é a mesma coisa que uma contagem que não fecha. A
+   tarja diz qual é qual; o agente classifica em farmacia/inventario. */
+const MOTIVO_SALDO = {
+  nao_transmitido: ['Entrada não transmitida ao SNGPC', 'sobra',
+    'O Digifarma tem este lote e a ANVISA não conhece nem o registro M.S. Costuma ser entrada de nota que ainda não subiu.'],
+  lote_ausente: ['Lote fora do inventário SNGPC', 'sobra',
+    'A ANVISA conhece o medicamento, mas não este lote. Confira se a entrada do lote foi transmitida.'],
+  quantidade: ['Quantidade diferente do SNGPC', 'sobra',
+    'Os dois lados têm o lote, com contagens diferentes. É conferência de prateleira.'],
+  so_na_anvisa: ['Só no inventário SNGPC', 'falta',
+    'A ANVISA tem saldo deste lote e o Digifarma não. Costuma ser saída lançada só de um lado.'],
+  negativo: ['Saldo negativo no Digifarma', 'falta',
+    'O próprio Digifarma está com saldo negativo neste lote: saída lançada sem a entrada. Corrija no Digifarma.']
+};
+
 function pintarAlertaSaldo() {
   const barra = $('saldo-alerta');
   const inv = estado.inventario?.inventario;
@@ -471,6 +487,19 @@ function pintarAlertaSaldo() {
       + 'SNGPC antes de conferir estes números.';
     barra.hidden = false;
     return;
+  }
+
+  const resumo = estado.inventario?.resumoSaldo;
+  if (resumo) {
+    const partes = Object.entries(resumo)
+      .filter(([, n]) => n > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([motivo, n]) => n + ' ' + (MOTIVO_SALDO[motivo]?.[0] || motivo).toLowerCase());
+    if (partes.length) {
+      barra.textContent = partes.join(' · ');
+      barra.hidden = false;
+      return;
+    }
   }
   barra.hidden = true;
 }
@@ -486,6 +515,29 @@ function pintarSaldo() {
 
   itens.forEach((i, n) => {
     const dif = Number(i.diferenca || 0);
+    const [rotulo, classe, explicacao] = MOTIVO_SALDO[i.motivo]
+      || [dif < 0 ? 'Falta no Digifarma' : 'Sobra no Digifarma', dif < 0 ? 'falta' : 'sobra', ''];
+    const detalhe = definicoes([
+      ['Código', i.codigo],
+      ['Saldo Digifarma', i.saldoDigifarma],
+      // só vêm quando LOTES é tabela de movimento: mostram de onde
+      // o saldo saiu, para conferir contra a tela do Digifarma
+      ['Entrou no lote', i.entradas],
+      ['Baixado (vendas e perdas)', i.baixas],
+      ['Saldo do inventário SNGPC', i.saldoSngpc],
+      ['Diferença', (dif > 0 ? '+' : '') + dif],
+      ['Registro M.S.', i.ms],
+      ['Código de barras', i.ean],
+      ['Lote', i.lote],
+      ['Validade', i.validade],
+      ['Classe', i.classe]
+    ]);
+    if (explicacao) {
+      const nota = criar('p', 'motivo');
+      nota.textContent = explicacao;
+      detalhe.appendChild(nota);
+    }
+
     alvo.appendChild(linha({
       chave: 'saldo:' + (i.codigo || n) + ':' + (i.lote || ''),
       titulo: i.descricao || i.codigo || '(sem descrição)',
@@ -495,23 +547,9 @@ function pintarSaldo() {
         i.lote && 'Lote ' + i.lote,
         i.validade && 'Val. ' + i.validade
       ],
-      tarja: [dif < 0 ? 'Falta no Digifarma' : 'Sobra no Digifarma', (dif > 0 ? '+' : '') + dif],
-      tarjaClasse: dif < 0 ? 'falta' : 'sobra',
-      detalhe: definicoes([
-        ['Código', i.codigo],
-        ['Saldo Digifarma', i.saldoDigifarma],
-        // só vêm quando LOTES é tabela de movimento: mostram de onde
-        // o saldo saiu, para conferir contra a tela do Digifarma
-        ['Entrou no lote', i.entradas],
-        ['Baixado (vendas e perdas)', i.baixas],
-        ['Saldo do inventário SNGPC', i.saldoSngpc],
-        ['Diferença', (dif > 0 ? '+' : '') + dif],
-        ['Registro M.S.', i.ms],
-        ['Código de barras', i.ean],
-        ['Lote', i.lote],
-        ['Validade', i.validade],
-        ['Classe', i.classe]
-      ])
+      tarja: [rotulo, (dif > 0 ? '+' : '') + dif],
+      tarjaClasse: classe,
+      detalhe
     }));
   });
 

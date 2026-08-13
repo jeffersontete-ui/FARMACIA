@@ -692,6 +692,19 @@ def so_digitos(valor):
     return ''.join(c for c in str(valor or '') if c.isdigit())
 
 
+def classificar_divergencia(registro, saldo_anvisa, ms_no_inventario):
+    """Divergência de saldo não é uma coisa só, e cada tipo se resolve num
+    lugar diferente. Sem isso o app mistura 'falta transmitir a entrada'
+    com 'a contagem não fecha' na mesma etiqueta de sobra."""
+    if registro['saldoDigifarma'] < 0:
+        # o Digifarma é a verdade, mas aqui a verdade dele está torta:
+        # saída lançada sem a entrada correspondente
+        return 'negativo'
+    if not saldo_anvisa:
+        return 'nao_transmitido' if registro['ms'] not in ms_no_inventario else 'lote_ausente'
+    return 'quantidade'
+
+
 def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
     import mapa_xml
 
@@ -794,6 +807,11 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
         'camposAnvisa': {k: texto(v) for k, v in (campos_anvisa or {}).items() if v},
     }
 
+    # antes de consumir saldo_anvisa: saber se o M.S. aparece em ALGUM lote
+    # do inventário é o que separa "não transmiti a entrada" de "o lote
+    # sumiu do inventário"
+    ms_no_inventario = {chave[0] for chave in saldo_anvisa}
+
     itens = []
     try:
         por_chave, info_saldo = saldo_por_lote(conexao, config)
@@ -808,6 +826,9 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
                 continue
             registro['saldoSngpc'] = round(anvisa, 3)
             registro['diferenca'] = round(registro['saldoDigifarma'] - anvisa, 3)
+            if registro['diferenca']:
+                registro['motivo'] = classificar_divergencia(
+                    registro, anvisa, ms_no_inventario)
             itens.append(registro)
     except Exception as e:
         registrar('Falha ao levantar o saldo por lote: %s' % e)
@@ -822,8 +843,13 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
             'ms': ms, 'ean': '', 'lote': lote, 'validade': '',
             'saldoDigifarma': 0.0, 'saldoSngpc': round(quantidade, 3),
             'diferenca': round(-quantidade, 3),
+            'motivo': 'so_na_anvisa',
         })
     resultado['itens'] = itens
+    resultado['resumoSaldo'] = {}
+    for i in itens:
+        if i.get('motivo'):
+            resultado['resumoSaldo'][i['motivo']] = resultado['resumoSaldo'].get(i['motivo'], 0) + 1
 
     # ------------------------------------------------------------
     # 5. conferência do XML contra as vendas do período
