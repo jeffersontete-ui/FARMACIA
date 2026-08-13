@@ -164,6 +164,28 @@ CONSULTAS = {
            AND ((P.PSICOTROPICO = 'S') OR (P.ANTIMICROBIANO = 'S'))
     """,
 
+    # --- últimas vendas de controlado, para o acompanhamento ao vivo ---
+    # Uma linha por LOTE vendido: a mesma venda pode sair de dois lotes, e
+    # é o lote que interessa para o SNGPC.
+    "vendas_recentes": """
+        SELECT FIRST 300
+               C.VENDA_NOTA_ID AS VENDA,
+               C.VENDA_DATA_HORA AS QUANDO,
+               P.PRODUTO, P.REGISTRO_MS,
+               IVL.NUM_LOTE, IVL.QUANTIDADE
+          FROM CAB_VENDAS C
+          JOIN ITEM_VENDAS I ON (I.VENDA_NOTA_ID = C.VENDA_NOTA_ID)
+                            AND ((I.CANCELADO = 'N') OR (I.CANCELADO IS NULL))
+          JOIN PRODUTOS P ON (P.PRODUTO_ID = I.PRODUTO_ID)
+          JOIN ITEM_VENDAS_LOTES IVL ON (IVL.VENDA_NOTA_ID = I.VENDA_NOTA_ID)
+                                    AND (IVL.ITEM_VENDA_ID = I.ITEM_VENDA_ID)
+                                    AND (IVL.PRODUTO_ID = I.PRODUTO_ID)
+         WHERE CAST(C.VENDA_DATA_HORA AS DATE) >= ?
+           AND (C.VENDA_RECEBIDO + C.SUBSIDIO + COALESCE(C.SUBSIDIO_ASSEFAZ, 0)) > 0
+           AND ((P.PSICOTROPICO = 'S') OR (P.ANTIMICROBIANO = 'S'))
+         ORDER BY C.VENDA_NOTA_ID DESC
+    """,
+
     # --- venda de controlado sem receita escriturada ou sem lote ---
     "vendas_problema": """
         SELECT C.VENDA_NOTA_ID AS VENDA,
@@ -416,6 +438,18 @@ def texto(valor):
         return ''
     if isinstance(valor, (datetime.date, datetime.datetime)):
         return valor.strftime('%Y-%m-%d')
+    return str(valor).strip()
+
+
+def texto_hora(valor):
+    """Como texto(), mas guarda a HORA. O texto() corta tudo em AAAA-MM-DD,
+    e a hora da venda é justamente o que se quer ver no acompanhamento."""
+    if valor is None:
+        return ''
+    if isinstance(valor, datetime.datetime):
+        return valor.isoformat(timespec='seconds')
+    if isinstance(valor, datetime.date):
+        return valor.isoformat()
     return str(valor).strip()
 
 
@@ -734,6 +768,27 @@ def formatar_ms(valor):
     return '%s.%s.%s.%s-%s' % (d[0], d[1:5], d[5:9], d[9:12], d[12])
 
 
+DIAS_VENDAS_RECENTES = 7
+
+
+def vendas_recentes(conexao, dias=DIAS_VENDAS_RECENTES):
+    """As últimas vendas de controlado, uma linha por lote vendido.
+
+    É o que o balcão precisa ver sem abrir o Digifarma: número da venda,
+    hora, produto, lote e quantidade. Sai pela mesma tarefa de 5 minutos que
+    já atende os botões do app."""
+    corte = (datetime.date.today() - datetime.timedelta(days=dias)).isoformat()
+    linhas = consultar(conexao, CONSULTAS['vendas_recentes'], (corte,))
+    return [{
+        'venda': l.get('VENDA'),
+        'quando': texto_hora(l.get('QUANDO')),
+        'descricao': texto(l.get('PRODUTO')),
+        'ms': so_digitos(l.get('REGISTRO_MS')),
+        'lote': texto(l.get('NUM_LOTE')),
+        'quantidade': numero(l.get('QUANTIDADE')),
+    } for l in linhas]
+
+
 def classificar_divergencia(registro, saldo_anvisa, ms_no_inventario):
     """Divergência de saldo não é uma coisa só, e cada tipo se resolve num
     lugar diferente. Sem isso o app mistura 'falta transmitir a entrada'
@@ -867,6 +922,9 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
     total_ms_anvisa = {}
     for (ms_lote, _), quantidade in saldo_anvisa.items():
         total_ms_anvisa[ms_lote] = total_ms_anvisa.get(ms_lote, 0.0) + quantidade
+    # o dicionário é consumido na comparação (pop); guardar a cópia é o que
+    # permite listar depois TODOS os lotes de um medicamento
+    anvisa_por_lote = dict(saldo_anvisa)
 
     itens = []
     try:
@@ -878,6 +936,21 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
         for (ms_lote, _), registro in por_chave.items():
             total_ms_digifarma[ms_lote] = (total_ms_digifarma.get(ms_lote, 0.0)
                                            + registro['saldoDigifarma'])
+
+        # todos os lotes de cada medicamento, dos dois lados. A lista só
+        # mostra o lote que diverge; sem os irmãos, não dá para entender por
+        # que o total do Digifarma é maior nem conferir contra a tela.
+        lotes_por_ms = {}
+        for (ms_lote, num_lote), registro in por_chave.items():
+            lotes_por_ms.setdefault(ms_lote, {})[num_lote] = {
+                'lote': num_lote,
+                'digifarma': registro['saldoDigifarma'],
+                'sngpc': 0.0,
+            }
+        for (ms_lote, num_lote), quantidade in anvisa_por_lote.items():
+            irmao = lotes_por_ms.setdefault(ms_lote, {}).setdefault(
+                num_lote, {'lote': num_lote, 'digifarma': 0.0, 'sngpc': 0.0})
+            irmao['sngpc'] = round(quantidade, 3)
 
         for chave, registro in por_chave.items():
             anvisa = saldo_anvisa.pop(chave, 0.0)
@@ -894,9 +967,12 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
             # lote não bate com a tela do Digifarma e o total explica
             digi_ms = round(total_ms_digifarma.get(chave[0], 0.0), 3)
             anvisa_ms = round(total_ms_anvisa.get(chave[0], 0.0), 3)
+            irmaos = lotes_por_ms.get(chave[0], {})
             if digi_ms != registro['saldoDigifarma'] or anvisa_ms != registro['saldoSngpc']:
                 registro['saldoDigifarmaMs'] = digi_ms
                 registro['saldoSngpcMs'] = anvisa_ms
+            if registro.get('motivo') and len(irmaos) > 1:
+                registro['lotesDoMs'] = sorted(irmaos.values(), key=lambda x: x['lote'])
             itens.append(registro)
     except Exception as e:
         registrar('Falha ao levantar o saldo por lote: %s' % e)
@@ -992,6 +1068,13 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
     # a consulta corta por data: sem dizer desde quando, "nenhuma venda com
     # problema" parece valer para sempre
     resultado['vendasProblemaDesde'] = corte_data
+
+    # acompanhamento das vendas; a tarefa de 5 minutos regrava só este ramo
+    try:
+        resultado['vendasRecentes'] = vendas_recentes(conexao)
+        resultado['vendasRecentesEm'] = datetime.datetime.now().isoformat(timespec='seconds')
+    except Exception as e:
+        registrar('Falha ao levantar as vendas recentes: %s' % e)
 
     # ------------------------------------------------------------
     # 7. saúde da sincronização com o site da ANVISA
@@ -1116,9 +1199,38 @@ def modo_auto(config, data_inventario=None, usar_envio=False):
         fechar(conexao)
 
 
+def publicar_vendas_recentes(config, db):
+    """Regrava só o ramo das vendas, sem refazer a sincronização inteira.
+
+    Escreve em farmacia/inventario/vendasRecentes: como a regra do banco
+    libera farmacia/inventario para o agente, os filhos vêm junto e não é
+    preciso mexer nas regras publicadas."""
+    conexao = conectar_firebird(config)
+    try:
+        linhas = vendas_recentes(conexao)
+    finally:
+        fechar(conexao)
+    agora_iso = datetime.datetime.now().isoformat(timespec='seconds')
+    db.reference('farmacia/inventario/vendasRecentes').set(linhas)
+    db.reference('farmacia/inventario/vendasRecentesEm').set(agora_iso)
+    registrar('Vendas recentes publicadas: %d linha(s).' % len(linhas))
+    return linhas
+
+
 def modo_fila(config):
-    """Atende o pedido dos botões do app. Roda de 5 em 5 minutos."""
+    """Atende os botões do app E atualiza as vendas. Roda de 5 em 5 minutos."""
     db = conectar_firebase(config)
+
+    # antes da fila: as vendas sobem toda vez, mesmo sem ninguém pedir nada.
+    # É isto que faz o acompanhamento ser de 5 em 5 minutos sem obrigar a
+    # sincronização completa, que é cara e roda de hora em hora.
+    try:
+        publicar_vendas_recentes(config, db)
+    except Exception as e:
+        if erro_de_permissao(e):
+            registrar(recado_de_permissao(config))
+        registrar('Não consegui publicar as vendas recentes: %s' % e)
+
     ref = db.reference('farmacia/comando')
     pedido = ref.get()
     if not pedido or pedido.get('estado') != 'pendente':

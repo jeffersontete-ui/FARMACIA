@@ -21,7 +21,7 @@ O estoque manual do balcão fica no repositório separado **ESTOQUE**.
 | Situação | carimbo do último sincronismo, dados do último envio, botões que pedem ao agente |
 | Saldo | divergências entre o saldo do Digifarma e o inventário SNGPC vigente, com M.S., código de barras, lote e o detalhe de cada uma — cada uma classificada pelo **tipo** (veja abaixo) |
 | XML | o que saiu no banco cruzado com o que subiu no XML, por registro M.S. + lote — e, quando não há divergência, **se a conferência aconteceu** |
-| Vendas | controlado vendido sem receita escriturada ou sem lote — a causa clássica de recusa |
+| Vendas | controlado vendido sem receita escriturada ou sem lote — a causa clássica de recusa — e o **acompanhamento das últimas vendas**, com número, hora, lote e quantidade, atualizado de 5 em 5 minutos |
 | Aceites | marcar à mão o aceite ou a recusa de cada envio, com nome e horário |
 
 Os dois botões da aba Situação escrevem em `farmacia/comando`. O agente
@@ -55,7 +55,7 @@ completa** e só então cria as tarefas. Se o teste falhar, nada é agendado.
 | Tarefa | Quando | O que faz |
 |---|---|---|
 | `AgenteSNGPC` | de hora em hora | `--auto`, sincronização completa |
-| `AgenteSNGPC_Fila` | a cada 5 minutos | `--fila`, atende os botões do app |
+| `AgenteSNGPC_Fila` | a cada 5 minutos | `--fila`, atende os botões do app **e publica as últimas vendas** |
 | `AnvisaSNGPC_Login` | 1x por dia, em horário de expediente | abre o `Anvisa.exe` para alguém fazer o login no site do SNGPC |
 
 A terceira é criada pelo `AGENDAR_ANVISA.bat`, à parte, porque **não roda
@@ -203,6 +203,19 @@ totais somando os lotes daquele registro M.S. — e o app os mostra como
 mais de um lote, que é exatamente quando o número do lote não bate com a
 tela.
 
+### Acompanhamento das vendas, de 5 em 5 minutos
+
+A tarefa `AgenteSNGPC_Fila` já rodava a cada 5 minutos para atender os
+botões do app. Ela passa a publicar também as vendas de controlado dos
+últimos 7 dias em `farmacia/inventario/vendasRecentes` — **uma linha por
+lote vendido**, com número da venda, hora, produto, lote e quantidade. A
+mesma venda aparece duas vezes quando sai de dois lotes, que é como o SNGPC
+precisa e como se confere no balcão.
+
+Escrever num filho de `farmacia/inventario` é de propósito: a regra do banco
+já libera esse caminho para o agente, então não é preciso republicar regras.
+E a sincronização completa, que é cara, continua de hora em hora.
+
 ### Zero que não quer dizer "tudo certo"
 
 Foi o erro que originou este trabalho: 4135 "sobras" que não eram sobra, e
@@ -286,6 +299,7 @@ divergência nenhuma.
 ```
 farmacia/inventario   escrito só pelo agente; lido pelo app
                       { atualizadoEm,
+                        vendasRecentes[], vendasRecentesEm  (a cada 5 min),
                         inventario{data,origem,itens,colunaSaldo,modoSaldo,camposAnvisa},
                         itens[], envio{}, xml_envio{},
                         pendentes{vendas,entradas,perdas,transferencias},

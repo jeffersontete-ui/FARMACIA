@@ -43,6 +43,7 @@ const estado = {
   vista: 'painel',
   buscaSaldo: '',
   buscaXml: '',
+  buscaVendas: '',
   abertos: new Set()
 };
 
@@ -67,6 +68,11 @@ function dataHora(iso) {
   const d = new Date(iso);
   if (isNaN(d)) return esc(iso);
   return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function horaBR(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(String(iso || ''));
+  return m ? `${m[3]}/${m[2]} ${m[4]}:${m[5]}` : dataBR(iso);
 }
 
 function dataBR(iso) {
@@ -303,6 +309,7 @@ document.querySelectorAll('.nav-item').forEach((b) => { b.onclick = () => irPara
 document.querySelectorAll('[data-ir]').forEach((b) => { b.onclick = () => irPara(b.dataset.ir); });
 $('busca-saldo').oninput = (e) => { estado.buscaSaldo = e.target.value; pintarSaldo(); };
 $('busca-xml').oninput = (e) => { estado.buscaXml = e.target.value; pintarXml(); };
+$('busca-vendas-recentes').oninput = (e) => { estado.buscaVendas = e.target.value; pintarVendasRecentes(); };
 
 /* ============================================================
    10. DESENHO
@@ -341,7 +348,7 @@ function pintar() {
   avisarSobreAnvisa();
   if (estado.vista === 'saldo') pintarSaldo();
   if (estado.vista === 'xml') pintarXml();
-  if (estado.vista === 'vendas') pintarVendas();
+  if (estado.vista === 'vendas') { pintarVendas(); pintarVendasRecentes(); }
   if (estado.vista === 'aceites') pintarAceites();
 }
 
@@ -549,6 +556,24 @@ function pintarSaldo() {
         + 'Os outros lotes não aparecem nesta lista quando batem com a ANVISA.';
       detalhe.appendChild(nota);
     }
+    // todos os lotes do medicamento, inclusive os que batem e por isso não
+    // entram na lista — é o que explica o total e permite conferir na tela
+    if (Array.isArray(i.lotesDoMs) && i.lotesDoMs.length > 1) {
+      const titulo = criar('p', 'linha-titulo');
+      titulo.style.margin = '14px 0 6px';
+      titulo.textContent = 'Todos os lotes deste medicamento';
+      detalhe.appendChild(titulo);
+      const dl = criar('dl', 'dados');
+      i.lotesDoMs.forEach((l) => {
+        const dt = criar('dt');
+        dt.textContent = 'Lote ' + (l.lote || '(vazio)') + (l.lote === i.lote ? ' ←' : '');
+        const dd = criar('dd');
+        dd.textContent = 'Digifarma ' + Number(l.digifarma || 0)
+          + ' · SNGPC ' + Number(l.sngpc || 0);
+        dl.append(dt, dd);
+      });
+      detalhe.appendChild(dl);
+    }
 
     alvo.appendChild(linha({
       chave: 'saldo:' + (i.codigo || n) + ':' + (i.lote || ''),
@@ -676,6 +701,62 @@ function pintarVendas() {
       tarjaClasse: 'falta',
       detalhe
     }));
+  });
+}
+
+/* Acompanhamento das vendas: sobe pela tarefa de 5 em 5 minutos, então a
+   tela vive sozinha — o Firebase empurra a atualização sem ninguém recarregar. */
+function pintarVendasRecentes() {
+  const alvo = $('lista-vendas-recentes');
+  if (!alvo) return;
+  alvo.innerHTML = '';
+
+  const carimbo = estado.inventario?.vendasRecentesEm;
+  $('vendas-recentes-carimbo').textContent = carimbo
+    ? 'Atualizado em ' + dataHora(carimbo)
+    : 'O agente ainda não publicou as vendas. A tarefa de 5 minutos faz isso sozinha.';
+
+  const todas = lista('vendasRecentes');
+  const itens = todas.filter((v) => combina(
+    { ...v, venda: String(v.venda ?? '') },
+    estado.buscaVendas, ['descricao', 'lote', 'venda', 'ms']));
+
+  if (!itens.length) {
+    const p = criar('p', 'vazio');
+    p.textContent = todas.length
+      ? 'Nada encontrado para “' + estado.buscaVendas + '”.'
+      : 'Nenhuma venda de controlado nos últimos dias.';
+    alvo.appendChild(p);
+    return;
+  }
+
+  itens.slice(0, 300).forEach((v) => {
+    const el = criar('div', 'aceite');
+
+    const esquerda = criar('div');
+    const titulo = criar('p', 'aceite-data');
+    titulo.textContent = v.descricao || '(sem descrição)';
+    esquerda.appendChild(titulo);
+    const sub = criar('p', 'sublinha');
+    sub.style.margin = '2px 0 0';
+    sub.textContent = 'Venda ' + (v.venda ?? '—')
+      + (v.lote ? ' · Lote ' + v.lote : ' · sem lote')
+      + (v.ms ? ' · M.S. ' + v.ms : '');
+    esquerda.appendChild(sub);
+    el.appendChild(esquerda);
+
+    const direita = criar('div');
+    direita.style.display = 'flex';
+    direita.style.gap = '10px';
+    direita.style.alignItems = 'center';
+    const qtd = criar('span', 'estado estado-aceito');
+    qtd.textContent = Number(v.quantidade || 0) + ' un';
+    const hora = criar('span', 'sublinha');
+    hora.textContent = horaBR(v.quando);
+    direita.append(qtd, hora);
+    el.appendChild(direita);
+
+    alvo.appendChild(el);
   });
 }
 

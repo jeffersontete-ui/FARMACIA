@@ -117,6 +117,15 @@
       <p class="sublinha">Controlado vendido sem receita escriturada ou sem lote — a causa clássica de recusa.</p>
       <div id="lista-vendas" class="pilha"></div>
       <p id="vendas-vazio" class="vazio" hidden>Nenhuma venda pendente de correção.</p>
+
+      <div class="bloco">
+        <h3>Últimas vendas de controlados</h3>
+        <p id="vendas-recentes-carimbo" class="sublinha"></p>
+        <input id="busca-vendas-recentes" class="busca" type="search" placeholder="Buscar por produto, lote ou número da venda" autocomplete="off">
+        <div id="lista-vendas-recentes" class="pilha"></div>
+        <p class="nota">Atualizado pela tarefa que roda de 5 em 5 minutos no servidor.
+        Uma linha por lote: a mesma venda aparece duas vezes quando sai de dois lotes.</p>
+      </div>
     </section>
 
     <!-- ACEITES -->

@@ -76,9 +76,24 @@ RESPOSTAS = {
          'REGISTRO_MS': '1999900090011', 'QUANTIDADE': 10, 'NUM_LOTE': None,
          'RECEITA': None, 'VENDEDOR': 'BALCAO 2'},
     ],
+    # a mesma venda saindo de DOIS lotes: uma linha por lote, que é como o
+    # SNGPC precisa e como o balcão confere
+    'vendas_recentes': [
+        {'VENDA': 8830, 'QUANDO': datetime.datetime(2026, 8, 13, 14, 32, 5),
+         'PRODUTO': 'CLONAZEPAM 2MG', 'REGISTRO_MS': '1003301220019',
+         'NUM_LOTE': 'L2345A', 'QUANTIDADE': 2},
+        {'VENDA': 8830, 'QUANDO': datetime.datetime(2026, 8, 13, 14, 32, 5),
+         'PRODUTO': 'CLONAZEPAM 2MG', 'REGISTRO_MS': '1003301220019',
+         'NUM_LOTE': 'L9999B', 'QUANTIDADE': 1},
+        {'VENDA': 8829, 'QUANDO': datetime.datetime(2026, 8, 13, 9, 5, 0),
+         'PRODUTO': 'ALPRAZOLAM 1MG', 'REGISTRO_MS': '1444400010023',
+         'NUM_LOTE': 'B77Z', 'QUANTIDADE': 1},
+    ],
     'inventario_sngpc': [
         {'REGISTRO_MS': '1023506630204', 'MEDICAMENTO': 'ALPRAZOLAM', 'LOTE': '5F9779',
          'QUANTIDADE': 8, 'DATA_ATUALIZACAO': '2026-08-05'},
+        {'REGISTRO_MS': '1023506630204', 'MEDICAMENTO': 'ALPRAZOLAM', 'LOTE': '6G1234',
+         'QUANTIDADE': 2, 'DATA_ATUALIZACAO': '2026-08-05'},
         {'REGISTRO_MS': '1057306610050', 'MEDICAMENTO': 'ARIPIPRAZOL', 'LOTE': '2604608',
          'QUANTIDADE': 2, 'DATA_ATUALIZACAO': '2026-08-05'},
         {'REGISTRO_MS': '1122233340001', 'MEDICAMENTO': 'DIAZEPAM', 'LOTE': 'K1',
@@ -88,6 +103,11 @@ RESPOSTAS = {
         # 5 no Digifarma contra 8 na ANVISA -> falta 3
         {'PRODUTO_ID': 100, 'PRODUTO': 'ALPRAZOLAM', 'REGISTRO_MS': '1023506630204',
          'COD_BARRAS': '789', 'NUM_LOTE': '5F9779', 'LOTE_VENCIMENTO': datetime.date(2027, 9, 30), 'SALDO': 5},
+        # segundo lote do MESMO medicamento, e este bate: não vira divergência
+        # e por isso some da lista — mas precisa aparecer no detalhe do outro,
+        # senão o total do Digifarma (7) fica sem explicação
+        {'PRODUTO_ID': 100, 'PRODUTO': 'ALPRAZOLAM', 'REGISTRO_MS': '1023506630204',
+         'COD_BARRAS': '789', 'NUM_LOTE': '6G1234', 'LOTE_VENCIMENTO': datetime.date(2028, 1, 31), 'SALDO': 2},
         # bate certinho
         {'PRODUTO_ID': 200, 'PRODUTO': 'ARIPIPRAZOL', 'REGISTRO_MS': '1057306610050',
          'COD_BARRAS': '790', 'NUM_LOTE': '2604608', 'LOTE_VENCIMENTO': datetime.date(2027, 3, 31), 'SALDO': 2},
@@ -289,13 +309,15 @@ def principal():
     conferir('descobre sozinho a coluna de saldo da tabela LOTES',
              dados['inventario'].get('colunaSaldo') == 'SALDO', dados['inventario'])
     conferir('o inventário vem do INVENTARIO_SNGPC (lado ANVISA)',
-             dados['inventario']['itens'] == 3, dados['inventario'])
+             dados['inventario']['itens'] == 4, dados['inventario'])
 
-    diferencas = {i['ms']: i['diferenca'] for i in dados['itens']}
+    # a chave é M.S. + LOTE: indexar só por M.S. faz um lote apagar o outro,
+    # que é justamente o erro que este projeto passou a semana consertando
+    diferencas = {(i['ms'], i['lote']): i['diferenca'] for i in dados['itens']}
     conferir('diferença de saldo por M.S. + lote',
-             diferencas.get('1023506630204') == -3.0, diferencas)
+             diferencas.get(('1023506630204', '5F9779')) == -3.0, diferencas)
     conferir('lote que bate não vira divergência',
-             diferencas.get('1057306610050') == 0.0, diferencas)
+             diferencas.get(('1057306610050', '2604608')) == 0.0, diferencas)
 
     # o mesmo M.S. + lote em dois cadastros tem que virar UMA linha somada;
     # antes, a primeira levava todo o saldo do SNGPC e a segunda ficava com
@@ -336,11 +358,22 @@ def principal():
     conferir('saldo negativo é dado torto no Digifarma, não sobra',
              ag.classificar_divergencia(
                  {'saldoDigifarma': -2, 'ms': '111'}, 0.0, {'111'}) == 'negativo')
-    # o M.S. do diazepam tem lote K1 nos dois cadastros: o total por M.S.
-    # é o que permite conferir contra a tela do Digifarma, que soma os lotes
+    # medicamento com dois lotes: o que bate some da lista, e sem os irmãos
+    # no detalhe o total do Digifarma fica sem explicação — foi o caso da
+    # pregabalina, 6 no app contra 9 na tela do Digifarma
+    alpra_div = next(i for i in dados['itens']
+                     if i['ms'] == '1023506630204' and i['lote'] == '5F9779')
+    conferir('o total por M.S. soma os dois lotes',
+             alpra_div.get('saldoDigifarmaMs') == 7.0
+             and alpra_div.get('saldoSngpcMs') == 10.0, alpra_div)
+    conferir('o detalhe lista TODOS os lotes do medicamento, inclusive o que bate',
+             [(l['lote'], l['digifarma'], l['sngpc']) for l in alpra_div.get('lotesDoMs', [])]
+             == [('5F9779', 5.0, 8.0), ('6G1234', 2.0, 2.0)], alpra_div.get('lotesDoMs'))
+    conferir('o lote que bate continua fora da lista de divergências',
+             not any(i['lote'] == '6G1234' and i['diferenca'] for i in dados['itens']))
     conferir('medicamento de um lote só não carrega total por M.S.',
              'saldoDigifarmaMs' not in next(
-                 i for i in dados['itens'] if i['ms'] == '1023506630204'))
+                 i for i in dados['itens'] if i['ms'] == '1057306610050'))
 
     negativo = next(i for i in dados['itens'] if i['lote'] == 'BLGH23013')
     conferir('lote negativo não é classificado como sobra',
@@ -383,6 +416,26 @@ def principal():
 
     conferir('venda de controlado sem receita é classificada',
              dados['vendas_problema'][0]['motivo'] == 'sem_receita')
+
+    # ------------------------------------------------------------
+    # acompanhamento das vendas, de 5 em 5 minutos
+    # ------------------------------------------------------------
+    recentes = dados.get('vendasRecentes', [])
+    conferir('as vendas recentes trazem venda, hora, lote e quantidade',
+             len(recentes) == 3
+             and recentes[0]['venda'] == 8830
+             and recentes[0]['quando'] == '2026-08-13T14:32:05'
+             and recentes[0]['lote'] == 'L2345A'
+             and recentes[0]['quantidade'] == 2, recentes[:1])
+    conferir('a hora da venda não é cortada como as datas',
+             ':' in (recentes[0]['quando'] if recentes else ''),
+             recentes[0] if recentes else None)
+    dois_lotes = [v for v in recentes if v['venda'] == 8830]
+    conferir('venda que sai de dois lotes vira duas linhas',
+             len(dois_lotes) == 2
+             and {v['lote'] for v in dois_lotes} == {'L2345A', 'L9999B'}, dois_lotes)
+    conferir('o carimbo diz quando as vendas foram publicadas',
+             bool(dados.get('vendasRecentesEm')))
 
     conferir('o XML da transmissão é arquivado em enviados\\',
              os.path.exists(os.path.join(pasta, 'enviados', 'sngpc_%s.xml' % hoje)))
