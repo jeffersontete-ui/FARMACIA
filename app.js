@@ -184,7 +184,10 @@ auth.onAuthStateChanged(async (user) => {
   }
   $('tela-login').hidden = true;
   ligarEscutas();
-  await portaDaSenha();
+  // A senha da farmácia foi dispensada: o login por e-mail do Firebase já
+  // identifica quem entrou, e as regras do banco só liberam quem está em
+  // farmacia/autorizados. Para exigi-la de novo, troque por portaDaSenha().
+  escolherOperador();
 });
 
 /* ============================================================
