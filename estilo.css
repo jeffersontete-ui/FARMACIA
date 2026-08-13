@@ -181,6 +181,7 @@ main{padding:16px 16px 96px;max-width:900px;margin:0 auto}
 .estado-pendente{background:var(--ambar-claro);color:var(--ambar)}
 
 /* ---------- modal ---------- */
+.modal[hidden]{display:none}
 .modal{position:fixed;inset:0;z-index:50;background:rgba(22,22,22,.55);display:flex;align-items:flex-end;justify-content:center}
 .modal-caixa{
   background:var(--cartao);width:100%;max-width:560px;max-height:92dvh;overflow:auto;
