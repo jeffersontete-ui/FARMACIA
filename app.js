@@ -1,11 +1,11 @@
 /* FARMÁCIA — SNGPC
    Conferência Digifarma × SNGPC. O app só LÊ farmacia/inventario:
    quem escreve ali é o agente que roda no servidor da farmácia.
-   O app escreve em farmacia/aceites, farmacia/comando, farmacia/config
-   e farmacia/operadores.
+   O app escreve em farmacia/aceites, farmacia/comando e farmacia/operadores.
 
    Regras do projeto respeitadas aqui:
-   - senha do app guardada como hash SHA-256 em farmacia/config (nunca no código);
+   - quem entra é identificado pelo login do Firebase; ler o inventário
+     depende do UID estar em farmacia/autorizados;
    - nada de prompt()/confirm() nativos: modais próprios;
    - localStorage só para preferência do aparelho;
    - o aceite da ANVISA é marcado à mão, com nome de quem marcou.
@@ -26,7 +26,6 @@ const CONFIG_FIREBASE = {
 };
 
 const CHAVE_OPERADOR = 'farmacia.operador';
-const CHAVE_SESSAO = 'farmacia.senhaOk';   // só nesta sessão do aparelho
 
 firebase.initializeApp(CONFIG_FIREBASE);
 const auth = firebase.auth();
@@ -40,7 +39,6 @@ const estado = {
   inventario: {},   // farmacia/inventario
   aceites: {},      // farmacia/aceites
   comando: null,    // farmacia/comando
-  config: {},       // farmacia/config
   operadores: [],
   vista: 'painel',
   buscaSaldo: '',
@@ -85,12 +83,6 @@ function combina(obj, termo, campos) {
   if (!termo) return true;
   const t = normalizar(termo);
   return campos.some((c) => normalizar(obj[c]).includes(t));
-}
-
-async function sha256(texto) {
-  const bytes = new TextEncoder().encode(texto);
-  const hash = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 function lista(no) {
@@ -168,8 +160,7 @@ $('btn-entrar').onclick = async () => {
 $('login-senha').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-entrar').click(); });
 
 $('btn-sair').onclick = async () => {
-  if (!(await confirmar('Sair do app', 'Você vai precisar entrar de novo e digitar a senha da farmácia.', 'Sair', 'botao-perigo'))) return;
-  sessionStorage.removeItem(CHAVE_SESSAO);
+  if (!(await confirmar('Sair do app', 'Você vai precisar entrar de novo com o seu e-mail e senha.', 'Sair', 'botao-perigo'))) return;
   desligarEscutas();
   await auth.signOut();
 };
@@ -177,95 +168,21 @@ $('btn-sair').onclick = async () => {
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
     desligarEscutas();
-    ['app', 'tela-senha', 'tela-operador'].forEach((id) => { $(id).hidden = true; });
+    ['app', 'tela-operador'].forEach((id) => { $(id).hidden = true; });
     $('tela-login').hidden = false;
     $('login-senha').value = '';
     return;
   }
   $('tela-login').hidden = true;
   ligarEscutas();
-  // A senha da farmácia foi dispensada: o login por e-mail do Firebase já
-  // identifica quem entrou, e as regras do banco só liberam quem está em
-  // farmacia/autorizados. Para exigi-la de novo, troque por portaDaSenha().
+  // Não há senha de farmácia: o login por e-mail do Firebase já identifica
+  // quem entrou, e as regras do banco só liberam quem está em
+  // farmacia/autorizados.
   escolherOperador();
 });
 
 /* ============================================================
-   6. SENHA DO APP (hash em farmacia/config)
-   ============================================================ */
-async function portaDaSenha() {
-  if (sessionStorage.getItem(CHAVE_SESSAO) === '1') { escolherOperador(); return; }
-  let salvo = null;
-  try {
-    salvo = (await db.ref('farmacia/config/senhaHash').get()).val();
-  } catch (e) {
-    $('barra-estado').textContent = 'Sem acesso a farmacia/config — verifique se o seu UID está em farmacia/autorizados.';
-    $('barra-estado').hidden = false;
-  }
-  $('tela-senha').hidden = false;
-  $('senha-primeira').hidden = !!salvo;
-  $('senha-app').value = '';
-  $('senha-app').focus();
-}
-
-$('btn-senha').onclick = async () => {
-  const erro = $('senha-erro');
-  erro.hidden = true;
-  const digitada = $('senha-app').value;
-  if (!digitada) { erro.textContent = 'Digite a senha.'; erro.hidden = false; return; }
-  const salvo = (await db.ref('farmacia/config/senhaHash').get()).val();
-  if (!salvo) { erro.textContent = 'Ainda não há senha definida. Use o botão abaixo para definir esta.'; erro.hidden = false; $('senha-primeira').hidden = false; return; }
-  if (await sha256(digitada) !== salvo) { erro.textContent = 'Senha incorreta.'; erro.hidden = false; return; }
-  sessionStorage.setItem(CHAVE_SESSAO, '1');
-  $('tela-senha').hidden = true;
-  escolherOperador();
-};
-$('senha-app').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-senha').click(); });
-
-$('btn-definir-senha').onclick = async () => {
-  const nova = $('senha-app').value;
-  if (nova.length < 6) { $('senha-erro').textContent = 'Use pelo menos 6 caracteres.'; $('senha-erro').hidden = false; return; }
-  if (!(await confirmar('Definir senha da farmácia', 'Esta senha passa a valer para todo mundo que abrir o app. Só o hash é guardado.', 'Definir'))) return;
-  await db.ref('farmacia/config').update({ senhaHash: await sha256(nova), senhaDefinidaEm: agora() });
-  sessionStorage.setItem(CHAVE_SESSAO, '1');
-  $('tela-senha').hidden = true;
-  avisar('Senha definida.');
-  escolherOperador();
-};
-
-$('btn-config').onclick = () => {
-  const corpo = criar('div');
-  corpo.innerHTML = `
-    <label class="campo"><span>Senha atual</span><input id="c-atual" type="password" autocomplete="off"></label>
-    <label class="campo"><span>Nova senha</span><input id="c-nova" type="password" autocomplete="off"></label>
-    <p id="c-erro" class="aviso-erro" hidden></p>
-    <p class="nota">Só o hash SHA-256 vai para o banco, em <code>farmacia/config</code>.
-    A senha em si não fica no código nem no aparelho.</p>
-  `;
-  abrirModal({
-    titulo: 'Senha da farmácia',
-    corpo,
-    acoes: [
-      { texto: 'Fechar', aoClicar: fecharModal },
-      {
-        texto: 'Trocar senha', estilo: 'botao-principal', aoClicar: async () => {
-          const erro = $('c-erro');
-          erro.hidden = true;
-          const atual = $('c-atual').value, nova = $('c-nova').value;
-          const salvo = (await db.ref('farmacia/config/senhaHash').get()).val();
-          if (salvo && await sha256(atual) !== salvo) { erro.textContent = 'Senha atual incorreta.'; erro.hidden = false; return; }
-          if (nova.length < 6) { erro.textContent = 'A nova senha precisa de pelo menos 6 caracteres.'; erro.hidden = false; return; }
-          await db.ref('farmacia/config').update({ senhaHash: await sha256(nova), senhaDefinidaEm: agora(), senhaDefinidaPor: estado.operador });
-          fecharModal();
-          avisar('Senha trocada.');
-        }
-      }
-    ]
-  });
-};
-
-/* ============================================================
-   7. OPERADOR
+   6. OPERADOR
    ============================================================ */
 function escolherOperador() {
   const salvo = localStorage.getItem(CHAVE_OPERADOR);
@@ -305,7 +222,7 @@ function entrarNoApp(nome) {
 }
 
 /* ============================================================
-   8. SINCRONIZAÇÃO (só leitura do inventário)
+   7. SINCRONIZAÇÃO (só leitura do inventário)
    ============================================================ */
 const escutas = [];
 
@@ -326,7 +243,6 @@ function ligarEscutas() {
   escutar('farmacia/inventario', (v) => { estado.inventario = v || {}; pintar(); });
   escutar('farmacia/aceites', (v) => { estado.aceites = v || {}; if (estado.vista === 'aceites') pintarAceites(); });
   escutar('farmacia/comando', (v) => { estado.comando = v; pintarComando(); });
-  escutar('farmacia/config', (v) => { estado.config = v || {}; });
   escutar('farmacia/operadores', (v) => {
     estado.operadores = Array.isArray(v) ? v.filter(Boolean) : Object.values(v || {});
     pintarOperadores();
@@ -339,7 +255,7 @@ function desligarEscutas() {
 }
 
 /* ============================================================
-   9. BOTÕES QUE PEDEM AO AGENTE (farmacia/comando)
+   8. BOTÕES QUE PEDEM AO AGENTE (farmacia/comando)
    ============================================================ */
 async function pedirAoAgente(acao, rotulo) {
   await db.ref('farmacia/comando').set({
@@ -375,7 +291,7 @@ function pintarComando() {
 }
 
 /* ============================================================
-   10. NAVEGAÇÃO
+   9. NAVEGAÇÃO
    ============================================================ */
 function irPara(vista) {
   estado.vista = vista;
@@ -389,7 +305,7 @@ $('busca-saldo').oninput = (e) => { estado.buscaSaldo = e.target.value; pintarSa
 $('busca-xml').oninput = (e) => { estado.buscaXml = e.target.value; pintarXml(); };
 
 /* ============================================================
-   11. DESENHO
+   10. DESENHO
    ============================================================ */
 function divergenciasDeSaldo() {
   return lista('itens').filter((i) => Number(i.diferenca || 0) !== 0);
@@ -653,7 +569,7 @@ function pintarVendas() {
 }
 
 /* ============================================================
-   12. ACEITES
+   11. ACEITES
    ============================================================ */
 function datasDeEnvio() {
   const datas = new Set(Object.keys(estado.aceites || {}));
@@ -721,7 +637,7 @@ async function marcarAceite(data, status) {
 }
 
 /* ============================================================
-   13. PWA
+   12. PWA
    ============================================================ */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

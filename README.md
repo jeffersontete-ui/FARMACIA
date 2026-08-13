@@ -3,7 +3,7 @@
 Conferência do estoque de controlados entre o **Digifarma** e o que foi
 **transmitido ao SNGPC**. Duas peças:
 
-- o **app web** (PWA, GitHub Pages), com senha própria do farmacêutico;
+- o **app web** (PWA, GitHub Pages), com login por e-mail do Firebase;
 - o **agente Python** (pasta `agente/`), que roda no servidor da farmácia,
   lê o Firebird do Digifarma e publica em `farmacia/inventario`.
 
@@ -150,7 +150,6 @@ farmacia/inventario   escrito só pelo agente; lido pelo app
                         pendentes{vendas,entradas,perdas,transferencias},
                         resumoPendentes{}, conferencia_xml[],
                         vendas_problema[], anvisa{}, enviosConhecidos[] }
-farmacia/config       hash SHA-256 da senha do app (a senha não fica no código)
 farmacia/aceites      { "2026-08-10": { status, por, em } }
 farmacia/operadores   nomes da equipe (compartilhado com o ESTOQUE)
 farmacia/comando      pedido dos botões do app; o agente atende e marca
@@ -178,11 +177,13 @@ O `uid_agente` do `agente_config.json` precisa bater com a chave criada em
 `databaseAuthVariableOverride`, então as regras valem para ele também — a
 chave de serviço não vira passe livre.
 
-## Senha do app
+## Quem entra
 
-Definida na primeira abertura, ou trocada em **Config**. Só o hash SHA-256
-vai para `farmacia/config`. A senha em si não fica no código, no
-repositório nem no aparelho.
+Só o login por e-mail do Firebase (Authentication > Usuários). Não há
+segunda senha: quem consegue ler o inventário é quem tem o UID em
+`farmacia/autorizados`, e isso é decidido pelas regras do banco, não
+pelo app. Para liberar mais alguém, crie o usuário em Authentication e
+acrescente o UID dele em `farmacia/autorizados`.
 
 ## Decisões que valem lembrar
 
