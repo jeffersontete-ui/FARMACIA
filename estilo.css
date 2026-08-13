@@ -139,15 +139,23 @@ main{padding:16px 16px 96px;max-width:900px;margin:0 auto}
   padding-bottom:env(safe-area-inset-bottom);
 }
 .nav-item{
-  flex:1;border:0;background:transparent;padding:12px 4px;
-  font-size:12px;font-weight:650;color:var(--tinta-fraca);
-  cursor:pointer;position:relative;min-height:56px;
+  flex:1;border:0;background:transparent;padding:8px 4px 10px;
+  font-size:11px;font-weight:650;color:var(--tinta-fraca);
+  cursor:pointer;position:relative;min-height:60px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
 }
+.nav-icone{
+  width:23px;height:23px;flex-shrink:0;
+  fill:none;stroke:currentColor;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round;
+}
+.nav-rotulo{letter-spacing:.01em}
 .nav-ativo{color:var(--tinta);box-shadow:inset 0 3px 0 var(--tarja)}
+.nav-ativo .nav-icone{stroke-width:2.2}
 .selo{
-  position:absolute;top:8px;left:50%;margin-left:12px;
+  position:absolute;top:5px;left:50%;margin-left:4px;
   background:var(--faixa-falta);color:#fff;font-size:10px;line-height:1;
-  padding:3px 5px;border-radius:999px;
+  padding:3px 5px;border-radius:999px;font-variant-numeric:tabular-nums;
 }
 .busca{width:100%;padding:12px;margin:10px 0 14px;border:1px solid var(--linha);border-radius:6px;background:var(--campo)}
 
@@ -270,6 +278,19 @@ main{padding:16px 16px 96px;max-width:900px;margin:0 auto}
 .barra-estado{background:var(--vermelho-claro);color:var(--vermelho);padding:8px 16px;font-size:13px;font-weight:600;text-align:center}
 .vazio{color:var(--tinta-fraca);text-align:center;padding:40px 20px;font-size:15px;border:1px dashed var(--linha);border-radius:var(--raio)}
 
+/* cabeçalho de grupo dentro da pilha: separa sem virar mais um cartão */
+.grupo-saldo{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  margin:20px 2px 2px;font-size:12px;letter-spacing:.08em;
+  color:var(--tinta-fraca);text-transform:uppercase;
+}
+.pilha>.grupo-saldo:first-child{margin-top:4px}
+.grupo-conta{
+  background:var(--linha);color:var(--tinta);border-radius:999px;
+  padding:2px 9px;font-size:11px;letter-spacing:0;font-variant-numeric:tabular-nums;
+  font-weight:700;
+}
+
 /* ---------- resposta ao toque ----------
    Num celular sem cursor, o único jeito de saber que o toque pegou é o
    elemento reagir. Sem isto, quem toca duas vezes achando que falhou. */
@@ -287,10 +308,17 @@ main{padding:16px 16px 96px;max-width:900px;margin:0 auto}
 .nav-ativo{box-shadow:inset 0 3px 0 var(--tarja)}
 
 /* ---------- entrada com mais respiro ---------- */
+.tela-cheia{background:var(--papel)}
+.cartao-entrada{padding:30px 26px 26px}
 .cartao-entrada .marca{font-size:16px}
 .titulo-entrada{margin:22px 0 2px;font-size:28px;letter-spacing:-.02em}
+.cartao-entrada .sublinha{margin:8px 0 18px;max-width:34ch}
 .cartao-entrada .botao-principal{margin-top:20px}
 .grade-operadores:empty{display:none}
+.rodape-entrada{
+  margin:18px 0 0;padding-top:14px;border-top:1px solid var(--linha);
+  font-size:12.5px;color:var(--tinta-fraca);line-height:1.5;
+}
 
 /* quem pede menos movimento no sistema não quer o detalhe deslizando */
 @media (prefers-reduced-motion: reduce){

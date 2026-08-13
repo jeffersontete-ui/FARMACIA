@@ -292,6 +292,24 @@ Escrever num filho de `farmacia/inventario` é de propósito: a regra do banco
 já libera esse caminho para o agente, então não é preciso republicar regras.
 E a sincronização completa, que é cara, continua de hora em hora.
 
+### A tarja como identidade
+
+A referência visual é a **tarja preta da caixa de controlado**, e ela
+aparece em tudo: no ícone do app, na borda do topo, na faixa de cada
+divergência, no botão principal. Os ícones do app são gerados a partir de
+SVG (`agente/` não entra nisso — é arte, não código de servidor), com duas
+variantes: `any`, que usa a arte inteira, e `maskable`, que desenha a mesma
+caixa menor porque o Android recorta o ícone em círculo e comeria os cantos.
+
+A aba Saldo agrupa as divergências por tipo, na ordem em que se resolvem —
+dado torto no Digifarma primeiro, porque reaparece em toda conferência;
+depois o que sumiu do estoque e o SNGPC ainda acusa; por último o que a
+ANVISA só não recebeu ainda. Dentro do grupo, a maior diferença vem antes.
+A faixa de cada linha mostra a comparação (`Digifarma 6 · SNGPC 0`) em vez
+de repetir o nome do grupo logo acima dela.
+
+O app segue o modo claro ou escuro do aparelho.
+
 ### Diagnóstico à distância
 
 Quase todo diagnóstico deste projeto exigiu alguém sentado no servidor

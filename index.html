@@ -19,10 +19,14 @@
   <div class="cartao-entrada">
     <p class="marca">Farmácia<span class="tarja">SNGPC</span></p>
     <h1 class="titulo-entrada">Entrar</h1>
+    <p class="sublinha">Conferência do estoque de controlados entre o Digifarma e o
+    que foi transmitido à ANVISA.</p>
     <label class="campo"><span>E-mail</span><input id="login-email" type="email" autocomplete="username" inputmode="email"></label>
     <label class="campo"><span>Senha da conta</span><input id="login-senha" type="password" autocomplete="current-password"></label>
     <p id="login-erro" class="aviso-erro" hidden></p>
     <button id="btn-entrar" class="botao botao-principal">Entrar</button>
+    <p class="rodape-entrada">O acesso é liberado por UID no Firebase. Fale com o
+    responsável técnico se não conseguir entrar.</p>
   </div>
 </section>
 
@@ -31,9 +35,9 @@
   <div class="cartao-entrada">
     <p class="marca">Farmácia<span class="tarja">SNGPC</span></p>
     <h1 class="titulo-entrada">Quem está conferindo?</h1>
-    <p class="sublinha">O nome fica gravado em cada aceite marcado.</p>
+    <p class="sublinha">O nome fica gravado em cada aceite marcado, e só neste aparelho.</p>
     <div id="lista-operadores" class="grade-operadores"></div>
-    <label class="campo"><span>Ou digite um nome novo</span><input id="operador-novo" type="text" autocomplete="off"></label>
+    <label class="campo"><span>Ou digite um nome novo</span><input id="operador-novo" type="text" autocomplete="off" enterkeyhint="go"></label>
     <button id="btn-operador" class="botao botao-principal">Começar</button>
   </div>
 </section>
@@ -165,12 +169,39 @@
     </section>
   </main>
 
+  <!-- Ícones num sprite: cinco <use> pesam menos que cinco <svg> inteiros,
+       e o traço herda a cor do botão, então o item ativo escurece junto. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <g id="i-situacao"><path d="M3 12h4l3 7 4-14 3 7h4"/></g>
+      <g id="i-saldo"><path d="M12 4v16M5 8l-3 6h6zM19 8l-3 6h6zM5 8h14"/></g>
+      <g id="i-xml"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5"/><path d="M10 13l-1.5 2L10 17M14 13l1.5 2L14 17"/></g>
+      <g id="i-vendas"><path d="M4 4h11l5 5v11a1 1 0 0 1-1.5.9L15 19l-3 2-3-2-3.5 1.9A1 1 0 0 1 4 20z"/><path d="M8 9h6M8 13h8"/></g>
+      <g id="i-aceites"><path d="M20 6 9 17l-5-5"/></g>
+    </defs>
+  </svg>
+
   <nav class="navegacao">
-    <button class="nav-item nav-ativo" data-vista="painel">Situação</button>
-    <button class="nav-item" data-vista="saldo">Saldo<span id="selo-saldo" class="selo" hidden>0</span></button>
-    <button class="nav-item" data-vista="xml">XML<span id="selo-xml" class="selo" hidden>0</span></button>
-    <button class="nav-item" data-vista="vendas">Vendas<span id="selo-vendas" class="selo" hidden>0</span></button>
-    <button class="nav-item" data-vista="aceites">Aceites</button>
+    <button class="nav-item nav-ativo" data-vista="painel">
+      <svg class="nav-icone" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-situacao"/></svg>
+      <span class="nav-rotulo">Situação</span>
+    </button>
+    <button class="nav-item" data-vista="saldo">
+      <svg class="nav-icone" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-saldo"/></svg>
+      <span class="nav-rotulo">Saldo</span><span id="selo-saldo" class="selo" hidden>0</span>
+    </button>
+    <button class="nav-item" data-vista="xml">
+      <svg class="nav-icone" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-xml"/></svg>
+      <span class="nav-rotulo">XML</span><span id="selo-xml" class="selo" hidden>0</span>
+    </button>
+    <button class="nav-item" data-vista="vendas">
+      <svg class="nav-icone" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-vendas"/></svg>
+      <span class="nav-rotulo">Vendas</span><span id="selo-vendas" class="selo" hidden>0</span>
+    </button>
+    <button class="nav-item" data-vista="aceites">
+      <svg class="nav-icone" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-aceites"/></svg>
+      <span class="nav-rotulo">Aceites</span>
+    </button>
   </nav>
 </div>
 

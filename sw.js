@@ -4,7 +4,7 @@
 /* Trocar a VERSAO a cada publicação do app: o fetch aqui é cache-first, e
    sem versão nova o celular que já instalou continua servindo o app.js
    antigo do cache — a atualização sobe para o GitHub Pages e ninguém vê. */
-const VERSAO = 'farmacia-sngpc-v5';
+const VERSAO = 'farmacia-sngpc-v6';
 const CASCA = [
   './',
   './index.html',
@@ -13,7 +13,8 @@ const CASCA = [
   './manifest.json',
   './icon-180.png',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  './icon-512-maskable.png'
 ];
 
 self.addEventListener('install', (e) => {

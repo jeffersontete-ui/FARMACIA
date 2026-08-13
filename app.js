@@ -531,6 +531,11 @@ const MOTIVO_SALDO = {
     'O próprio Digifarma está com saldo negativo neste lote: saída lançada sem a entrada. Corrija no Digifarma.']
 };
 
+/* Ordem de gravidade, não alfabética: é a ordem em que a farmácia resolve.
+   Um motivo fora desta lista cai no fim, que é o certo para o desconhecido. */
+const ORDEM_MOTIVO = ['negativo', 'so_na_anvisa', 'quantidade',
+  'anvisa_zerada_lote', 'anvisa_zerada_produto'];
+
 function pintarAlertaSaldo() {
   const barra = $('saldo-alerta');
   const inv = estado.inventario?.inventario;
@@ -594,12 +599,32 @@ function pintarSaldo() {
   pintarSemMs();
   const alvo = $('lista-saldo');
   alvo.innerHTML = '';
+  // Cem itens numa lista corrida não se trabalha. Cada tipo se resolve num
+  // lugar diferente, então a lista vem agrupada — e a ordem dos grupos é a
+  // ordem de gravidade: dado torto no Digifarma primeiro, porque reaparece
+  // em toda conferência; depois o que sumiu do estoque e o SNGPC ainda
+  // acusa; por último o que a ANVISA só não recebeu ainda.
   const itens = divergenciasDeSaldo()
     .filter((i) => combina(i, estado.buscaSaldo, ['descricao', 'ms', 'ean', 'lote', 'codigo']))
-    .sort((a, b) => Math.abs(Number(b.diferenca || 0)) - Math.abs(Number(a.diferenca || 0)));
+    .sort((a, b) => (ORDEM_MOTIVO.indexOf(a.motivo) - ORDEM_MOTIVO.indexOf(b.motivo))
+      || (Math.abs(Number(b.diferenca || 0)) - Math.abs(Number(a.diferenca || 0))));
   $('saldo-vazio').hidden = itens.length > 0 || !!estado.buscaSaldo;
 
+  const quantosPorMotivo = {};
+  itens.forEach((i) => { quantosPorMotivo[i.motivo] = (quantosPorMotivo[i.motivo] || 0) + 1; });
+
+  let grupoAtual = null;
   itens.forEach((i, n) => {
+    if (i.motivo && i.motivo !== grupoAtual) {
+      grupoAtual = i.motivo;
+      const cabeca = criar('h3', 'grupo-saldo');
+      const nome = criar('span');
+      nome.textContent = MOTIVO_SALDO[grupoAtual]?.[0] || grupoAtual;
+      const conta = criar('span', 'grupo-conta');
+      conta.textContent = quantosPorMotivo[grupoAtual];
+      cabeca.append(nome, conta);
+      alvo.appendChild(cabeca);
+    }
     const dif = Number(i.diferenca || 0);
     const [rotulo, classe, explicacao] = MOTIVO_SALDO[i.motivo]
       || [dif < 0 ? 'Falta no Digifarma' : 'Sobra no Digifarma', dif < 0 ? 'falta' : 'sobra', ''];
@@ -677,7 +702,15 @@ function pintarSaldo() {
         i.lote && 'Lote ' + i.lote,
         i.validade && 'Val. ' + i.validade
       ],
-      tarja: [rotulo, (dif > 0 ? '+' : '') + dif],
+      // Dentro de um grupo, repetir o rótulo na tarja é desperdiçar a única
+      // faixa que a linha tem. Ali vai a comparação, que é o que se quer ver
+      // sem abrir: quanto tem de cada lado.
+      tarja: [
+        i.motivo
+          ? 'Digifarma ' + Number(i.saldoDigifarma || 0) + ' · SNGPC ' + Number(i.saldoSngpc || 0)
+          : rotulo,
+        (dif > 0 ? '+' : '') + dif
+      ],
       tarjaClasse: classe,
       detalhe
     }));
