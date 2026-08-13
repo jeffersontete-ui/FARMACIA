@@ -358,6 +358,11 @@ def principal():
     conferir('saldo negativo é dado torto no Digifarma, não sobra',
              ag.classificar_divergencia(
                  {'saldoDigifarma': -2, 'ms': '111'}, 0.0, {'111'}) == 'negativo')
+    # a chave é M.S. + lote: sem M.S. não há comparação possível, e chamar
+    # isso de "zerado na ANVISA" manda conferir prateleira à toa
+    conferir('produto sem registro M.S. não é divergência de estoque',
+             ag.classificar_divergencia(
+                 {'saldoDigifarma': 4, 'ms': ''}, 0.0, {'111'}) == 'sem_ms')
     # medicamento com dois lotes: o que bate some da lista, e sem os irmãos
     # no detalhe o total do Digifarma fica sem explicação — foi o caso da
     # pregabalina, 6 no app contra 9 na tela do Digifarma

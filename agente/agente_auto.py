@@ -803,6 +803,12 @@ def classificar_divergencia(registro, saldo_anvisa, ms_no_inventario):
         # o Digifarma é a verdade, mas aqui a verdade dele está torta:
         # saída lançada sem a entrada correspondente
         return 'negativo'
+    if not registro['ms']:
+        # a chave da comparação é M.S. + lote. Sem M.S. o item não pode
+        # casar com a ANVISA nem por acaso: qualquer diferença que apareça
+        # é do cadastro, não do estoque, e mandar conferir prateleira por
+        # causa dela é trabalho jogado fora.
+        return 'sem_ms'
     if not saldo_anvisa:
         return ('anvisa_zerada_produto' if registro['ms'] not in ms_no_inventario
                 else 'anvisa_zerada_lote')
@@ -1482,6 +1488,19 @@ def modo_tarefas(config):
         escrever('   %-42s M.S. %-14s comprado %g · vendas e perdas %g · outras saídas %g'
                  % ('', i['ms'] or '(sem M.S.)', comprado, baixado, outras))
 
+    # ---------- 1b ----------
+    sem_registro = sorted(por_motivo.get('sem_ms', []),
+                          key=lambda i: -i['saldoDigifarma'])
+    if sem_registro:
+        escrever('')
+        escrever('1b. CADASTRAR O REGISTRO M.S. — %d lote(s)' % len(sem_registro))
+        escrever('   A conferência casa por M.S. + lote. Estes não têm M.S. no cadastro')
+        escrever('   do Digifarma, então não podem casar com a ANVISA nem por acaso.')
+        escrever('')
+        for i in sem_registro:
+            escrever('   %-42s lote %-14s Digifarma %g' % (
+                i['descricao'][:42], i['lote'] or '(vazio)', i['saldoDigifarma']))
+
     # ---------- 2 ----------
     escrituracao = (sorted(por_motivo.get('anvisa_zerada_produto', []),
                            key=lambda i: -i['saldoDigifarma'])
@@ -1640,6 +1659,14 @@ def modo_resumo(config):
                 break
             print('      %-40s lote %-12s Digifarma %-8g ANVISA %g'
                   % (descricao.get(k, '')[:40], k[1], digi[k], anvisa[k]))
+
+        sem_ms = [k for k in digi if not k[0]]
+        if sem_ms:
+            print('\n  lotes com saldo e SEM registro M.S. no cadastro: %d' % len(sem_ms))
+            print('  (não podem casar com a ANVISA: a chave é M.S. + lote)')
+            for k in sorted(sem_ms, key=lambda k: -digi[k])[:10]:
+                print('      %-40s lote %-12s %g'
+                      % (descricao.get(k, '')[:40], k[1], digi[k]))
 
         negativos = [k for k in digi if digi[k] < 0]
         if negativos:

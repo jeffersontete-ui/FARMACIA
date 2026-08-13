@@ -469,6 +469,8 @@ function definicoes(pares) {
    não subiu ao SNGPC não é a mesma coisa que uma contagem que não fecha. A
    tarja diz qual é qual; o agente classifica em farmacia/inventario. */
 const MOTIVO_SALDO = {
+  sem_ms: ['Produto sem registro M.S. no Digifarma', 'falta',
+    'A conferência casa por registro M.S. + lote. Sem M.S. no cadastro, este item não pode casar com a ANVISA de jeito nenhum — a diferença aqui é do cadastro, não do estoque. Cadastre o registro no Digifarma e ele volta a ser conferível.'],
   anvisa_zerada_produto: ['Zerado na ANVISA — nenhum lote deste registro', 'sobra',
     'A ANVISA não tem saldo em lote nenhum deste registro M.S. Pode ser entrada que não subiu, ou saldo errado no Digifarma. Confira o estoque físico antes de mexer na escrituração.'],
   anvisa_zerada_lote: ['Zerado na ANVISA — o registro tem outros lotes', 'sobra',

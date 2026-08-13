@@ -185,6 +185,30 @@ rode `--saldo` para ver a conta e fixe no `agente_config.json`:
 { "coluna_saldo": "QUANTIDADE", "modo_saldo": "saldo" }
 ```
 
+### A regra da comparação
+
+**Registro M.S. + número do lote → quantidade.** Dois lotes só são o mesmo
+lote se o M.S. e o número do lote baterem; aí as quantidades são comparadas.
+
+O M.S. é normalizado para só dígitos dos dois lados (`1.0525.0018.018-9` e
+`1052500180189` são o mesmo registro) e o lote é comparado em maiúsculas.
+Nada além disso: nem zero à esquerda ignorado, nem pontuação removida —
+o `--resumo` mediu quantas divergências sumiriam com um casamento mais
+frouxo e deu **zero**, então afrouxar só criaria risco de juntar lotes
+diferentes.
+
+**O nome do medicamento não entra na chave**, de propósito. Os dois lados
+escrevem diferente — `ESCITALOPRAM 10MG` no Digifarma contra
+`ESCITALOPRAM OXALATO 10 MG NOVA QUIMICA` —, e casar por nome perderia
+lotes que hoje casam. Na base da Drogaria Humanae a questão nem se coloca:
+`INVENTARIO_SNGPC` só tem `REGISTRO_MS`, `NUM_LOTE` e `SALDO_LOTE`, sem
+coluna de descrição. O nome existe para quem lê a linha.
+
+Corolário: **produto sem M.S. no cadastro não pode ser conferido.** A chave
+fica pela metade e o item nunca casa, apareça o que aparecer na tela. Esses
+saem com `motivo: sem_ms` e uma seção própria no `--tarefas`, porque o
+conserto é cadastrar o registro, não contar prateleira.
+
 ### Lote, não produto
 
 A conferência é **por M.S. + lote**, porque é assim que o SNGPC guarda o
@@ -238,6 +262,7 @@ mostra isso na tarja:
 
 | `motivo` | O que é | Por onde começar |
 |---|---|---|
+| `sem_ms` | o produto não tem registro M.S. no cadastro do Digifarma | cadastrar o M.S.: sem ele não há comparação possível |
 | `anvisa_zerada_produto` | a ANVISA não tem saldo em lote nenhum desse registro M.S. | conferir o estoque físico e o saldo do Digifarma |
 | `anvisa_zerada_lote` | a ANVISA tem outros lotes do medicamento, mas não esse | conferir o número do lote e a entrada dele |
 | `quantidade` | os dois lados têm o lote, com contagens diferentes | conferência de prateleira |
