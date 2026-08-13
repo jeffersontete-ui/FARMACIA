@@ -60,6 +60,11 @@ RESPOSTAS = {
         {'CAB_NOTA_ID': 3315, 'NOTA_FISCAL': '206800', 'DATA_RECEBIMENTO': datetime.date(2026, 8, 6),
          'PRODUTO': 'ALPRAZOLAM', 'REGISTRO_MS': '1444400010023', 'COD_BARRAS': '790',
          'NUM_LOTE': 'B77Z', 'QUANTIDADE': 20},
+        # entrada de 3 no lote 6G1234 DEPOIS do envio: o inventário do SNGPC
+        # ainda mostra 2, e o Digifarma já mostra 5. Não é divergência.
+        {'CAB_NOTA_ID': 3316, 'NOTA_FISCAL': '206801', 'DATA_RECEBIMENTO': datetime.date(2026, 8, 6),
+         'PRODUTO': 'ALPRAZOLAM', 'REGISTRO_MS': '1023506630204', 'COD_BARRAS': '789',
+         'NUM_LOTE': '6G1234', 'QUANTIDADE': 3},
     ],
     'perdas_pendentes': [],
     'transferencias_pendentes': [],
@@ -76,9 +81,41 @@ RESPOSTAS = {
          'REGISTRO_MS': '1999900090011', 'QUANTIDADE': 10, 'NUM_LOTE': None,
          'RECEITA': None, 'VENDEDOR': 'BALCAO 2'},
     ],
+    # a mesma venda saindo de DOIS lotes: uma linha por lote, que é como o
+    # SNGPC precisa e como o balcão confere
+    'vendas_recentes': [
+        {'VENDA': 8830, 'QUANDO': datetime.datetime(2026, 8, 13, 14, 32, 5),
+         'PRODUTO': 'CLONAZEPAM 2MG', 'REGISTRO_MS': '1003301220019',
+         'NUM_LOTE': 'L2345A', 'QUANTIDADE': 2},
+        {'VENDA': 8830, 'QUANDO': datetime.datetime(2026, 8, 13, 14, 32, 5),
+         'PRODUTO': 'CLONAZEPAM 2MG', 'REGISTRO_MS': '1003301220019',
+         'NUM_LOTE': 'L9999B', 'QUANTIDADE': 1},
+        {'VENDA': 8829, 'QUANDO': datetime.datetime(2026, 8, 13, 9, 5, 0),
+         'PRODUTO': 'ALPRAZOLAM 1MG', 'REGISTRO_MS': '1444400010023',
+         'NUM_LOTE': 'B77Z', 'QUANTIDADE': 1},
+    ],
+    # venda que ainda vai subir e está sem receita: corrigir antes do envio
+    'vendas_sem_receita_pendentes': [
+        {'VENDA': 8830, 'QUANDO': datetime.datetime(2026, 8, 13, 14, 32, 5),
+         'PRODUTO': 'CLONAZEPAM 2MG', 'REGISTRO_MS': '1003301220019',
+         'NUM_LOTE': 'L2345A', 'QUANTIDADE': 3},
+    ],
+    # quem é controlado: o inventário do SNGPC é filtrado por isto, igual
+    # às vendas e ao estoque
+    'produtos_controlados': [
+        {'PRODUTO_ID': 100, 'PSICOTROPICO': 'S', 'ANTIMICROBIANO': 'N'},
+        {'PRODUTO_ID': 200, 'PSICOTROPICO': 'S', 'ANTIMICROBIANO': 'N'},
+        {'PRODUTO_ID': 300, 'PSICOTROPICO': 'N', 'ANTIMICROBIANO': 'S'},
+        {'PRODUTO_ID': 700, 'PSICOTROPICO': 'N', 'ANTIMICROBIANO': 'N'},
+    ],
     'inventario_sngpc': [
-        {'REGISTRO_MS': '1023506630204', 'MEDICAMENTO': 'ALPRAZOLAM', 'LOTE': '5F9779',
-         'QUANTIDADE': 8, 'DATA_ATUALIZACAO': '2026-08-05'},
+        # PRODUTO_ID 700 não é controlado: não pode entrar na comparação
+        {'PRODUTO_ID': 700, 'REGISTRO_MS': '1999900000001', 'MEDICAMENTO': 'DIPIRONA',
+         'LOTE': 'X1', 'QUANTIDADE': 50, 'DATA_ATUALIZACAO': '2026-08-05'},
+        {'PRODUTO_ID': 100, 'REGISTRO_MS': '1023506630204', 'MEDICAMENTO': 'ALPRAZOLAM',
+         'LOTE': '5F9779', 'QUANTIDADE': 8, 'DATA_ATUALIZACAO': '2026-08-05'},
+        {'REGISTRO_MS': '1023506630204', 'MEDICAMENTO': 'ALPRAZOLAM', 'LOTE': '6G1234',
+         'QUANTIDADE': 2, 'DATA_ATUALIZACAO': '2026-08-05'},
         {'REGISTRO_MS': '1057306610050', 'MEDICAMENTO': 'ARIPIPRAZOL', 'LOTE': '2604608',
          'QUANTIDADE': 2, 'DATA_ATUALIZACAO': '2026-08-05'},
         {'REGISTRO_MS': '1122233340001', 'MEDICAMENTO': 'DIAZEPAM', 'LOTE': 'K1',
@@ -88,6 +125,12 @@ RESPOSTAS = {
         # 5 no Digifarma contra 8 na ANVISA -> falta 3
         {'PRODUTO_ID': 100, 'PRODUTO': 'ALPRAZOLAM', 'REGISTRO_MS': '1023506630204',
          'COD_BARRAS': '789', 'NUM_LOTE': '5F9779', 'LOTE_VENCIMENTO': datetime.date(2027, 9, 30), 'SALDO': 5},
+        # segundo lote do MESMO medicamento, que some da lista por não
+        # divergir — mas precisa aparecer no detalhe do outro, senão o total
+        # do Digifarma fica sem explicação.
+        # 5 hoje = 2 no último envio + 3 que entraram depois e não subiram
+        {'PRODUTO_ID': 100, 'PRODUTO': 'ALPRAZOLAM', 'REGISTRO_MS': '1023506630204',
+         'COD_BARRAS': '789', 'NUM_LOTE': '6G1234', 'LOTE_VENCIMENTO': datetime.date(2028, 1, 31), 'SALDO': 5},
         # bate certinho
         {'PRODUTO_ID': 200, 'PRODUTO': 'ARIPIPRAZOL', 'REGISTRO_MS': '1057306610050',
          'COD_BARRAS': '790', 'NUM_LOTE': '2604608', 'LOTE_VENCIMENTO': datetime.date(2027, 3, 31), 'SALDO': 2},
@@ -97,8 +140,74 @@ RESPOSTAS = {
          'COD_BARRAS': '791', 'NUM_LOTE': 'K1', 'LOTE_VENCIMENTO': datetime.date(2027, 5, 31), 'SALDO': 4},
         {'PRODUTO_ID': 301, 'PRODUTO': 'DIAZEPAM 10MG', 'REGISTRO_MS': '1122233340001',
          'COD_BARRAS': '791', 'NUM_LOTE': 'K1', 'LOTE_VENCIMENTO': datetime.date(2027, 6, 30), 'SALDO': 6},
+        # lote zerado dos dois lados: não é divergência, não vai para o app
+        {'PRODUTO_ID': 400, 'PRODUTO': 'CLONAZEPAM', 'REGISTRO_MS': '1777700010001',
+         'COD_BARRAS': '792', 'NUM_LOTE': 'VAZIO', 'LOTE_VENCIMENTO': datetime.date(2027, 1, 31), 'SALDO': 0},
+        # negativo no próprio Digifarma: saiu do lote por fora de venda e perda
+        {'PRODUTO_ID': 500, 'PRODUTO': 'LAMOTRIGINA 100 MG', 'REGISTRO_MS': '1564900090034',
+         'COD_BARRAS': '793', 'NUM_LOTE': 'BLGH23013',
+         'LOTE_VENCIMENTO': datetime.date(2027, 2, 28), 'SALDO': -3},
+    ],
+    # LOTES como tabela de movimento: aqui SALDO é o que o SQL somou das
+    # linhas de LOTES (entradas − saídas de nota), ainda SEM as vendas
+    'saldo_movimento': [
+        # 200 comprados no lote, 96 ainda não vendidos
+        {'PRODUTO_ID': 67059, 'PRODUTO': 'ESCITALOPRAM 10MG', 'REGISTRO_MS': '1438102690063',
+         'COD_BARRAS': '7896523200934', 'NUM_LOTE': '2300404',
+         'LOTE_VENCIMENTO': datetime.date(2024, 12, 30), 'SALDO': 200},
+    ],
+    'vendas_por_lote': [
+        {'REGISTRO_MS': '1438102690063', 'NUM_LOTE': '2300404', 'QUANTIDADE': 100},
+    ],
+    'perdas_por_lote': [
+        {'REGISTRO_MS': '1438102690063', 'NUM_LOTE': '2300404', 'QUANTIDADE': 4},
     ],
 }
+
+CAMPOS_LOTES_SALDO = ('LOTE_ID', 'PRODUTO_ID', 'NUM_LOTE', 'SALDO')
+CAMPOS_LOTES_MOVIMENTO = ('LOTE_ID', 'PRODUTO_ID', 'NUM_LOTE', 'ENTRADA_SAIDA',
+                          'CAB_NOTA_ID', 'QUANTIDADE_COMPRA')
+
+# a LOTES real do Digifarma6.fdb, lida com --colunas LOTES em 13/08/2026.
+# LOTE_QUANTIDADE é o saldo do lote; QUANTIDADE_COMPRA é o que entrou em
+# cada nota. Escolher a segunda publica compra como se fosse estoque.
+CAMPOS_LOTES_DIGIFARMA = ('PRODUTO_ID', 'LOTE_QUANTIDADE', 'LOTE_VENCIMENTO',
+                          'LOTE_FABRICACAO', 'COMPRA_NOTA_ID', 'LOTE_ID', 'NUM_LOTE',
+                          'LOTE_COMISSAO', 'ITEM_NOTA_ID', 'QUANTIDADE_COMPRA',
+                          'ENTRADA_SAIDA', 'NOTA_FISCAL', 'CAB_NOTA_ID',
+                          'ESTOQUE_CONTADO', 'ESTOQUE_MOVIMENTADO', 'REGISTRO_MS')
+
+class CursorFalso:
+    def __init__(self, quebrar=False):
+        self.fechado = False
+        self.quebrar = quebrar
+        self.description = [('UM',)]
+
+    def execute(self, sql, parametros=()):
+        if self.quebrar:
+            raise RuntimeError('consulta quebrou')
+
+    def fetchall(self):
+        return [(1,)]
+
+    def close(self):
+        self.fechado = True
+
+
+class ConexaoFalsa:
+    def __init__(self, quebrar=False):
+        self.cursor_falso = CursorFalso(quebrar)
+
+    def cursor(self):
+        return self.cursor_falso
+
+
+class ConexaoQueFechaSempre:
+    """Para os modos que abrem a conexão sozinhos: quem consulta é o
+    consultar() falso, então esta só precisa saber fechar."""
+    def close(self):
+        pass
+
 
 falhas = []
 
@@ -117,6 +226,59 @@ def principal():
     conferir('a transmissão leva o movimento do dia anterior',
              ag.anterior('2026-08-10') == '2026-08-09')
     conferir('data em formato brasileiro', ag.br('2026-08-10') == '10/08/2026')
+
+    # o cursor tem que morrer com a consulta: pendurado na transação, ele
+    # estoura na hora de fechar a conexão e esconde o erro de verdade
+    conexao_ok = ConexaoFalsa()
+    ag.consultar(conexao_ok, 'SELECT 1 FROM RDB$DATABASE')
+    conferir('consultar fecha o cursor', conexao_ok.cursor_falso.fechado)
+
+    conexao_ruim = ConexaoFalsa(quebrar=True)
+    try:
+        ag.consultar(conexao_ruim, 'SELECT 1 FROM RDB$DATABASE')
+    except RuntimeError:
+        pass
+    conferir('o cursor fecha mesmo quando a consulta falha',
+             conexao_ruim.cursor_falso.fechado)
+
+    # fechar() já chamou a si mesma: a conexão ficava aberta e o log enchia
+    # de "maximum recursion depth exceeded"
+    class ConexaoQueFecha:
+        def __init__(self, quebrar=False):
+            self.fechou = False
+            self.quebrar = quebrar
+
+        def close(self):
+            self.fechou = True
+            if self.quebrar:
+                raise RuntimeError('o fdb estourou no fechamento')
+
+    boa = ConexaoQueFecha()
+    ag.fechar(boa)
+    conferir('fechar() fecha a conexão de verdade', boa.fechou)
+
+    ruim = ConexaoQueFecha(quebrar=True)
+    ag.fechar(ruim)
+    conferir('erro no fechamento não derruba o agente', ruim.fechou)
+
+    # 401 do Firebase é regra recusando, não chave inválida — o agente
+    # precisa dizer qual nó cadastrar em vez de cuspir um traceback
+    conferir('reconhece a recusa das regras do Firebase',
+             ag.erro_de_permissao(Exception('Permission denied'))
+             and not ag.erro_de_permissao(Exception('Connection refused')))
+    conferir('o recado diz o nó exato a cadastrar',
+             'farmacia/agentes/agente-sngpc' in ag.recado_de_permissao(ag.CONFIG_PADRAO),
+             ag.recado_de_permissao(ag.CONFIG_PADRAO))
+
+    conferir('a chave frouxa ignora zero à esquerda e pontuação do lote',
+             ag.chave_frouxa(('123', '00036467')) == ag.chave_frouxa(('123', '36.467'))
+             and ag.chave_frouxa(('123', 'BQ37J001')) != ag.chave_frouxa(('123', 'BQ37J002')))
+
+    # o fdb dimensiona o parâmetro do LIKE pelo tamanho da coluna:
+    # REGISTRO_MS é VARCHAR(13) e "%ESCITALOPRAM%" tem 14
+    conferir('o filtro do --saldo não fica preso ao tamanho da coluna',
+             ag.CONSULTAS['lotes_detalhe'].count('AS VARCHAR(500)') == 3,
+             ag.CONSULTAS['lotes_detalhe'])
 
     # ------------------------------------------------------------
     # XML: usa o arquivo real da farmácia se estiver na pasta,
@@ -151,10 +313,10 @@ def principal():
 
     def consultar_falso(conexao, sql, parametros=()):
         if 'RDB$RELATION_FIELDS' in sql:
-            return [{'CAMPO': c} for c in ('LOTE_ID', 'PRODUTO_ID', 'NUM_LOTE', 'SALDO')]
+            return [{'CAMPO': c} for c in CAMPOS_LOTES_SALDO]
         if sql in por_sql:
             return por_sql[sql]
-        # saldo_digifarma tem o {SALDO} trocado antes de rodar
+        # saldo_digifarma tem a {EXPRESSAO} trocada antes de rodar
         if 'FROM LOTES' in sql:
             return RESPOSTAS['saldo_digifarma']
         raise AssertionError('consulta não simulada:\n' + sql[:120])
@@ -170,13 +332,25 @@ def principal():
     conferir('descobre sozinho a coluna de saldo da tabela LOTES',
              dados['inventario'].get('colunaSaldo') == 'SALDO', dados['inventario'])
     conferir('o inventário vem do INVENTARIO_SNGPC (lado ANVISA)',
-             dados['inventario']['itens'] == 3, dados['inventario'])
+             dados['inventario']['itens'] == 4, dados['inventario'])
 
-    diferencas = {i['ms']: i['diferenca'] for i in dados['itens']}
+    # o inventário do SNGPC entra pelo MESMO critério das vendas: só
+    # psicotrópico e antimicrobiano. Um não controlado ali viraria
+    # divergência "só na ANVISA" comparando lados que não se comparam.
+    conferir('produto não controlado fica fora do inventário do SNGPC',
+             dados['inventario'].get('foraDoCriterio') == 1
+             and not any(i['ms'] == '1999900000001' for i in dados['itens']),
+             dados['inventario'])
+    conferir('linha do inventário sem PRODUTO_ID continua entrando',
+             any(i['ms'] == '1122233340001' for i in dados['itens']))
+
+    # a chave é M.S. + LOTE: indexar só por M.S. faz um lote apagar o outro,
+    # que é justamente o erro que este projeto passou a semana consertando
+    diferencas = {(i['ms'], i['lote']): i['diferenca'] for i in dados['itens']}
     conferir('diferença de saldo por M.S. + lote',
-             diferencas.get('1023506630204') == -3.0, diferencas)
+             diferencas.get(('1023506630204', '5F9779')) == -3.0, diferencas)
     conferir('lote que bate não vira divergência',
-             diferencas.get('1057306610050') == 0.0, diferencas)
+             diferencas.get(('1057306610050', '2604608')) == 0.0, diferencas)
 
     # o mesmo M.S. + lote em dois cadastros tem que virar UMA linha somada;
     # antes, a primeira levava todo o saldo do SNGPC e a segunda ficava com
@@ -189,10 +363,104 @@ def principal():
     conferir('cadastro repetido que bate com a ANVISA não vira divergência',
              repetidos and repetidos[0]['diferenca'] == 0.0, repetidos)
 
+    # cada divergência se resolve num lugar diferente; a etiqueta tem que
+    # dizer qual é qual em vez de chamar tudo de sobra
+    alpra = next(i for i in dados['itens'] if i['ms'] == '1023506630204')
+    conferir('contagem que não fecha dos dois lados é "quantidade"',
+             alpra.get('motivo') == 'quantidade', alpra)
+    so_anvisa = [i for i in dados['itens'] if i['ms'] == '1122233340001'
+                 and i['saldoDigifarma'] == 0]
+    conferir('o que só a ANVISA tem sai marcado',
+             all(i.get('motivo') == 'so_na_anvisa' for i in so_anvisa), so_anvisa)
+    conferir('lote sem divergência não recebe motivo',
+             not any(i.get('motivo') for i in dados['itens'] if not i['diferenca']))
+
+    # a etiqueta diz o que se OBSERVA, não a causa: zero na ANVISA tanto é
+    # entrada que não subiu quanto saldo errado no Digifarma, e a farmácia
+    # confirmou os dois casos no mesmo dia
+    conferir('M.S. inteiro zerado na ANVISA',
+             ag.classificar_divergencia(
+                 {'saldoDigifarma': 5, 'ms': '999'}, 0.0, {'111'}) == 'anvisa_zerada_produto')
+    conferir('M.S. com outros lotes, mas este zerado',
+             ag.classificar_divergencia(
+                 {'saldoDigifarma': 5, 'ms': '111'}, 0.0, {'111'}) == 'anvisa_zerada_lote')
+    conferir('o registro M.S. sai no formato do site da ANVISA',
+             ag.formatar_ms('1052500180189') == '1.0525.0018.018-9'
+             and ag.formatar_ms('1057304750041') == '1.0573.0475.004-1'
+             and ag.formatar_ms('123') == '123', ag.formatar_ms('1052500180189'))
+    conferir('saldo negativo é dado torto no Digifarma, não sobra',
+             ag.classificar_divergencia(
+                 {'saldoDigifarma': -2, 'ms': '111'}, 0.0, {'111'}) == 'negativo')
+    # a chave é M.S. + lote: sem M.S. não há comparação possível, e chamar
+    # isso de "zerado na ANVISA" manda conferir prateleira à toa
+    conferir('produto sem registro M.S. não é divergência de estoque',
+             ag.classificar_divergencia(
+                 {'saldoDigifarma': 4, 'ms': ''}, 0.0, {'111'}) == 'sem_ms')
+    # medicamento com dois lotes: o que bate some da lista, e sem os irmãos
+    # no detalhe o total do Digifarma fica sem explicação — foi o caso da
+    # pregabalina, 6 no app contra 9 na tela do Digifarma
+    alpra_div = next(i for i in dados['itens']
+                     if i['ms'] == '1023506630204' and i['lote'] == '5F9779')
+    # o inventário do SNGPC é a foto do último envio; o saldo do Digifarma é
+    # de agora. Comparar as duas fotos direto acusa como divergência tudo que
+    # se moveu no intervalo — inclusive a entrada de ontem, que ainda nem
+    # podia estar no inventário.
+    alpra_novo = next(i for i in dados['itens'] if i['lote'] == '6G1234')
+    conferir('entrada que ainda não subiu não vira divergência',
+             alpra_novo['diferenca'] == 0.0
+             and alpra_novo['saldoDigifarma'] == 5.0
+             and alpra_novo['saldoSngpc'] == 2.0, alpra_novo)
+    conferir('a conta mostra o movimento e o esperado, não só o resultado',
+             alpra_novo.get('movimentoDesdeEnvio') == 3.0
+             and alpra_novo.get('esperadoSngpc') == 5.0, alpra_novo)
+    conferir('lote parado continua sem a conta do movimento',
+             'movimentoDesdeEnvio' not in next(
+                 i for i in dados['itens'] if i['lote'] == '5F9779'))
+
+    conferir('o total por M.S. soma os dois lotes',
+             alpra_div.get('saldoDigifarmaMs') == 10.0
+             and alpra_div.get('saldoSngpcMs') == 10.0, alpra_div)
+    conferir('o detalhe lista TODOS os lotes do medicamento, inclusive o que bate',
+             [(l['lote'], l['digifarma'], l['sngpc']) for l in alpra_div.get('lotesDoMs', [])]
+             == [('5F9779', 5.0, 8.0), ('6G1234', 5.0, 2.0)], alpra_div.get('lotesDoMs'))
+    conferir('o lote que bate continua fora da lista de divergências',
+             not any(i['lote'] == '6G1234' and i['diferenca'] for i in dados['itens']))
+    conferir('medicamento de um lote só não carrega total por M.S.',
+             'saldoDigifarmaMs' not in next(
+                 i for i in dados['itens'] if i['ms'] == '1057306610050'))
+
+    negativo = next(i for i in dados['itens'] if i['lote'] == 'BLGH23013')
+    conferir('lote negativo não é classificado como sobra',
+             negativo.get('motivo') == 'negativo', negativo)
+
+    zerados = [i for i in dados['itens'] if i['ms'] == '1777700010001']
+    conferir('lote zerado nos dois lados não vai para o app', not zerados, zerados)
+
     conferir('vendas pendentes saem pelo ponteiro, não por data',
              dados['resumoPendentes']['vendas'] == 1, dados['resumoPendentes'])
     conferir('entradas pendentes saem pelo ponteiro',
-             dados['resumoPendentes']['entradas'] == 1, dados['resumoPendentes'])
+             dados['resumoPendentes']['entradas'] == 2, dados['resumoPendentes'])
+
+    # zero divergência de XML tanto pode ser conferência limpa quanto
+    # conferência que não aconteceu — o app precisa distinguir
+    resumo_xml = dados.get('conferenciaXmlResumo', {})
+    conferir('a conferência do XML publica se realmente conferiu',
+             resumo_xml.get('conferiu') is True
+             and resumo_xml.get('vendasNoBanco') == 2
+             and resumo_xml.get('periodoDe'), resumo_xml)
+    conferir('a conferência de vendas publica desde quando vale',
+             bool(dados.get('vendasProblemaDesde')), dados.get('vendasProblemaDesde'))
+
+    # sem XML na pasta, "0 divergências" não é conferência limpa
+    pasta_vazia = tempfile.mkdtemp()
+    sem_xml = ag.montar_inventario(conexao=None, config=dict(config, pasta_xml=pasta_vazia))
+    resumo_sem = sem_xml.get('conferenciaXmlResumo', {})
+    conferir('sem XML, o agente diz que NÃO conferiu e por quê',
+             resumo_sem.get('conferiu') is False
+             and pasta_vazia in (resumo_sem.get('porque') or ''), resumo_sem)
+    conferir('sem XML não sobra conferência de XML publicada',
+             not sem_xml.get('conferencia_xml'), sem_xml.get('conferencia_xml'))
+    shutil.rmtree(pasta_vazia, ignore_errors=True)
 
     fora = [c for c in dados.get('conferencia_xml', []) if c['situacao'] == 'fora_do_xml']
     conferir('venda que não subiu no XML vira divergência',
@@ -202,6 +470,41 @@ def principal():
 
     conferir('venda de controlado sem receita é classificada',
              dados['vendas_problema'][0]['motivo'] == 'sem_receita')
+
+    # ------------------------------------------------------------
+    # acompanhamento das vendas, de 5 em 5 minutos
+    # ------------------------------------------------------------
+    recentes = dados.get('vendasRecentes', [])
+    conferir('as vendas recentes trazem venda, hora, lote e quantidade',
+             len(recentes) == 3
+             and recentes[0]['venda'] == 8830
+             and recentes[0]['quando'] == '2026-08-13T14:32:05'
+             and recentes[0]['lote'] == 'L2345A'
+             and recentes[0]['quantidade'] == 2, recentes[:1])
+    conferir('a hora da venda não é cortada como as datas',
+             ':' in (recentes[0]['quando'] if recentes else ''),
+             recentes[0] if recentes else None)
+    dois_lotes = [v for v in recentes if v['venda'] == 8830]
+    conferir('venda que sai de dois lotes vira duas linhas',
+             len(dois_lotes) == 2
+             and {v['lote'] for v in dois_lotes} == {'L2345A', 'L9999B'}, dois_lotes)
+    conferir('o carimbo diz quando as vendas foram publicadas',
+             bool(dados.get('vendasRecentesEm')))
+
+    # o diagnóstico é o que se lê de fora do servidor: sem ele, "por que
+    # ainda há divergência" só se responde na máquina da farmácia
+    diag = dados.get('diagnostico', {})
+    conferir('o diagnóstico sobe com pendentes, ponteiros e inventário',
+             diag.get('ponteiroVenda') == 8821
+             and diag.get('pendentes', {}).get('entradas') == 2
+             and diag.get('inventarioSngpc', {}).get('foraDoCriterio') == 1
+             and diag.get('inventarioSngpc', {}).get('linhas') == 5, diag)
+
+    # o que trava o PRÓXIMO envio, cortado pelo ponteiro e não por data
+    sem_receita = dados.get('vendasSemReceita', [])
+    conferir('venda sem receita que ainda vai subir aparece à parte',
+             len(sem_receita) == 1 and sem_receita[0]['venda'] == 8830
+             and sem_receita[0]['lote'] == 'L2345A', sem_receita)
 
     conferir('o XML da transmissão é arquivado em enviados\\',
              os.path.exists(os.path.join(pasta, 'enviados', 'sngpc_%s.xml' % hoje)))
@@ -232,6 +535,132 @@ def principal():
              dados_envio['inventario']['data'] == '2026-08-01', dados_envio['inventario'])
     conferir('sem --envio, a data do inventário continua vindo do Anvisa.exe',
              dados['inventario']['data'] == '2026-08-05', dados['inventario'])
+
+    # ------------------------------------------------------------
+    # as três listas de trabalho
+    # ------------------------------------------------------------
+    ag.consultar = consultar_falso
+    saida = []
+    escrever_real = __builtins__['print'] if isinstance(__builtins__, dict) else print
+    import builtins
+    builtins.print = lambda *a, **k: saida.append(' '.join(str(x) for x in a))
+    try:
+        ag.conectar_firebird = lambda config: ConexaoQueFechaSempre()
+        ok = ag.modo_tarefas(dict(config, banco=':simulado:'))
+    finally:
+        builtins.print = escrever_real
+    texto_saida = '\n'.join(saida)
+    conferir('as tarefas saem nas três seções, na ordem de resolver',
+             ok and texto_saida.index('1. CORRIGIR NO DIGIFARMA')
+             < texto_saida.index('2. ZERADO NA ANVISA')
+             < texto_saida.index('3. CONFERIR NA PRATELEIRA'), texto_saida[:400])
+    conferir('a lista separa o que precisa de alguém do que se resolve sozinho',
+             'PRECISAM DE ALGUÉM' in texto_saida, texto_saida[:300])
+    conferir('a lista deixa claro que nada foi alterado no Digifarma',
+             'só lê' in texto_saida)
+    conferir('o negativo mostra quanto saiu por fora de venda e perda',
+             'outras saídas' in texto_saida, texto_saida[:200])
+
+    # ------------------------------------------------------------
+    # a LOTES real do Digifarma tem saldo por lote: usar a compra é erro
+    # ------------------------------------------------------------
+    def campos_falsos(campos):
+        def consultar_campos(conexao, sql, parametros=()):
+            if 'RDB$RELATION_FIELDS' in sql:
+                return [{'CAMPO': c} for c in campos]
+            raise AssertionError('consulta não simulada')
+        return consultar_campos
+
+    ag.consultar = campos_falsos(CAMPOS_LOTES_DIGIFARMA)
+    info_real = ag.detectar_coluna_saldo(None)
+    conferir('na LOTES do Digifarma o saldo é LOTE_QUANTIDADE, não a compra',
+             (info_real['coluna'], info_real['modo']) == ('LOTE_QUANTIDADE', 'saldo'),
+             info_real)
+    conferir('ESTOQUE_CONTADO e LOTE_COMISSAO não são confundidos com saldo',
+             info_real['coluna'] not in ('ESTOQUE_CONTADO', 'ESTOQUE_MOVIMENTADO',
+                                         'LOTE_COMISSAO'))
+    conferir('a linha de saída não entra no saldo do lote',
+             ag.montar_expressao_saldo(info_real)
+             == "CASE WHEN L.ENTRADA_SAIDA = 'S' THEN 0 "
+                "ELSE COALESCE(L.LOTE_QUANTIDADE, 0) END",
+             ag.montar_expressao_saldo(info_real))
+
+    # ------------------------------------------------------------
+    # LOTES sem coluna de saldo: é tabela de MOVIMENTO
+    # ------------------------------------------------------------
+    conferir('sem ENTRADA_SAIDA, soma a coluna crua',
+             ag.montar_expressao_saldo(
+                 {'coluna': 'SALDO', 'modo': 'saldo', 'campos': list(CAMPOS_LOTES_SALDO)}
+             ) == 'COALESCE(L.SALDO, 0)')
+    expressao = ag.montar_expressao_saldo(
+        {'coluna': 'QUANTIDADE_COMPRA', 'modo': 'movimento',
+         'campos': list(CAMPOS_LOTES_MOVIMENTO)})
+    conferir('linha de saída entra com sinal negativo',
+             "THEN -COALESCE(L.QUANTIDADE_COMPRA, 0)" in expressao, expressao)
+
+    por_sql_mov = dict(por_sql)
+    por_sql_mov[ag.CONSULTAS['vendas_por_lote']] = RESPOSTAS['vendas_por_lote']
+    por_sql_mov[ag.CONSULTAS['perdas_por_lote']] = RESPOSTAS['perdas_por_lote']
+
+    def consultar_falso_movimento(conexao, sql, parametros=()):
+        if 'RDB$RELATION_FIELDS' in sql:
+            return [{'CAMPO': c} for c in CAMPOS_LOTES_MOVIMENTO]
+        if sql in por_sql_mov:
+            return por_sql_mov[sql]
+        if 'FROM LOTES' in sql:
+            return RESPOSTAS['saldo_movimento']
+        raise AssertionError('consulta não simulada:\n' + sql[:120])
+
+    ag.consultar = consultar_falso_movimento
+    dados_mov = ag.montar_inventario(conexao=None, config=config)
+    conferir('sem coluna de saldo, LOTES é lida como movimento',
+             dados_mov['inventario'].get('modoSaldo') == 'movimento', dados_mov['inventario'])
+
+    escitalopram = [i for i in dados_mov['itens'] if i['ms'] == '1438102690063']
+    conferir('o saldo desconta as vendas, que não passam por LOTES',
+             escitalopram and escitalopram[0]['saldoDigifarma'] == 96.0, escitalopram)
+    conferir('o app recebe o que entrou e o que baixou, para conferência',
+             escitalopram and escitalopram[0]['entradas'] == 200.0
+             and escitalopram[0]['baixas'] == 104.0, escitalopram)
+
+    # coluna fixada à mão no agente_config.json vence a detecção
+    ag.consultar = consultar_falso_movimento
+    info = ag.detectar_coluna_saldo(None, {'coluna_saldo': 'quantidade_compra',
+                                           'modo_saldo': 'saldo'})
+    conferir('coluna_saldo do config manda na detecção',
+             info == {'coluna': 'QUANTIDADE_COMPRA', 'modo': 'saldo',
+                      'campos': list(CAMPOS_LOTES_MOVIMENTO)}, info)
+
+    # ------------------------------------------------------------
+    # colunas de INVENTARIO_SNGPC: nome exato vence pedaço do nome
+    # ------------------------------------------------------------
+    # o layout real da base da farmácia, lido com --saldo em 13/08/2026.
+    # Aqui a coluna do saldo se chama SALDO_LOTE: barrar tudo que tem
+    # 'LOTE' no nome derrubava justamente ela, e o inventário inteiro da
+    # ANVISA era descartado como "colunas inesperadas".
+    campos_reais = ['INVENTARIO_ID', 'PRODUTO_ID', 'NUM_LOTE', 'DATA_INVENTARIO',
+                    'SALDO_LOTE', 'REGISTRO_MS', 'UNIDADE', 'LOTE_VENCIMENTO',
+                    'ULT_MOVIMENTACAO']
+    escolhidos = {k: ag.escolher_campo(campos_reais, r)
+                  for k, r in ag.CAMPOS_INVENTARIO.items()}
+    conferir('a base real da farmácia é lida por inteiro',
+             escolhidos == {'ms': 'REGISTRO_MS', 'lote': 'NUM_LOTE',
+                            'quantidade': 'SALDO_LOTE', 'descricao': None,
+                            'data': 'DATA_INVENTARIO'}, escolhidos)
+
+    campos_inv = ['ID', 'LOTE_VENCIMENTO', 'DATA_VALIDADE', 'NUM_LOTE',
+                  'REGISTRO_MS', 'QUANTIDADE_VENDIDA', 'QUANTIDADE',
+                  'NOME_MEDICAMENTO', 'DATA_ATUALIZACAO']
+    conferir('lote é NUM_LOTE, não LOTE_VENCIMENTO',
+             ag.escolher_campo(campos_inv, ag.CAMPOS_INVENTARIO['lote']) == 'NUM_LOTE',
+             ag.escolher_campo(campos_inv, ag.CAMPOS_INVENTARIO['lote']))
+    conferir('quantidade é QUANTIDADE, não QUANTIDADE_VENDIDA',
+             ag.escolher_campo(campos_inv, ag.CAMPOS_INVENTARIO['quantidade']) == 'QUANTIDADE')
+    conferir('data é a de atualização, não a de validade',
+             ag.escolher_campo(campos_inv, ag.CAMPOS_INVENTARIO['data']) == 'DATA_ATUALIZACAO',
+             ag.escolher_campo(campos_inv, ag.CAMPOS_INVENTARIO['data']))
+    conferir('registro M.S. sai da coluna certa',
+             ag.escolher_campo(campos_inv, ag.CAMPOS_INVENTARIO['ms']) == 'REGISTRO_MS')
 
     shutil.rmtree(pasta, ignore_errors=True)
     print('\n%s\n' % ('%d falha(s)' % len(falhas) if falhas else 'Tudo passou.'))

@@ -43,6 +43,7 @@ const estado = {
   vista: 'painel',
   buscaSaldo: '',
   buscaXml: '',
+  buscaVendas: '',
   abertos: new Set()
 };
 
@@ -67,6 +68,11 @@ function dataHora(iso) {
   const d = new Date(iso);
   if (isNaN(d)) return esc(iso);
   return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function horaBR(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(String(iso || ''));
+  return m ? `${m[3]}/${m[2]} ${m[4]}:${m[5]}` : dataBR(iso);
 }
 
 function dataBR(iso) {
@@ -303,12 +309,21 @@ document.querySelectorAll('.nav-item').forEach((b) => { b.onclick = () => irPara
 document.querySelectorAll('[data-ir]').forEach((b) => { b.onclick = () => irPara(b.dataset.ir); });
 $('busca-saldo').oninput = (e) => { estado.buscaSaldo = e.target.value; pintarSaldo(); };
 $('busca-xml').oninput = (e) => { estado.buscaXml = e.target.value; pintarXml(); };
+$('busca-vendas-recentes').oninput = (e) => { estado.buscaVendas = e.target.value; pintarVendasRecentes(); };
 
 /* ============================================================
    10. DESENHO
    ============================================================ */
-function divergenciasDeSaldo() {
-  return lista('itens').filter((i) => Number(i.diferenca || 0) !== 0);
+/* Produto sem M.S. não é divergência de estoque: o SNGPC recusa medicamento
+   sem registro, então ele nunca é transmitido e não tem como bater. Contar
+   junto infla o número de divergências com item que nenhuma conferência de
+   prateleira resolve. */
+function divergenciasDeSaldo(itens) {
+  return (itens || lista('itens'))
+    .filter((i) => Number(i.diferenca || 0) !== 0 && i.motivo !== 'sem_ms');
+}
+function pendenciasDeCadastro(itens) {
+  return (itens || lista('itens')).filter((i) => i.motivo === 'sem_ms');
 }
 function pendenciasXml() {
   return lista('conferencia_xml').filter((c) => c && c.situacao !== 'ok');
@@ -321,7 +336,8 @@ function pintar() {
   if (!estado.operador) return;
   const s = divergenciasDeSaldo().length, x = pendenciasXml().length, v = vendasProblema().length;
   [['selo-saldo', s], ['selo-xml', x], ['selo-vendas', v]].forEach(([id, n]) => {
-    const el = $(id); el.textContent = n; el.hidden = n === 0;
+    // 4 dígitos no selo transbordam por cima do item vizinho da navegação
+    const el = $(id); el.textContent = n > 999 ? '999+' : n; el.hidden = n === 0;
   });
   $('n-saldo').textContent = s;
   $('n-xml').textContent = x;
@@ -337,11 +353,12 @@ function pintar() {
     : 'O agente ainda não publicou nada. Rode o INSTALAR_AGENTE.bat no servidor.';
 
   pintarEnvio();
+  pintarDiagnostico();
   pintarPendentes();
   avisarSobreAnvisa();
   if (estado.vista === 'saldo') pintarSaldo();
   if (estado.vista === 'xml') pintarXml();
-  if (estado.vista === 'vendas') pintarVendas();
+  if (estado.vista === 'vendas') { pintarSemReceita(); pintarVendas(); pintarVendasRecentes(); }
   if (estado.vista === 'aceites') pintarAceites();
 }
 
@@ -381,11 +398,58 @@ function avisarSobreAnvisa() {
   barra.hidden = false;
 }
 
+const ROTULO_MODO_SALDO = {
+  saldo: 'saldo do lote, direto da coluna',
+  movimento: 'movimentos de estoque menos vendas e perdas'
+};
+
+function baseDoSaldo() {
+  const inv = estado.inventario?.inventario || {};
+  if (!inv.colunaSaldo) return '—';
+  const modo = ROTULO_MODO_SALDO[inv.modoSaldo];
+  return 'LOTES.' + inv.colunaSaldo + (modo ? ' — ' + modo : '');
+}
+
+/* O diagnóstico existe para responder de longe "por que ainda há
+   divergência". Sobe de 5 em 5 minutos junto com as vendas. */
+function pintarDiagnostico() {
+  const dl = $('dados-diagnostico');
+  dl.innerHTML = '';
+  const d = estado.inventario?.diagnostico;
+  if (!d) {
+    const dt = criar('dt'); dt.textContent = 'Sem dados';
+    const dd = criar('dd'); dd.textContent = 'o agente ainda não publicou o diagnóstico';
+    dl.append(dt, dd);
+    return;
+  }
+  const pend = d.pendentes || {};
+  const inv = d.inventarioSngpc || {};
+  const total = Object.values(pend).reduce((s, n) => s + Number(n || 0), 0);
+  const linhas = [
+    ['Lido em', dataHora(d.em)],
+    ['Esperando transmissão', total === 0
+      ? 'nada — tudo que o Digifarma tem já foi enviado'
+      : Object.entries(pend).map(([t, n]) => n + ' ' + t).join(' · ')],
+    ['Ponteiros', 'venda ' + (d.ponteiroVenda ?? '—') + ' · entrada ' + (d.ponteiroEntrada ?? '—')],
+    ['Último envio', dataBR(d.ultimoEnvio)],
+    ['Inventário SNGPC (linhas)', inv.linhas],
+    ['— entram na comparação', inv.entram],
+    ['— fora do critério', inv.foraDoCriterio],
+    ['— sem produto no cadastro', inv.semProdutoNoCadastro]
+  ];
+  linhas.filter(([, v]) => v !== undefined && v !== null).forEach(([k, v]) => {
+    const dt = criar('dt'); dt.textContent = k;
+    const dd = criar('dd'); dd.textContent = esc(v);
+    dl.append(dt, dd);
+  });
+}
+
 function pintarEnvio() {
   const e = estado.inventario?.envio || {};
   const dl = $('dados-envio');
   dl.innerHTML = '';
   const linhas = [
+    ['Como o saldo é apurado', baseDoSaldo()],
     ['Data do envio', dataBR(e.data)],
     ['Movimentos de', e.movimentosDe ? dataBR(e.movimentosDe) + ' a ' + dataBR(e.movimentosAte) : '—'],
     ['Envio por API', e.envioPorApi ? 'ligado no Digifarma' : 'desligado (envio manual)'],
@@ -419,16 +483,20 @@ function linha({ chave, titulo, meta, tarja, tarjaClasse, detalhe }) {
   faixa.append(esquerda, direita);
   el.appendChild(faixa);
 
+  // O detalhe abre com transição, e `hidden` não anima. Em vez de esconder,
+  // a caixa é uma grade que vai de 0fr a 1fr; o filho recorta o conteúdo.
+  // Fechada, ela some do leitor de tela pelo aria-expanded da cabeça.
   const caixa = criar('div', 'linha-detalhe');
-  caixa.appendChild(detalhe);
-  caixa.hidden = !estado.abertos.has(chave);
+  const dentro = criar('div', 'linha-detalhe-dentro');
+  dentro.appendChild(detalhe);
+  caixa.appendChild(dentro);
+  el.classList.toggle('aberta', estado.abertos.has(chave));
   el.appendChild(caixa);
 
   cabeca.onclick = () => {
-    const aberto = !caixa.hidden;
-    caixa.hidden = aberto;
-    cabeca.setAttribute('aria-expanded', String(!aberto));
-    if (aberto) estado.abertos.delete(chave); else estado.abertos.add(chave);
+    const aberto = el.classList.toggle('aberta');
+    cabeca.setAttribute('aria-expanded', String(aberto));
+    if (aberto) estado.abertos.add(chave); else estado.abertos.delete(chave);
   };
   return el;
 }
@@ -445,16 +513,186 @@ function definicoes(pares) {
   return d;
 }
 
+/* Cada divergência de saldo se resolve num lugar diferente: uma entrada que
+   não subiu ao SNGPC não é a mesma coisa que uma contagem que não fecha. A
+   tarja diz qual é qual; o agente classifica em farmacia/inventario. */
+const MOTIVO_SALDO = {
+  sem_ms: ['Sem registro M.S.', 'falta',
+    'A conferência casa por registro M.S. + lote. Sem M.S. no cadastro, este item não pode casar com a ANVISA de jeito nenhum — a diferença aqui é do cadastro, não do estoque. Cadastre o registro no Digifarma e ele volta a ser conferível.'],
+  anvisa_zerada_produto: ['Zerado na ANVISA', 'sobra',
+    'A ANVISA não tem saldo em lote nenhum deste registro M.S. Pode ser entrada que não subiu, ou saldo errado no Digifarma. Confira o estoque físico antes de mexer na escrituração.'],
+  anvisa_zerada_lote: ['Lote zerado na ANVISA', 'sobra',
+    'A ANVISA tem saldo em outros lotes deste medicamento, mas não neste. Confira o número do lote e a entrada dele.'],
+  quantidade: ['Quantidade diferente', 'sobra',
+    'Os dois lados têm o lote, com contagens diferentes. É conferência de prateleira.'],
+  so_na_anvisa: ['Só no inventário SNGPC', 'falta',
+    'A ANVISA tem saldo deste lote e o Digifarma não. Costuma ser saída lançada só de um lado.'],
+  negativo: ['Saldo negativo no Digifarma', 'falta',
+    'O próprio Digifarma está com saldo negativo neste lote: saída lançada sem a entrada. Corrija no Digifarma.']
+};
+
+/* Ordem de gravidade, não alfabética: é a ordem em que a farmácia resolve.
+   Um motivo fora desta lista cai no fim, que é o certo para o desconhecido. */
+const ORDEM_MOTIVO = ['negativo', 'so_na_anvisa', 'quantidade',
+  'anvisa_zerada_lote', 'anvisa_zerada_produto'];
+
+function pintarAlertaSaldo() {
+  const barra = $('saldo-alerta');
+  const inv = estado.inventario?.inventario;
+  if (!inv) { barra.hidden = true; return; }
+  // Sem o lado ANVISA, TODO lote do Digifarma aparece como sobra. São
+  // milhares de divergências que não são divergência nenhuma — o app
+  // precisa dizer isso, senão o número vira ruído.
+  if (!inv.itens) {
+    barra.textContent = 'O inventário da ANVISA está vazio, então todo lote do Digifarma '
+      + 'aparece aqui como sobra. Rode o Anvisa.exe no servidor e faça o login no site do '
+      + 'SNGPC antes de conferir estes números.';
+    barra.hidden = false;
+    return;
+  }
+
+  const resumo = estado.inventario?.resumoSaldo;
+  if (resumo) {
+    const partes = Object.entries(resumo)
+      // o sem_ms tem bloco próprio logo abaixo; repetir aqui só polui
+      .filter(([motivo, n]) => n > 0 && motivo !== 'sem_ms')
+      .sort((a, b) => b[1] - a[1])
+      .map(([motivo, n]) => n + ' ' + (MOTIVO_SALDO[motivo]?.[0] || motivo).toLowerCase());
+    if (partes.length) {
+      barra.textContent = partes.join(' · ');
+      barra.hidden = false;
+      return;
+    }
+  }
+  barra.hidden = true;
+}
+
+function pintarSemMs() {
+  const itens = pendenciasDeCadastro();
+  $('bloco-sem-ms').hidden = itens.length === 0;
+  const alvo = $('lista-sem-ms');
+  alvo.innerHTML = '';
+  itens.forEach((i, n) => {
+    alvo.appendChild(linha({
+      chave: 'semms:' + (i.codigo || n) + ':' + (i.lote || ''),
+      titulo: i.descricao || i.codigo || '(sem descrição)',
+      meta: [
+        i.ean && 'EAN ' + i.ean,
+        i.lote && 'Lote ' + i.lote,
+        i.validade && 'Val. ' + i.validade
+      ],
+      tarja: ['Cadastrar o registro M.S.', i.saldoDigifarma + ' em estoque'],
+      tarjaClasse: 'falta',
+      detalhe: definicoes([
+        ['Código', i.codigo],
+        ['Saldo Digifarma', i.saldoDigifarma],
+        ['Código de barras', i.ean],
+        ['Lote', i.lote],
+        ['Validade', i.validade]
+      ])
+    }));
+  });
+}
+
 function pintarSaldo() {
+  pintarAlertaSaldo();
+  pintarSemMs();
   const alvo = $('lista-saldo');
   alvo.innerHTML = '';
+  // Cem itens numa lista corrida não se trabalha. Cada tipo se resolve num
+  // lugar diferente, então a lista vem agrupada — e a ordem dos grupos é a
+  // ordem de gravidade: dado torto no Digifarma primeiro, porque reaparece
+  // em toda conferência; depois o que sumiu do estoque e o SNGPC ainda
+  // acusa; por último o que a ANVISA só não recebeu ainda.
   const itens = divergenciasDeSaldo()
     .filter((i) => combina(i, estado.buscaSaldo, ['descricao', 'ms', 'ean', 'lote', 'codigo']))
-    .sort((a, b) => Math.abs(Number(b.diferenca || 0)) - Math.abs(Number(a.diferenca || 0)));
+    .sort((a, b) => (ORDEM_MOTIVO.indexOf(a.motivo) - ORDEM_MOTIVO.indexOf(b.motivo))
+      || (Math.abs(Number(b.diferenca || 0)) - Math.abs(Number(a.diferenca || 0))));
   $('saldo-vazio').hidden = itens.length > 0 || !!estado.buscaSaldo;
 
+  const quantosPorMotivo = {};
+  itens.forEach((i) => { quantosPorMotivo[i.motivo] = (quantosPorMotivo[i.motivo] || 0) + 1; });
+
+  let grupoAtual = null;
   itens.forEach((i, n) => {
+    if (i.motivo && i.motivo !== grupoAtual) {
+      grupoAtual = i.motivo;
+      const cabeca = criar('h3', 'grupo-saldo');
+      const nome = criar('span');
+      nome.textContent = MOTIVO_SALDO[grupoAtual]?.[0] || grupoAtual;
+      const conta = criar('span', 'grupo-conta');
+      conta.textContent = quantosPorMotivo[grupoAtual];
+      cabeca.append(nome, conta);
+      alvo.appendChild(cabeca);
+    }
     const dif = Number(i.diferenca || 0);
+    const [rotulo, classe, explicacao] = MOTIVO_SALDO[i.motivo]
+      || [dif < 0 ? 'Falta no Digifarma' : 'Sobra no Digifarma', dif < 0 ? 'falta' : 'sobra', ''];
+    const detalhe = definicoes([
+      ['Código', i.codigo],
+      ['Digifarma (este lote)', i.saldoDigifarma],
+      // só vêm quando LOTES é tabela de movimento: mostram de onde
+      // o saldo saiu, para conferir contra a tela do Digifarma
+      ['Entrou no lote', i.entradas],
+      ['Baixado (vendas e perdas)', i.baixas],
+      // a conta, na ordem em que se lê: a foto do último envio, o que se
+      // moveu desde então, o que o SNGPC deveria mostrar, e o que o
+      // Digifarma mostra. A diferença é do último par, não do primeiro.
+      ['SNGPC no último envio', i.saldoSngpc],
+      ['Movimento desde o envio', i.movimentoDesdeEnvio === undefined ? undefined
+        : (i.movimentoDesdeEnvio > 0 ? '+' : '') + i.movimentoDesdeEnvio],
+      ['Esperado no SNGPC hoje', i.esperadoSngpc],
+      ['Diferença', (dif > 0 ? '+' : '') + dif],
+      // a tela do Digifarma mostra o produto inteiro; a conferência é por
+      // lote. Sem estes dois, o número do app não bate com o da tela e
+      // parece errado quando está certo.
+      ['Digifarma (todos os lotes)', i.saldoDigifarmaMs],
+      ['SNGPC (todos os lotes)', i.saldoSngpcMs],
+      ['Registro M.S.', i.ms],
+      ['Código de barras', i.ean],
+      ['Lote', i.lote],
+      ['Validade', i.validade],
+      ['Classe', i.classe]
+    ]);
+    if (explicacao) {
+      const nota = criar('p', 'nota-info');
+      nota.textContent = explicacao;
+      detalhe.appendChild(nota);
+    }
+    if (i.movimentoDesdeEnvio !== undefined) {
+      const nota = criar('p', 'nota-info');
+      nota.textContent = 'Este lote se moveu depois do último envio. O inventário do '
+        + 'SNGPC é a foto daquele momento, então a conferência soma o que entrou e '
+        + 'desconta o que saiu desde então — a diferença é contra o esperado, não '
+        + 'contra a foto.';
+      detalhe.appendChild(nota);
+    }
+    if (i.saldoDigifarmaMs !== undefined) {
+      const nota = criar('p', 'nota-info');
+      nota.textContent = 'Este medicamento tem mais de um lote. A tela do Digifarma soma '
+        + 'todos; aqui a conferência é lote a lote, porque é assim que o SNGPC guarda. '
+        + 'Os outros lotes não aparecem nesta lista quando batem com a ANVISA.';
+      detalhe.appendChild(nota);
+    }
+    // todos os lotes do medicamento, inclusive os que batem e por isso não
+    // entram na lista — é o que explica o total e permite conferir na tela
+    if (Array.isArray(i.lotesDoMs) && i.lotesDoMs.length > 1) {
+      const titulo = criar('p', 'linha-titulo');
+      titulo.style.margin = '14px 0 6px';
+      titulo.textContent = 'Todos os lotes deste medicamento';
+      detalhe.appendChild(titulo);
+      const dl = criar('dl', 'dados');
+      i.lotesDoMs.forEach((l) => {
+        const dt = criar('dt');
+        dt.textContent = 'Lote ' + (l.lote || '(vazio)') + (l.lote === i.lote ? ' ←' : '');
+        const dd = criar('dd');
+        dd.textContent = 'Digifarma ' + Number(l.digifarma || 0)
+          + ' · SNGPC ' + Number(l.sngpc || 0);
+        dl.append(dt, dd);
+      });
+      detalhe.appendChild(dl);
+    }
+
     alvo.appendChild(linha({
       chave: 'saldo:' + (i.codigo || n) + ':' + (i.lote || ''),
       titulo: i.descricao || i.codigo || '(sem descrição)',
@@ -464,19 +702,17 @@ function pintarSaldo() {
         i.lote && 'Lote ' + i.lote,
         i.validade && 'Val. ' + i.validade
       ],
-      tarja: [dif < 0 ? 'Falta no Digifarma' : 'Sobra no Digifarma', (dif > 0 ? '+' : '') + dif],
-      tarjaClasse: dif < 0 ? 'falta' : 'sobra',
-      detalhe: definicoes([
-        ['Código', i.codigo],
-        ['Saldo Digifarma', i.saldoDigifarma],
-        ['Saldo do inventário SNGPC', i.saldoSngpc],
-        ['Diferença', (dif > 0 ? '+' : '') + dif],
-        ['Registro M.S.', i.ms],
-        ['Código de barras', i.ean],
-        ['Lote', i.lote],
-        ['Validade', i.validade],
-        ['Classe', i.classe]
-      ])
+      // Dentro de um grupo, repetir o rótulo na tarja é desperdiçar a única
+      // faixa que a linha tem. Ali vai a comparação, que é o que se quer ver
+      // sem abrir: quanto tem de cada lado.
+      tarja: [
+        i.motivo
+          ? 'Digifarma ' + Number(i.saldoDigifarma || 0) + ' · SNGPC ' + Number(i.saldoSngpc || 0)
+          : rotulo,
+        (dif > 0 ? '+' : '') + dif
+      ],
+      tarjaClasse: classe,
+      detalhe
     }));
   });
 
@@ -487,11 +723,30 @@ function pintarSaldo() {
   }
 }
 
+/* Zero divergências pode ser conferência limpa ou conferência que não
+   aconteceu. O texto do vazio tem que dizer qual dos dois. */
+function textoXmlVazio() {
+  const r = estado.inventario?.conferenciaXmlResumo;
+  if (!r) return 'O agente ainda não conferiu o XML.';
+  if (!r.conferiu) {
+    return 'Não deu para conferir o XML: ' + (r.porque || 'motivo não informado')
+      + '. Este zero não quer dizer que está tudo certo.';
+  }
+  if (!r.vendasNoBanco && !r.itensNoXml) {
+    return 'Nenhuma venda de controlado entre ' + dataBR(r.periodoDe) + ' e '
+      + dataBR(r.periodoAte) + ' — não havia nada a conferir neste envio.';
+  }
+  return 'Confere: ' + r.vendasNoBanco + ' saída(s) no banco e ' + r.itensNoXml
+    + ' item(ns) no XML ' + esc(r.arquivo) + ', de ' + dataBR(r.periodoDe)
+    + ' a ' + dataBR(r.periodoAte) + '. Tudo bateu.';
+}
+
 function pintarXml() {
   const alvo = $('lista-xml');
   alvo.innerHTML = '';
   const itens = pendenciasXml()
     .filter((c) => combina(c, estado.buscaXml, ['descricao', 'ms', 'lote']));
+  $('xml-vazio').textContent = textoXmlVazio();
   $('xml-vazio').hidden = itens.length > 0 || !!estado.buscaXml;
 
   const ROTULO = {
@@ -535,6 +790,13 @@ function pintarVendas() {
   const alvo = $('lista-vendas');
   alvo.innerHTML = '';
   const itens = vendasProblema();
+  const desde = estado.inventario?.vendasProblemaDesde;
+  // a consulta corta por data: sem dizer desde quando, o zero parece
+  // valer para toda a história da farmácia
+  $('vendas-vazio').textContent = desde
+    ? 'Nenhuma venda pendente de correção desde ' + dataBR(desde)
+      + '. Vendas anteriores a essa data não entram nesta conferência.'
+    : 'Nenhuma venda pendente de correção.';
   $('vendas-vazio').hidden = itens.length > 0;
 
   const MOTIVO = {
@@ -565,6 +827,90 @@ function pintarVendas() {
       tarjaClasse: 'falta',
       detalhe
     }));
+  });
+}
+
+/* Acompanhamento das vendas: sobe pela tarefa de 5 em 5 minutos, então a
+   tela vive sozinha — o Firebase empurra a atualização sem ninguém recarregar. */
+function pintarSemReceita() {
+  const itens = lista('vendasSemReceita');
+  $('bloco-sem-receita').hidden = itens.length === 0;
+  const alvo = $('lista-sem-receita');
+  alvo.innerHTML = '';
+  itens.forEach((v, n) => {
+    alvo.appendChild(linha({
+      chave: 'semreceita:' + (v.venda ?? n) + ':' + (v.lote || ''),
+      titulo: v.descricao || ('Venda ' + (v.venda ?? '?')),
+      meta: [
+        v.quando && horaBR(v.quando),
+        v.ms && 'M.S. ' + v.ms,
+        v.lote ? 'Lote ' + v.lote : 'Sem lote'
+      ],
+      tarja: ['Escriturar a receita', 'Venda ' + (v.venda ?? '—')],
+      tarjaClasse: 'falta',
+      detalhe: definicoes([
+        ['Venda', v.venda],
+        ['Quando', horaBR(v.quando)],
+        ['Produto', v.descricao],
+        ['Registro M.S.', v.ms],
+        ['Lote', v.lote],
+        ['Quantidade', v.quantidade]
+      ])
+    }));
+  });
+}
+
+function pintarVendasRecentes() {
+  const alvo = $('lista-vendas-recentes');
+  if (!alvo) return;
+  alvo.innerHTML = '';
+
+  const carimbo = estado.inventario?.vendasRecentesEm;
+  $('vendas-recentes-carimbo').textContent = carimbo
+    ? 'Atualizado em ' + dataHora(carimbo)
+    : 'O agente ainda não publicou as vendas. A tarefa de 5 minutos faz isso sozinha.';
+
+  const todas = lista('vendasRecentes');
+  const itens = todas.filter((v) => combina(
+    { ...v, venda: String(v.venda ?? '') },
+    estado.buscaVendas, ['descricao', 'lote', 'venda', 'ms']));
+
+  if (!itens.length) {
+    const p = criar('p', 'vazio');
+    p.textContent = todas.length
+      ? 'Nada encontrado para “' + estado.buscaVendas + '”.'
+      : 'Nenhuma venda de controlado nos últimos dias.';
+    alvo.appendChild(p);
+    return;
+  }
+
+  itens.slice(0, 300).forEach((v) => {
+    const el = criar('div', 'aceite');
+
+    const esquerda = criar('div');
+    const titulo = criar('p', 'aceite-data');
+    titulo.textContent = v.descricao || '(sem descrição)';
+    esquerda.appendChild(titulo);
+    const sub = criar('p', 'sublinha');
+    sub.style.margin = '2px 0 0';
+    sub.textContent = 'Venda ' + (v.venda ?? '—')
+      + (v.lote ? ' · Lote ' + v.lote : ' · sem lote')
+      + (v.ms ? ' · M.S. ' + v.ms : '');
+    esquerda.appendChild(sub);
+    el.appendChild(esquerda);
+
+    const direita = criar('div');
+    direita.style.display = 'flex';
+    direita.style.gap = '10px';
+    direita.style.alignItems = 'center';
+    const qtd = criar('span', 'estado estado-aceito');
+    qtd.textContent = Number(v.quantidade || 0) + ' un';
+    const hora = criar('span', 'sublinha');
+    hora.textContent = horaBR(v.quando);
+    direita.append(qtd, hora);
+    el.appendChild(direita);
+
+    alvo.appendChild(el);
   });
 }
 
@@ -652,5 +998,8 @@ window.addEventListener('online', () => { $('barra-estado').hidden = true; });
 
 /* exposto para o teste de fumaça */
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { normalizar, combina, dataBR };
+  module.exports = {
+    normalizar, combina, dataBR, horaBR,
+    divergenciasDeSaldo, pendenciasDeCadastro
+  };
 }

@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#111111">
+<meta name="theme-color" content="#F2F0EC" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)">
 <title>Farmácia — SNGPC</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -18,10 +19,14 @@
   <div class="cartao-entrada">
     <p class="marca">Farmácia<span class="tarja">SNGPC</span></p>
     <h1 class="titulo-entrada">Entrar</h1>
+    <p class="sublinha">Conferência do estoque de controlados entre o Digifarma e o
+    que foi transmitido à ANVISA.</p>
     <label class="campo"><span>E-mail</span><input id="login-email" type="email" autocomplete="username" inputmode="email"></label>
     <label class="campo"><span>Senha da conta</span><input id="login-senha" type="password" autocomplete="current-password"></label>
     <p id="login-erro" class="aviso-erro" hidden></p>
     <button id="btn-entrar" class="botao botao-principal">Entrar</button>
+    <p class="rodape-entrada">O acesso é liberado por UID no Firebase. Fale com o
+    responsável técnico se não conseguir entrar.</p>
   </div>
 </section>
 
@@ -30,9 +35,9 @@
   <div class="cartao-entrada">
     <p class="marca">Farmácia<span class="tarja">SNGPC</span></p>
     <h1 class="titulo-entrada">Quem está conferindo?</h1>
-    <p class="sublinha">O nome fica gravado em cada aceite marcado.</p>
+    <p class="sublinha">O nome fica gravado em cada aceite marcado, e só neste aparelho.</p>
     <div id="lista-operadores" class="grade-operadores"></div>
-    <label class="campo"><span>Ou digite um nome novo</span><input id="operador-novo" type="text" autocomplete="off"></label>
+    <label class="campo"><span>Ou digite um nome novo</span><input id="operador-novo" type="text" autocomplete="off" enterkeyhint="go"></label>
     <button id="btn-operador" class="botao botao-principal">Começar</button>
   </div>
 </section>
@@ -85,6 +90,14 @@
       </div>
 
       <div class="bloco">
+        <h3>Diagnóstico</h3>
+        <dl id="dados-diagnostico" class="dados"></dl>
+        <p class="nota">Atualizado de 5 em 5 minutos pelo servidor. É por aqui que se vê,
+        de fora da farmácia, se ainda há movimento esperando transmissão e como o
+        inventário do SNGPC foi lido.</p>
+      </div>
+
+      <div class="bloco">
         <h3>Último envio ao SNGPC</h3>
         <dl id="dados-envio" class="dados"></dl>
         <p class="nota">O Digifarma guarda o que foi <strong>enviado</strong>, não o que a ANVISA
@@ -96,6 +109,17 @@
     <section id="v-saldo" class="vista" hidden>
       <div class="cabeca-vista"><h2>Divergências de saldo</h2></div>
       <p class="sublinha">Saldo do Digifarma comparado com o inventário SNGPC vigente.</p>
+      <div id="saldo-alerta" class="barra-comando" hidden></div>
+
+      <div id="bloco-sem-ms" class="bloco" hidden>
+        <h3>Sem registro M.S. — não entram no SNGPC</h3>
+        <p class="sublinha">O SNGPC recusa medicamento sem registro M.S., então estes
+        nunca são transmitidos: nem a entrada, nem a venda. Não são divergência de
+        estoque e não entram na contagem — enquanto o cadastro não for corrigido,
+        este controlado se movimenta sem escrituração.</p>
+        <div id="lista-sem-ms" class="pilha"></div>
+      </div>
+
       <input id="busca-saldo" class="busca" type="search" placeholder="Buscar por descrição, M.S., código de barras ou lote" autocomplete="off">
       <div id="lista-saldo" class="pilha"></div>
       <p id="saldo-vazio" class="vazio" hidden>Nenhuma divergência de saldo. Digifarma e inventário batem.</p>
@@ -114,8 +138,25 @@
     <section id="v-vendas" class="vista" hidden>
       <div class="cabeca-vista"><h2>Vendas com problema</h2></div>
       <p class="sublinha">Controlado vendido sem receita escriturada ou sem lote — a causa clássica de recusa.</p>
+      <div id="bloco-sem-receita" class="bloco" hidden>
+        <h3>Sem receita — corrigir antes do próximo envio</h3>
+        <p class="sublinha">Vendas de controlado que ainda não foram transmitidas e estão
+        sem receita escriturada. É a causa clássica de recusa, e depois de transmitida
+        a correção fica bem mais cara. Atualiza de 5 em 5 minutos.</p>
+        <div id="lista-sem-receita" class="pilha"></div>
+      </div>
+
       <div id="lista-vendas" class="pilha"></div>
       <p id="vendas-vazio" class="vazio" hidden>Nenhuma venda pendente de correção.</p>
+
+      <div class="bloco">
+        <h3>Últimas vendas de controlados</h3>
+        <p id="vendas-recentes-carimbo" class="sublinha"></p>
+        <input id="busca-vendas-recentes" class="busca" type="search" placeholder="Buscar por produto, lote ou número da venda" autocomplete="off">
+        <div id="lista-vendas-recentes" class="pilha"></div>
+        <p class="nota">Atualizado pela tarefa que roda de 5 em 5 minutos no servidor.
+        Uma linha por lote: a mesma venda aparece duas vezes quando sai de dois lotes.</p>
+      </div>
     </section>
 
     <!-- ACEITES -->
@@ -128,12 +169,39 @@
     </section>
   </main>
 
+  <!-- Ícones num sprite: cinco <use> pesam menos que cinco <svg> inteiros,
+       e o traço herda a cor do botão, então o item ativo escurece junto. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <g id="i-situacao"><path d="M3 12h4l3 7 4-14 3 7h4"/></g>
+      <g id="i-saldo"><path d="M12 4v16M5 8l-3 6h6zM19 8l-3 6h6zM5 8h14"/></g>
+      <g id="i-xml"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5"/><path d="M10 13l-1.5 2L10 17M14 13l1.5 2L14 17"/></g>
+      <g id="i-vendas"><path d="M4 4h11l5 5v11a1 1 0 0 1-1.5.9L15 19l-3 2-3-2-3.5 1.9A1 1 0 0 1 4 20z"/><path d="M8 9h6M8 13h8"/></g>
+      <g id="i-aceites"><path d="M20 6 9 17l-5-5"/></g>
+    </defs>
+  </svg>
+
   <nav class="navegacao">
-    <button class="nav-item nav-ativo" data-vista="painel">Situação</button>
-    <button class="nav-item" data-vista="saldo">Saldo<span id="selo-saldo" class="selo" hidden>0</span></button>
-    <button class="nav-item" data-vista="xml">XML<span id="selo-xml" class="selo" hidden>0</span></button>
-    <button class="nav-item" data-vista="vendas">Vendas<span id="selo-vendas" class="selo" hidden>0</span></button>
-    <button class="nav-item" data-vista="aceites">Aceites</button>
+    <button class="nav-item nav-ativo" data-vista="painel">
+      <svg class="nav-icone" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-situacao"/></svg>
+      <span class="nav-rotulo">Situação</span>
+    </button>
+    <button class="nav-item" data-vista="saldo">
+      <svg class="nav-icone" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-saldo"/></svg>
+      <span class="nav-rotulo">Saldo</span><span id="selo-saldo" class="selo" hidden>0</span>
+    </button>
+    <button class="nav-item" data-vista="xml">
+      <svg class="nav-icone" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-xml"/></svg>
+      <span class="nav-rotulo">XML</span><span id="selo-xml" class="selo" hidden>0</span>
+    </button>
+    <button class="nav-item" data-vista="vendas">
+      <svg class="nav-icone" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-vendas"/></svg>
+      <span class="nav-rotulo">Vendas</span><span id="selo-vendas" class="selo" hidden>0</span>
+    </button>
+    <button class="nav-item" data-vista="aceites">
+      <svg class="nav-icone" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-aceites"/></svg>
+      <span class="nav-rotulo">Aceites</span>
+    </button>
   </nav>
 </div>
 

@@ -10,6 +10,10 @@ chave-firebase.json
 sngpc.zip
 enviados/
 
+# listas geradas pelo --tarefas: saem do banco da farmácia, não do código
+tarefas_saldo_*.txt
+agente_config.json
+
 # lixo de sistema
 .DS_Store
 Thumbs.db

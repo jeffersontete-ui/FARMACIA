@@ -177,6 +177,18 @@ if (exportado.fimDaValidade) {
   });
 }
 
+if (exportado.divergenciasDeSaldo) {
+  conferir('produto sem M.S. fica fora da contagem de divergências', () => {
+    const itens = [
+      { diferenca: 3, motivo: 'quantidade' },
+      { diferenca: 4, motivo: 'sem_ms' },
+      { diferenca: 0, motivo: undefined }
+    ];
+    igual(exportado.divergenciasDeSaldo(itens).length, 1, 'divergências de estoque');
+    igual(exportado.pendenciasDeCadastro(itens).length, 1, 'pendências de cadastro');
+  });
+}
+
 conferir('busca ignora acento e maiúscula', () => {
   const alvo = { nome: 'Diazepam Solução', ms: '1234', codigoBarras: '789', lote: 'A1', descricao: 'Diazepam Solução' };
   const campos = exportado.combina.length >= 3 ? ['descricao', 'ms', 'lote'] : null;
