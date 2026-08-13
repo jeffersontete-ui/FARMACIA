@@ -121,6 +121,31 @@ CAMPOS_LOTES_SALDO = ('LOTE_ID', 'PRODUTO_ID', 'NUM_LOTE', 'SALDO')
 CAMPOS_LOTES_MOVIMENTO = ('LOTE_ID', 'PRODUTO_ID', 'NUM_LOTE', 'ENTRADA_SAIDA',
                           'CAB_NOTA_ID', 'QUANTIDADE_COMPRA')
 
+class CursorFalso:
+    def __init__(self, quebrar=False):
+        self.fechado = False
+        self.quebrar = quebrar
+        self.description = [('UM',)]
+
+    def execute(self, sql, parametros=()):
+        if self.quebrar:
+            raise RuntimeError('consulta quebrou')
+
+    def fetchall(self):
+        return [(1,)]
+
+    def close(self):
+        self.fechado = True
+
+
+class ConexaoFalsa:
+    def __init__(self, quebrar=False):
+        self.cursor_falso = CursorFalso(quebrar)
+
+    def cursor(self):
+        return self.cursor_falso
+
+
 falhas = []
 
 
@@ -138,6 +163,26 @@ def principal():
     conferir('a transmissão leva o movimento do dia anterior',
              ag.anterior('2026-08-10') == '2026-08-09')
     conferir('data em formato brasileiro', ag.br('2026-08-10') == '10/08/2026')
+
+    # o cursor tem que morrer com a consulta: pendurado na transação, ele
+    # estoura na hora de fechar a conexão e esconde o erro de verdade
+    conexao_ok = ConexaoFalsa()
+    ag.consultar(conexao_ok, 'SELECT 1 FROM RDB$DATABASE')
+    conferir('consultar fecha o cursor', conexao_ok.cursor_falso.fechado)
+
+    conexao_ruim = ConexaoFalsa(quebrar=True)
+    try:
+        ag.consultar(conexao_ruim, 'SELECT 1 FROM RDB$DATABASE')
+    except RuntimeError:
+        pass
+    conferir('o cursor fecha mesmo quando a consulta falha',
+             conexao_ruim.cursor_falso.fechado)
+
+    # o fdb dimensiona o parâmetro do LIKE pelo tamanho da coluna:
+    # REGISTRO_MS é VARCHAR(13) e "%ESCITALOPRAM%" tem 14
+    conferir('o filtro do --saldo não fica preso ao tamanho da coluna',
+             ag.CONSULTAS['lotes_detalhe'].count('AS VARCHAR(500)') == 3,
+             ag.CONSULTAS['lotes_detalhe'])
 
     # ------------------------------------------------------------
     # XML: usa o arquivo real da farmácia se estiver na pasta,

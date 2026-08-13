@@ -242,13 +242,16 @@ CONSULTAS = {
     # {COLUNAS} é montado com as colunas que existem na LOTES desta
     # instalação; um SELECT * traria junto as de PRODUTOS, e uma coluna de
     # mesmo nome nas duas tabelas estragaria a conta.
+    # O CAST não é enfeite: o fdb dimensiona o parâmetro do LIKE pelo
+    # tamanho declarado da coluna, e REGISTRO_MS é VARCHAR(13) — procurar
+    # "ESCITALOPRAM" (14 com os %) estourava antes de chegar ao banco.
     "lotes_detalhe": """
         SELECT P.PRODUTO, P.REGISTRO_MS, {COLUNAS}
           FROM LOTES L
           JOIN PRODUTOS P ON (P.PRODUTO_ID = L.PRODUTO_ID)
-         WHERE UPPER(P.PRODUTO) LIKE ?
-            OR P.REGISTRO_MS LIKE ?
-            OR UPPER(L.NUM_LOTE) LIKE ?
+         WHERE UPPER(CAST(P.PRODUTO AS VARCHAR(500))) LIKE ?
+            OR CAST(P.REGISTRO_MS AS VARCHAR(500)) LIKE ?
+            OR UPPER(CAST(L.NUM_LOTE AS VARCHAR(500))) LIKE ?
     """,
 }
 
@@ -337,9 +340,26 @@ def conectar_firebase(config):
 
 def consultar(conexao, sql, parametros=()):
     cursor = conexao.cursor()
-    cursor.execute(sql, parametros)
-    colunas = [d[0].strip().upper() for d in cursor.description]
-    return [dict(zip(colunas, linha)) for linha in cursor.fetchall()]
+    try:
+        cursor.execute(sql, parametros)
+        colunas = [d[0].strip().upper() for d in cursor.description]
+        return [dict(zip(colunas, linha)) for linha in cursor.fetchall()]
+    finally:
+        # sem isto o cursor da consulta que falhou fica pendurado na
+        # transação, e o erro de verdade morre escondido atrás de um
+        # "attempt to reclose a closed cursor" na hora de fechar
+        try:
+            cursor.close()
+        except Exception:
+            pass
+
+
+def fechar(conexao):
+    """Fechar conexão não pode estourar por cima do erro que interessa."""
+    try:
+        fechar(conexao)
+    except Exception as e:
+        registrar('Aviso ao fechar a conexão com o Firebird: %s' % e)
 
 
 def texto(valor):
@@ -903,7 +923,7 @@ def modo_auto(config, data_inventario=None, usar_envio=False):
         dados = montar_inventario(conexao, config, data_inventario, usar_envio)
         publicar(db, dados)
     finally:
-        conexao.close()
+        fechar(conexao)
 
 
 def modo_fila(config):
@@ -977,7 +997,7 @@ def modo_schema(config):
             print('\nTodas as tabelas esperadas existem.')
         return not faltando
     finally:
-        conexao.close()
+        fechar(conexao)
 
 
 def modo_colunas(config, tabela):
@@ -993,7 +1013,7 @@ def modo_colunas(config, tabela):
             print('  ' + c)
         return True
     finally:
-        conexao.close()
+        fechar(conexao)
 
 
 def modo_conferir_saldo(config, filtro):
@@ -1060,14 +1080,14 @@ def modo_conferir_saldo(config, filtro):
         print('certa em agente_config.json ("coluna_saldo" e "modo_saldo").')
         return True
     finally:
-        conexao.close()
+        fechar(conexao)
 
 
 def modo_teste(config):
     print('Banco Firebird: %s' % config['banco'])
     conexao = conectar_firebird(config)
     linhas = consultar(conexao, CONSULTAS['ponteiros'])
-    conexao.close()
+    fechar(conexao)
     print('  conectou. Ponteiros do SNGPC: %s' % (linhas[0] if linhas else 'tabela SNGPC vazia'))
 
     print('Firebase: %s' % config['url_banco'])
