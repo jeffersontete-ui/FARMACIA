@@ -357,7 +357,7 @@ def consultar(conexao, sql, parametros=()):
 def fechar(conexao):
     """Fechar conexão não pode estourar por cima do erro que interessa."""
     try:
-        fechar(conexao)
+        conexao.close()
     except Exception as e:
         registrar('Aviso ao fechar a conexão com o Firebird: %s' % e)
 
@@ -536,6 +536,8 @@ def saldo_por_lote(conexao, config):
                 'validade': texto(linha.get('LOTE_VENCIMENTO')),
                 'saldoDigifarma': 0.0,
             }
+            if registro['descricao'] and chave[0] not in DESCRICOES_POR_MS:
+                DESCRICOES_POR_MS[chave[0]] = registro['descricao']
         registro['saldoDigifarma'] += numero(linha.get('SALDO'))
 
     if info['modo'] == 'movimento':
@@ -571,16 +573,21 @@ CAMPOS_INVENTARIO = {
         'proibidas': ('VENC', 'VALID', 'DATA', 'QUANT', 'SALDO'),
     },
     'quantidade': {
-        'exatos': ('QUANTIDADE', 'QUANTIDADE_ESTOQUE', 'QUANTIDADE_INVENTARIO',
-                   'QUANTIDADE_ATUAL', 'SALDO', 'ESTOQUE', 'QTDE', 'QTD'),
-        'pedacos': ('QUANT', 'SALDO', 'ESTOQUE'),
-        'proibidas': ('DATA', 'LOTE', 'VENC'),
+        # SALDO_LOTE é o nome na base da Drogaria Humanae. Não dá para
+        # barrar 'LOTE' aqui: a coluna do saldo carrega o nome do lote.
+        'exatos': ('SALDO_LOTE', 'QUANTIDADE', 'QUANTIDADE_ESTOQUE',
+                   'QUANTIDADE_INVENTARIO', 'QUANTIDADE_ATUAL', 'QUANTIDADE_LOTE',
+                   'SALDO', 'SALDO_ATUAL', 'ESTOQUE', 'QTD_LOTE', 'QTDE', 'QTD'),
+        'pedacos': ('SALDO', 'QUANT', 'ESTOQUE'),
+        'proibidas': ('DATA', 'VENC', 'VALID'),
     },
     'descricao': {
+        # '_ID' fora: sem isso o pedaço 'PRODUTO' casava com PRODUTO_ID e a
+        # descrição do item virava um número
         'exatos': ('MEDICAMENTO', 'DESCRICAO', 'PRODUTO', 'NOME_MEDICAMENTO',
                    'DESCRICAO_MEDICAMENTO', 'NOME'),
         'pedacos': ('MEDICAMENTO', 'PRODUTO', 'DESCRICAO', 'NOME'),
-        'proibidas': ('REGISTRO', 'CODIGO', 'LOTE', 'DATA'),
+        'proibidas': ('REGISTRO', 'CODIGO', 'LOTE', 'DATA', '_ID'),
     },
     'data': {
         'exatos': ('DATA_ATUALIZACAO', 'DATA_INVENTARIO', 'DATA_SALDO',
@@ -646,7 +653,8 @@ def ler_inventario_anvisa(conexao):
     return saldo, atualizado, usados
 
 
-DESCRICOES = {}
+DESCRICOES = {}        # (ms, lote) -> descrição, vinda do inventário da ANVISA
+DESCRICOES_POR_MS = {}  # ms -> descrição, vinda do cadastro do Digifarma
 
 
 def so_digitos(valor):
@@ -658,6 +666,7 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
 
     resultado = {'atualizadoEm': datetime.datetime.now().isoformat(timespec='seconds')}
     DESCRICOES.clear()
+    DESCRICOES_POR_MS.clear()
 
     # ------------------------------------------------------------
     # 1. ponteiros do último envio
@@ -775,7 +784,10 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
     # o que a ANVISA tem e o Digifarma não
     for (ms, lote), quantidade in saldo_anvisa.items():
         itens.append({
-            'codigo': '', 'descricao': DESCRICOES.get((ms, lote), '(só no inventário da ANVISA)'),
+            'codigo': '',
+            'descricao': (DESCRICOES.get((ms, lote))
+                          or DESCRICOES_POR_MS.get(ms)
+                          or '(só no inventário da ANVISA)'),
             'ms': ms, 'ean': '', 'lote': lote, 'validade': '',
             'saldoDigifarma': 0.0, 'saldoSngpc': round(quantidade, 3),
             'diferenca': round(-quantidade, 3),
@@ -1056,7 +1068,13 @@ def modo_conferir_saldo(config, filtro):
             quantidade = numero(linha.get(info['coluna']))
             grupo['saidas' if saida else 'entradas'] += quantidade
 
-        saldo_anvisa, _, _ = ler_inventario_anvisa(conexao)
+        saldo_anvisa, inventario_em, campos_anvisa = ler_inventario_anvisa(conexao)
+        print('inventário da ANVISA: %d lote(s), colunas %s, carimbo %s\n' % (
+            len(saldo_anvisa),
+            ', '.join('%s=%s' % (k, v) for k, v in sorted((campos_anvisa or {}).items()) if v)
+            or '(nenhuma reconhecida)',
+            inventario_em or '(sem data)'))
+
         ordenados = sorted(por_lote.items(), key=lambda x: -abs(x[1]['entradas']))
         if len(ordenados) > 40:
             print('%d lotes casam com "%s"; mostrando os 40 maiores.\n'

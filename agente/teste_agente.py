@@ -178,6 +178,26 @@ def principal():
     conferir('o cursor fecha mesmo quando a consulta falha',
              conexao_ruim.cursor_falso.fechado)
 
+    # fechar() já chamou a si mesma: a conexão ficava aberta e o log enchia
+    # de "maximum recursion depth exceeded"
+    class ConexaoQueFecha:
+        def __init__(self, quebrar=False):
+            self.fechou = False
+            self.quebrar = quebrar
+
+        def close(self):
+            self.fechou = True
+            if self.quebrar:
+                raise RuntimeError('o fdb estourou no fechamento')
+
+    boa = ConexaoQueFecha()
+    ag.fechar(boa)
+    conferir('fechar() fecha a conexão de verdade', boa.fechou)
+
+    ruim = ConexaoQueFecha(quebrar=True)
+    ag.fechar(ruim)
+    conferir('erro no fechamento não derruba o agente', ruim.fechou)
+
     # o fdb dimensiona o parâmetro do LIKE pelo tamanho da coluna:
     # REGISTRO_MS é VARCHAR(13) e "%ESCITALOPRAM%" tem 14
     conferir('o filtro do --saldo não fica preso ao tamanho da coluna',
@@ -351,6 +371,20 @@ def principal():
     # ------------------------------------------------------------
     # colunas de INVENTARIO_SNGPC: nome exato vence pedaço do nome
     # ------------------------------------------------------------
+    # o layout real da base da farmácia, lido com --saldo em 13/08/2026.
+    # Aqui a coluna do saldo se chama SALDO_LOTE: barrar tudo que tem
+    # 'LOTE' no nome derrubava justamente ela, e o inventário inteiro da
+    # ANVISA era descartado como "colunas inesperadas".
+    campos_reais = ['INVENTARIO_ID', 'PRODUTO_ID', 'NUM_LOTE', 'DATA_INVENTARIO',
+                    'SALDO_LOTE', 'REGISTRO_MS', 'UNIDADE', 'LOTE_VENCIMENTO',
+                    'ULT_MOVIMENTACAO']
+    escolhidos = {k: ag.escolher_campo(campos_reais, r)
+                  for k, r in ag.CAMPOS_INVENTARIO.items()}
+    conferir('a base real da farmácia é lida por inteiro',
+             escolhidos == {'ms': 'REGISTRO_MS', 'lote': 'NUM_LOTE',
+                            'quantidade': 'SALDO_LOTE', 'descricao': None,
+                            'data': 'DATA_INVENTARIO'}, escolhidos)
+
     campos_inv = ['ID', 'LOTE_VENCIMENTO', 'DATA_VALIDADE', 'NUM_LOTE',
                   'REGISTRO_MS', 'QUANTIDADE_VENDIDA', 'QUANTIDADE',
                   'NOME_MEDICAMENTO', 'DATA_ATUALIZACAO']
