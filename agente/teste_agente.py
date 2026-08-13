@@ -398,8 +398,8 @@ def principal():
              ok and texto_saida.index('1. CORRIGIR NO DIGIFARMA')
              < texto_saida.index('2. CONFERIR A TRANSMISSÃO')
              < texto_saida.index('3. CONFERIR NA PRATELEIRA'), texto_saida[:400])
-    conferir('a lista separa o que já está na fila do próximo envio',
-             'já estão na fila do próximo envio' in texto_saida)
+    conferir('a lista separa o que precisa de alguém do que se resolve sozinho',
+             'PRECISAM DE ALGUÉM' in texto_saida, texto_saida[:300])
     conferir('a lista deixa claro que nada foi alterado no Digifarma',
              'só lê' in texto_saida)
     conferir('o negativo mostra quanto saiu por fora de venda e perda',

@@ -1306,43 +1306,65 @@ def modo_tarefas(config):
                              key=lambda i: -i['saldoDigifarma']))
     esperando = [i for i in escrituracao if chave_do(i) in na_fila]
     faltando = [i for i in escrituracao if chave_do(i) not in na_fila]
-    ja_transmitidas = [i for i in faltando
-                       if entradas.get(chave_do(i), {}).get('nota', 0)
-                       and entradas[chave_do(i)]['nota'] <= ponteiro_entrada]
-    datas = sorted(entradas[chave_do(i)]['data'] for i in ja_transmitidas
-                   if entradas.get(chave_do(i), {}).get('data'))
+    # Entrada posterior ao inventário não podia estar nele: não é pendência,
+    # é ordem cronológica. Separar as duas evita mandar conferir 39 lotes
+    # quando a maioria só precisa do próximo inventário.
+    data_inventario = (dados.get('inventario', {}).get('data') or '')[:10]
+
+    def entrou_depois_do_inventario(item):
+        data = entradas.get(chave_do(item), {}).get('data', '')
+        return bool(data_inventario) and bool(data) and data >= data_inventario
+
+    recentes = [i for i in faltando if entrou_depois_do_inventario(i)]
+    antigas = [i for i in faltando if not entrou_depois_do_inventario(i)]
 
     escrever('')
     escrever('2. CONFERIR A TRANSMISSÃO — %d lote(s) que o SNGPC não tem' % len(escrituracao))
-    escrever('   %d já estão na fila do próximo envio: o envio resolve sozinho.'
-             % len(esperando))
-    escrever('   %d NÃO estão na fila — estes precisam de alguém.' % len(faltando))
-    if ja_transmitidas:
-        escrever('')
-        escrever('   ATENÇÃO: %d destes entraram por nota que JÁ passou pelo ponteiro'
-                 % len(ja_transmitidas))
-        escrever('   de transmissão (%d). A entrada foi transmitida e mesmo assim o'
-                 % ponteiro_entrada)
-        escrever('   SNGPC não tem o lote. Isso não se resolve transmitindo de novo:')
-        escrever('   ou o envio daquele período foi RECUSADO, ou o inventário da')
-        escrever('   ANVISA não veio inteiro do site.')
-        if datas:
-            escrever('   Entradas de %s a %s — confira o aceite desses envios na aba'
-                     % (br(datas[0]), br(datas[-1])))
-            escrever('   Aceites, e o anvisa.log do dia em que o inventário foi baixado.')
+    if esperando:
+        escrever('   %d estão na fila do próximo envio: o envio resolve sozinho.'
+                 % len(esperando))
+    if recentes:
+        escrever('   %d entraram em %s ou depois, e o inventário da ANVISA é de %s:'
+                 % (len(recentes), br(data_inventario), br(data_inventario)))
+        escrever('   entrada nova não podia estar num inventário mais velho. Estes não')
+        escrever('   são pendência — confira no próximo inventário que o Anvisa.exe baixar.')
+
     escrever('')
-    for i in faltando:
+    escrever('   PRECISAM DE ALGUÉM: %d lote(s)' % len(antigas))
+    if antigas:
+        # agrupar por medicamento: quando TODO lote de um produto falta no
+        # SNGPC, mês após mês, o problema é o cadastro dele, não o envio
+        grupos = {}
+        for i in antigas:
+            grupos.setdefault((i['ms'], i['descricao']), []).append(i)
+        repetidos = {k: v for k, v in grupos.items() if len(v) > 1}
+        if repetidos:
+            escrever('   Atenção ao padrão: nestes, TODO lote falta no SNGPC, de notas')
+            escrever('   diferentes e de meses diferentes. Isso aponta o CADASTRO do')
+            escrever('   produto (registro M.S. errado ou não reconhecido pela ANVISA),')
+            escrever('   não o envio — reenviar não resolve.')
+            for (ms, desc), itens_grupo in sorted(repetidos.items(), key=lambda x: -len(x[1])):
+                escrever('      %-42s M.S. %-14s %d lotes' % (desc[:42], ms or '(sem M.S.)',
+                                                              len(itens_grupo)))
+        escrever('')
+    for i in antigas:
         entrada = entradas.get(chave_do(i), {})
-        marca = ''
-        if entrada.get('nota'):
-            marca = ('nota %d de %s · %s' % (
-                entrada['nota'], br(entrada.get('data')),
-                'já transmitida' if entrada['nota'] <= ponteiro_entrada else 'não transmitida'))
         escrever('   %-42s lote %-14s Digifarma %g · SNGPC %g' % (
             i['descricao'][:42], i['lote'] or '(vazio)',
             i['saldoDigifarma'], i['saldoSngpc']))
-        if marca:
-            escrever('   %-42s %s' % ('', marca))
+        if entrada.get('nota'):
+            escrever('   %-42s nota %d de %s · %s' % (
+                '', entrada['nota'], br(entrada.get('data')),
+                'já transmitida' if entrada['nota'] <= ponteiro_entrada else 'não transmitida'))
+
+    if recentes:
+        escrever('')
+        escrever('   — entradas novas, só conferir no próximo inventário da ANVISA —')
+        for i in recentes:
+            entrada = entradas.get(chave_do(i), {})
+            escrever('   %-42s lote %-14s Digifarma %g · entrou %s' % (
+                i['descricao'][:42], i['lote'] or '(vazio)',
+                i['saldoDigifarma'], br(entrada.get('data'))))
     if esperando:
         escrever('')
         escrever('   — já na fila do próximo envio, só conferir depois que subir —')
