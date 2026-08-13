@@ -1338,6 +1338,22 @@ def publicar(db, dados):
         inventario.get('modoSaldo', '?'),
         inventario.get('itens', 0),
     ))
+    # Sem isto não dá para saber se a conta do movimento desde o envio teve
+    # com o que trabalhar: pendentes zerados e divergência de pé significam
+    # que o que foi transmitido não voltou no inventário.
+    envio = dados.get('envio', {})
+    resumo = dados.get('resumoPendentes', {})
+    registrar('Pendentes de transmissão: %s. Ponteiros: venda %s, entrada %s.' % (
+        ', '.join('%d %s' % (n, t) for t, n in sorted(resumo.items())) or 'nenhum',
+        envio.get('ULT_SAIDA_VENDA_NOTA_ID', '?'),
+        envio.get('ULT_ENTRADA_CAB_NOTA_ID', '?'),
+    ))
+    divergem = sum(1 for i in dados.get('itens', []) if i.get('motivo'))
+    registrar('Divergências: %d de %d lote(s) publicados. Por tipo: %s.' % (
+        divergem, len(dados.get('itens', [])),
+        ', '.join('%d %s' % (n, t) for t, n in sorted(
+            dados.get('resumoSaldo', {}).items())) or 'nenhuma',
+    ))
 
 
 # ============================================================
