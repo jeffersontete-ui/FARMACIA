@@ -1643,8 +1643,10 @@ FOLHA_ESTILO = """
        letter-spacing: .04em; }
   .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .contar { width: 62px; border-bottom: 1px solid #BBB; }
-  .grupo td { background: #EEE; font-weight: bold; border-top: 1.5px solid #000;
-              text-transform: uppercase; font-size: 10px; letter-spacing: .04em; }
+  .med td { background: #EEE; border-top: 1.5px solid #000; padding-top: 6px; }
+  .med .ms { font-weight: normal; font-size: 9.5px; color: #444; }
+  .lote .rec { padding-left: 16px; }
+  .lote.bate td { color: #555; }        /* já bate: fica, mas não chama */
   .rodape { margin-top: 18px; font-size: 10px; color: #444;
             page-break-inside: avoid; }
   .assinatura { margin-top: 26px; border-top: 1px solid #000; width: 62%;
@@ -1671,38 +1673,71 @@ def modo_comparacao(config, filtro=''):
     finally:
         fechar(conexao)
 
-    itens = [i for i in dados.get('itens', []) if i.get('motivo')]
-    negativos = [i for i in itens if i['motivo'] == 'negativo']
-    sem_ms = [i for i in itens if i['motivo'] == 'sem_ms']
-    conferir = [i for i in itens if i['motivo'] not in ('negativo', 'sem_ms')]
+    todos = dados.get('itens', [])
+    negativos = [i for i in todos if i.get('motivo') == 'negativo']
+    sem_ms = [i for i in todos if i.get('motivo') == 'sem_ms']
 
-    if filtro:
-        alvo = normalizar_texto(filtro)
-        conferir = [i for i in conferir
-                    if alvo in normalizar_texto(i['descricao']) or alvo in i['lote']]
+    # Agrupado por MEDICAMENTO, não por lote solto: quem confere vai à
+    # prateleira, acha o remédio e conta as caixas. Para a conta fechar
+    # precisa ver TODOS os lotes dele, inclusive os que batem — foi
+    # exatamente isso que faltou na pregabalina, com 6 no app e 9 na tela.
+    por_ms = {}
+    for i in todos:
+        if i.get('motivo') == 'sem_ms':
+            continue
+        por_ms.setdefault((i['ms'], i['descricao']), []).append(i)
 
-    ordem = {'so_na_anvisa': 0, 'quantidade': 1, 'anvisa_zerada_lote': 2,
-             'anvisa_zerada_produto': 3}
-    conferir.sort(key=lambda i: (ordem.get(i['motivo'], 9), normalizar_texto(i['descricao']),
-                                 i['lote']))
+    medicamentos = []
+    for (ms, descricao), lotes in por_ms.items():
+        # lote negativo não está na prateleira: é lançamento errado, e mandar
+        # alguém procurar por ele é desperdiçar a conferência
+        visiveis = [l for l in lotes if numero(l['saldoDigifarma']) >= 0]
+        se_conta = [l for l in visiveis
+                    if l.get('motivo') and l['motivo'] not in ('negativo', 'sem_ms')]
+        if not se_conta or not visiveis:
+            continue
+        if filtro:
+            alvo = normalizar_texto(filtro)
+            if alvo not in normalizar_texto(descricao) and not any(alvo in l['lote'] for l in visiveis):
+                continue
+        medicamentos.append({
+            'ms': ms, 'descricao': descricao,
+            'lotes': sorted(visiveis, key=lambda l: l['lote']),
+            'omitidos': len(lotes) - len(visiveis),
+            'digifarma': round(sum(numero(l['saldoDigifarma']) for l in visiveis), 3),
+            'sngpc': round(sum(numero(l['saldoSngpc']) for l in visiveis), 3),
+        })
+    medicamentos.sort(key=lambda m: normalizar_texto(m['descricao']))
 
     inventario = dados.get('inventario', {})
     envio = dados.get('envio', {})
     linhas = []
-    grupo = None
-    for i in conferir:
-        if i['motivo'] != grupo:
-            grupo = i['motivo']
-            quantos = sum(1 for x in conferir if x['motivo'] == grupo)
-            linhas.append('<tr class="grupo"><td colspan="8">%s — %d lote(s)</td></tr>'
-                          % (escapar_html(ROTULO_IMPRESSO.get(grupo, grupo)), quantos))
+    conferir = []
+    for m in medicamentos:
+        conferir.extend(m['lotes'])
         linhas.append(
-            '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td>'
-            '<td class="num">%g</td><td class="num">%g</td><td class="num">%+g</td>'
-            '<td class="contar"></td></tr>' % (
-                escapar_html(i['descricao'])[:58], escapar_html(formatar_ms(i['ms'])),
-                escapar_html(i['lote']) or '—', br(i['validade']) if i['validade'] else '—',
-                numero(i['saldoDigifarma']), numero(i['saldoSngpc']), numero(i['diferenca'])))
+            '<tr class="med"><td><strong>%s</strong><br><span class="ms">M.S. %s</span>%s</td>'
+            '<td></td><td class="num">%g</td><td class="num">%g</td>'
+            '<td class="num">%s</td><td class="contar"></td></tr>' % (
+                escapar_html(m['descricao'])[:62], escapar_html(formatar_ms(m['ms'])),
+                ('<span class="ms"> · %d lote(s) negativo(s) fora desta folha</span>'
+                 % m['omitidos']) if m['omitidos'] else '',
+                m['digifarma'], m['sngpc'],
+                # total do medicamento batendo com lotes divergentes é o
+                # caso mais informativo da folha: o estoque existe, o que
+                # está errado é em qual lote ele foi lançado
+                ('%+g' % round(m['digifarma'] - m['sngpc'], 3))
+                if round(m['digifarma'] - m['sngpc'], 3) else 'total bate'))
+        for l in m['lotes']:
+            diferente = ' bate' if not numero(l.get('diferenca')) else ''
+            linhas.append(
+                '<tr class="lote%s"><td class="rec">lote %s</td><td>%s</td>'
+                '<td class="num">%g</td><td class="num">%g</td><td class="num">%s</td>'
+                '<td class="contar"></td></tr>' % (
+                    diferente, escapar_html(l['lote']) or '—',
+                    br(l['validade']) if l['validade'] else '—',
+                    numero(l['saldoDigifarma']), numero(l['saldoSngpc']),
+                    ('%+g' % numero(l['diferenca'])) if numero(l['diferenca']) else '—'))
 
     fora = []
     if negativos:
@@ -1720,16 +1755,18 @@ saldo por LOTES.%s &middot; gerado em %s</p>
 %s
 <table>
 <thead><tr>
-  <th>Medicamento</th><th>Registro M.S.</th><th>Lote</th><th>Validade</th>
+  <th>Medicamento &middot; lote</th><th>Validade</th>
   <th class="num">Digifarma</th><th class="num">SNGPC</th><th class="num">Dif.</th>
   <th>Contado</th>
 </tr></thead>
 <tbody>
 %s
 </tbody></table>
-<p class="rodape">%d lote(s) para conferir. A comparação é por registro M.S. + lote:
-a tela do Digifarma mostra o produto somando os lotes, e por isso os números
-podem não bater à primeira vista.</p>
+<p class="rodape">%d medicamento(s), %d lote(s). A linha em cinza é o medicamento,
+com a soma dos lotes abaixo dela — é esse total que aparece na tela do Digifarma.
+As linhas seguintes são os lotes, e o SNGPC guarda o estoque assim, lote a lote.
+Os lotes que já batem vêm listados de propósito: sem eles a soma não fecha
+na hora de conferir a prateleira.</p>
 <p class="assinatura">Conferido por __________________________________ em ____/____/______</p>
 </body></html>
 """ % (
@@ -1742,8 +1779,8 @@ podem não bater à primeira vista.</p>
          'Não são divergência de estoque e nenhuma contagem os resolve — '
          'são acerto no cadastro do Digifarma. Use --negativos e --tarefas.</p>'
          % '; '.join(fora)) if fora else '',
-        '\n'.join(linhas) or '<tr><td colspan="8">Nada a conferir.</td></tr>',
-        len(conferir))
+        '\n'.join(linhas) or '<tr><td colspan="6">Nada a conferir.</td></tr>',
+        len(medicamentos), len(conferir))
 
     caminho = os.path.join(PASTA, 'comparacao_%s.html' % datetime.date.today().isoformat())
     with open(caminho, 'w', encoding='utf-8') as f:
