@@ -421,6 +421,26 @@ E para virar trabalho, na ordem em que se resolve:
 python agente_auto.py --tarefas
 ```
 
+Para a primeira lista — os lotes com saldo negativo — há um comando que abre
+cada um:
+
+```
+python agente_auto.py --negativos
+python agente_auto.py --negativos LAMOTRIGINA
+```
+
+Ele mostra o que entrou (nota e data), o que foi vendido (venda e data) e
+**quais outros lotes do mesmo medicamento têm saldo**. Essa última linha é a
+que aponta a causa, e são duas, com consertos diferentes:
+
+- **lote negativo com irmão cheio** — assinatura de venda lançada no lote
+  errado: o produto saiu do lote novo e o sistema debitou o antigo. O
+  conserto é corrigir o lote na venda;
+- **lote negativo sem irmão nenhum** — entrada que nunca foi lançada. O
+  conserto é lançar a nota.
+
+O rodapé conta quantos caíram em cada caso.
+
 Três listas, e a ordem não é gosto: **(1)** saldo negativo no Digifarma vem
 primeiro porque é dado torto que reaparece em toda conferência até alguém
 corrigir; **(2)** o que o SNGPC não tem é escrituração, e a lista já separa

@@ -18,6 +18,7 @@ Modos:
     python agente_auto.py --resumo          separa divergência real de lote escrito diferente
     python agente_auto.py --inventario      mostra o que entra e o que sai do inventário SNGPC
     python agente_auto.py --tarefas         três listas de trabalho, na ordem de resolver
+    python agente_auto.py --negativos       abre cada lote negativo e aponta a causa provável
     python agente_auto.py --teste           testa conexão com Firebird e Firebase
 
 Não gera .exe. Atualizar o agente = trocar este arquivo.
@@ -341,6 +342,18 @@ CONSULTAS = {
           JOIN CAB_VENDAS C ON (C.VENDA_NOTA_ID = I.VENDA_NOTA_ID)
          WHERE UPPER(CAST(IVL.NUM_LOTE AS VARCHAR(500))) = ?
          ORDER BY C.VENDA_NOTA_ID
+    """,
+
+    # --- entradas de um lote, com a nota e a data (--negativos) ---
+    # LEFT JOIN em CAB_NOTAS: lote cuja nota sumiu do banco continua sendo
+    # entrada, e é justamente o caso que interessa investigar.
+    "entradas_do_lote": """
+        SELECT P.REGISTRO_MS, C.CAB_NOTA_ID, C.NOTA_FISCAL, C.DATA_RECEBIMENTO,
+               {COLUNAS}
+          FROM LOTES L
+          JOIN PRODUTOS P ON (P.PRODUTO_ID = L.PRODUTO_ID)
+          LEFT JOIN CAB_NOTAS C ON (C.CAB_NOTA_ID = L.CAB_NOTA_ID)
+         WHERE UPPER(CAST(L.NUM_LOTE AS VARCHAR(500))) = ?
     """,
 
     # --- diagnóstico: linhas cruas de LOTES de um produto (--saldo) ---
@@ -849,6 +862,13 @@ DESCRICOES_POR_MS = {}  # ms -> descrição, vinda do cadastro do Digifarma
 
 def so_digitos(valor):
     return ''.join(c for c in str(valor or '') if c.isdigit())
+
+
+def normalizar_texto(valor):
+    """Para busca no terminal: sem acento e em maiúsculas, como o app faz."""
+    import unicodedata
+    sem_acento = unicodedata.normalize('NFD', str(valor or ''))
+    return ''.join(c for c in sem_acento if unicodedata.category(c) != 'Mn').upper()
 
 
 def formatar_ms(valor):
@@ -1606,6 +1626,97 @@ def chave_frouxa(chave):
     return (ms, ''.join(c for c in lote if c.isalnum()).lstrip('0'))
 
 
+def modo_negativos(config, filtro=''):
+    """Abre cada lote com saldo negativo: o que entrou, o que foi vendido, e
+    quais outros lotes do mesmo medicamento têm saldo.
+
+    A última coluna é a que aponta a causa. Lote negativo com IRMÃO cheio é
+    assinatura de venda lançada no lote errado — o produto saiu do lote novo
+    e o sistema debitou o antigo. Lote negativo sem irmão nenhum é entrada
+    que nunca foi lançada. São consertos diferentes."""
+    conexao = conectar_firebird(config)
+    try:
+        por_chave, info = saldo_por_lote(conexao, config)
+        negativos = {k: v for k, v in por_chave.items() if v['saldoDigifarma'] < 0}
+        if filtro:
+            alvo = normalizar_texto(filtro)
+            negativos = {k: v for k, v in negativos.items()
+                         if alvo in normalizar_texto(v['descricao']) or alvo in k[1]}
+        if not negativos:
+            print('Nenhum lote com saldo negativo%s.'
+                  % (' para "%s"' % filtro if filtro else ''))
+            return True
+
+        colunas = ['L.NUM_LOTE'] + ['L.%s' % info['coluna']]
+        if 'QUANTIDADE_COMPRA' in info['campos'] and info['coluna'] != 'QUANTIDADE_COMPRA':
+            colunas.append('L.QUANTIDADE_COMPRA')
+        if 'ENTRADA_SAIDA' in info['campos']:
+            colunas.append('L.ENTRADA_SAIDA')
+        sql_entradas = CONSULTAS['entradas_do_lote'].replace('{COLUNAS}', ', '.join(colunas))
+
+        print('LOTES COM SALDO NEGATIVO — %d\n' % len(negativos))
+        com_irmao, sem_irmao = [], []
+
+        for chave, registro in sorted(negativos.items(), key=lambda x: x[1]['saldoDigifarma']):
+            ms, lote = chave
+            print('%s' % (registro['descricao'] or '(sem descrição)'))
+            print('  M.S. %s · lote %s · saldo %g%s' % (
+                formatar_ms(ms), lote or '(vazio)', registro['saldoDigifarma'],
+                ' · vence %s' % br(registro['validade']) if registro['validade'] else ''))
+
+            try:
+                entradas = [l for l in consultar(conexao, sql_entradas, (lote,))
+                            if so_digitos(l.get('REGISTRO_MS')) == ms]
+            except Exception as e:
+                registrar('Não consegui ler as entradas do lote %s: %s' % (lote, e))
+                entradas = []
+            for l in entradas:
+                # o que ENTROU e o que RESTA são colunas diferentes: mostrar
+                # só o saldo na linha da entrada faz parecer que entrou -3
+                comprou = ('comprou %g · ' % numero(l.get('QUANTIDADE_COMPRA'))
+                           if 'QUANTIDADE_COMPRA' in l else '')
+                print('    entrou   nota %-10s de %-10s  %sresta %g' % (
+                    texto(l.get('NOTA_FISCAL')) or '—', br(texto(l.get('DATA_RECEBIMENTO'))),
+                    comprou, numero(l.get(info['coluna']))))
+            if not entradas:
+                print('    entrou   (nenhuma linha de entrada em LOTES)')
+
+            try:
+                vendas = [l for l in consultar(conexao, CONSULTAS['vendas_do_lote'], (lote,))]
+            except Exception as e:
+                registrar('Não consegui ler as vendas do lote %s: %s' % (lote, e))
+                vendas = []
+            for v in vendas[:12]:
+                print('    vendeu   venda %-8s de %-10s  %g' % (
+                    texto(v.get('VENDA_NOTA_ID')), br(texto(v.get('DATA'))),
+                    numero(v.get('QUANTIDADE'))))
+            if len(vendas) > 12:
+                print('             ... e mais %d venda(s)' % (len(vendas) - 12))
+
+            irmaos = [(k[1], r['saldoDigifarma']) for k, r in por_chave.items()
+                      if k[0] == ms and k[1] != lote and r['saldoDigifarma'] > 0]
+            if irmaos:
+                com_irmao.append(chave)
+                print('    outros lotes deste medicamento COM saldo:')
+                for l, s in sorted(irmaos, key=lambda x: -x[1])[:6]:
+                    print('             lote %-14s %g' % (l, s))
+                print('    -> a venda pode ter saído de um destes e sido lançada aqui')
+            else:
+                sem_irmao.append(chave)
+                print('    -> nenhum outro lote deste medicamento tem saldo:')
+                print('       parece entrada que nunca foi lançada')
+            print('')
+
+        print('=' * 74)
+        print('%d com outro lote cheio — provável venda lançada no lote errado' % len(com_irmao))
+        print('%d sem nenhum lote cheio — provável entrada não lançada' % len(sem_irmao))
+        print('')
+        print('Nada aqui foi alterado no Digifarma: esta lista só lê.')
+        return True
+    finally:
+        fechar(conexao)
+
+
 def modo_tarefas(config):
     """As divergências viram três listas de trabalho, na ordem em que se
     resolvem: primeiro o que é dado torto no Digifarma (vai reaparecer em
@@ -2096,6 +2207,8 @@ def principal():
                         help='mostra o inventário do SNGPC: o que entra, o que sai e por quê')
     parser.add_argument('--tarefas', action='store_true',
                         help='as divergências em três listas de trabalho, na ordem de resolver')
+    parser.add_argument('--negativos', metavar='TEXTO', nargs='?', const='',
+                        help='abre cada lote negativo: o que entrou, o que vendeu, e os lotes irmãos')
     args = parser.parse_args()
 
     config = carregar_config()
@@ -2111,6 +2224,8 @@ def principal():
     try:
         if args.colunas:
             raise SystemExit(0 if modo_colunas(config, args.colunas) else 1)
+        if args.negativos is not None:
+            raise SystemExit(0 if modo_negativos(config, args.negativos) else 1)
         if args.tarefas:
             raise SystemExit(0 if modo_tarefas(config) else 1)
         if args.inventario:

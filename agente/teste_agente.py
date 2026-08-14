@@ -270,6 +270,10 @@ def principal():
              'farmacia/agentes/agente-sngpc' in ag.recado_de_permissao(ag.CONFIG_PADRAO),
              ag.recado_de_permissao(ag.CONFIG_PADRAO))
 
+    conferir('busca no terminal ignora acento e caixa',
+             ag.normalizar_texto('Solução') == 'SOLUCAO'
+             and ag.normalizar_texto('lamotrigina') == 'LAMOTRIGINA')
+
     conferir('a chave frouxa ignora zero à esquerda e pontuação do lote',
              ag.chave_frouxa(('123', '00036467')) == ag.chave_frouxa(('123', '36.467'))
              and ag.chave_frouxa(('123', 'BQ37J001')) != ag.chave_frouxa(('123', 'BQ37J002')))
