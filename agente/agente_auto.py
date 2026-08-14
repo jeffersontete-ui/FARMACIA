@@ -19,6 +19,7 @@ Modos:
     python agente_auto.py --inventario      mostra o que entra e o que sai do inventário SNGPC
     python agente_auto.py --tarefas         três listas de trabalho, na ordem de resolver
     python agente_auto.py --negativos       abre cada lote negativo e aponta a causa provável
+    python agente_auto.py --comparacao      folha de conferência em HTML, para imprimir
     python agente_auto.py --teste           testa conexão com Firebird e Firebase
 
 Não gera .exe. Atualizar o agente = trocar este arquivo.
@@ -1626,6 +1627,143 @@ def chave_frouxa(chave):
     return (ms, ''.join(c for c in lote if c.isalnum()).lstrip('0'))
 
 
+FOLHA_ESTILO = """
+  @page { size: A4 portrait; margin: 14mm 12mm; }
+  * { box-sizing: border-box; }
+  body { font: 11px/1.4 Arial, Helvetica, sans-serif; color: #000; margin: 0; }
+  h1 { font-size: 16px; margin: 0 0 2px; }
+  .sub { font-size: 10.5px; color: #444; margin: 0 0 10px; }
+  .aviso { border: 1px solid #000; padding: 6px 8px; margin: 0 0 10px; font-size: 10.5px; }
+  table { width: 100%; border-collapse: collapse; }
+  thead { display: table-header-group; }   /* repete o cabeçalho a cada página */
+  tr { page-break-inside: avoid; }
+  th, td { border-bottom: 1px solid #BBB; padding: 4px 5px; text-align: left;
+           vertical-align: top; }
+  th { border-bottom: 1.5px solid #000; font-size: 9.5px; text-transform: uppercase;
+       letter-spacing: .04em; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .contar { width: 62px; border-bottom: 1px solid #BBB; }
+  .grupo td { background: #EEE; font-weight: bold; border-top: 1.5px solid #000;
+              text-transform: uppercase; font-size: 10px; letter-spacing: .04em; }
+  .rodape { margin-top: 18px; font-size: 10px; color: #444;
+            page-break-inside: avoid; }
+  .assinatura { margin-top: 26px; border-top: 1px solid #000; width: 62%;
+                padding-top: 4px; font-size: 10px; }
+  @media print { .naoimprime { display: none; } }
+"""
+
+
+def escapar_html(valor):
+    return (texto(valor).replace('&', '&amp;').replace('<', '&lt;')
+            .replace('>', '&gt;').replace('"', '&quot;'))
+
+
+def modo_comparacao(config, filtro=''):
+    """Gera a comparação Digifarma × SNGPC em HTML, para imprimir.
+
+    Fica de fora o lote com saldo NEGATIVO: negativo é lançamento errado, não
+    estoque, e quem for conferir prateleira com o papel na mão perde tempo
+    com linha que não existe. Quantos ficaram de fora sai no cabeçalho —
+    sumir em silêncio seria esconder trabalho, não poupar."""
+    conexao = conectar_firebird(config)
+    try:
+        dados = montar_inventario(conexao, config)
+    finally:
+        fechar(conexao)
+
+    itens = [i for i in dados.get('itens', []) if i.get('motivo')]
+    negativos = [i for i in itens if i['motivo'] == 'negativo']
+    sem_ms = [i for i in itens if i['motivo'] == 'sem_ms']
+    conferir = [i for i in itens if i['motivo'] not in ('negativo', 'sem_ms')]
+
+    if filtro:
+        alvo = normalizar_texto(filtro)
+        conferir = [i for i in conferir
+                    if alvo in normalizar_texto(i['descricao']) or alvo in i['lote']]
+
+    ordem = {'so_na_anvisa': 0, 'quantidade': 1, 'anvisa_zerada_lote': 2,
+             'anvisa_zerada_produto': 3}
+    conferir.sort(key=lambda i: (ordem.get(i['motivo'], 9), normalizar_texto(i['descricao']),
+                                 i['lote']))
+
+    inventario = dados.get('inventario', {})
+    envio = dados.get('envio', {})
+    linhas = []
+    grupo = None
+    for i in conferir:
+        if i['motivo'] != grupo:
+            grupo = i['motivo']
+            quantos = sum(1 for x in conferir if x['motivo'] == grupo)
+            linhas.append('<tr class="grupo"><td colspan="8">%s — %d lote(s)</td></tr>'
+                          % (escapar_html(ROTULO_IMPRESSO.get(grupo, grupo)), quantos))
+        linhas.append(
+            '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td>'
+            '<td class="num">%g</td><td class="num">%g</td><td class="num">%+g</td>'
+            '<td class="contar"></td></tr>' % (
+                escapar_html(i['descricao'])[:58], escapar_html(formatar_ms(i['ms'])),
+                escapar_html(i['lote']) or '—', br(i['validade']) if i['validade'] else '—',
+                numero(i['saldoDigifarma']), numero(i['saldoSngpc']), numero(i['diferenca'])))
+
+    fora = []
+    if negativos:
+        fora.append('%d lote(s) com saldo NEGATIVO no Digifarma' % len(negativos))
+    if sem_ms:
+        fora.append('%d lote(s) sem registro M.S. no cadastro' % len(sem_ms))
+
+    html = """<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<title>Conferência Digifarma × SNGPC</title>
+<style>%s</style></head><body>
+<h1>Conferência Digifarma &times; SNGPC</h1>
+<p class="sub">Inventário do SNGPC de %s &middot; último envio em %s &middot;
+saldo por LOTES.%s &middot; gerado em %s</p>
+%s
+<table>
+<thead><tr>
+  <th>Medicamento</th><th>Registro M.S.</th><th>Lote</th><th>Validade</th>
+  <th class="num">Digifarma</th><th class="num">SNGPC</th><th class="num">Dif.</th>
+  <th>Contado</th>
+</tr></thead>
+<tbody>
+%s
+</tbody></table>
+<p class="rodape">%d lote(s) para conferir. A comparação é por registro M.S. + lote:
+a tela do Digifarma mostra o produto somando os lotes, e por isso os números
+podem não bater à primeira vista.</p>
+<p class="assinatura">Conferido por __________________________________ em ____/____/______</p>
+</body></html>
+""" % (
+        FOLHA_ESTILO,
+        br(inventario.get('data')) if inventario.get('data') else '(sem data)',
+        br(envio.get('data')) if envio.get('data') else '(sem data)',
+        escapar_html(inventario.get('colunaSaldo', '?')),
+        datetime.datetime.now().strftime('%d/%m/%Y %H:%M'),
+        ('<p class="aviso"><strong>Fora desta folha:</strong> %s. '
+         'Não são divergência de estoque e nenhuma contagem os resolve — '
+         'são acerto no cadastro do Digifarma. Use --negativos e --tarefas.</p>'
+         % '; '.join(fora)) if fora else '',
+        '\n'.join(linhas) or '<tr><td colspan="8">Nada a conferir.</td></tr>',
+        len(conferir))
+
+    caminho = os.path.join(PASTA, 'comparacao_%s.html' % datetime.date.today().isoformat())
+    with open(caminho, 'w', encoding='utf-8') as f:
+        f.write(html)
+    print('%d lote(s) na folha de conferência.' % len(conferir))
+    if fora:
+        print('Fora dela: %s.' % '; '.join(fora))
+    print('\nGravado em %s' % caminho)
+    print('Abra o arquivo (clique duas vezes) e imprima com Ctrl+P.')
+    return True
+
+
+ROTULO_IMPRESSO = {
+    'so_na_anvisa': 'O SNGPC tem e o Digifarma não',
+    'quantidade': 'Contagem diferente dos dois lados',
+    'anvisa_zerada_lote': 'Lote zerado na ANVISA',
+    'anvisa_zerada_produto': 'Zerado na ANVISA',
+}
+
+
 def modo_negativos(config, filtro=''):
     """Abre cada lote com saldo negativo: o que entrou, o que foi vendido, e
     quais outros lotes do mesmo medicamento têm saldo.
@@ -2209,6 +2347,8 @@ def principal():
                         help='as divergências em três listas de trabalho, na ordem de resolver')
     parser.add_argument('--negativos', metavar='TEXTO', nargs='?', const='',
                         help='abre cada lote negativo: o que entrou, o que vendeu, e os lotes irmãos')
+    parser.add_argument('--comparacao', metavar='TEXTO', nargs='?', const='',
+                        help='gera a folha de conferência em HTML, para imprimir')
     args = parser.parse_args()
 
     config = carregar_config()
@@ -2224,6 +2364,8 @@ def principal():
     try:
         if args.colunas:
             raise SystemExit(0 if modo_colunas(config, args.colunas) else 1)
+        if args.comparacao is not None:
+            raise SystemExit(0 if modo_comparacao(config, args.comparacao) else 1)
         if args.negativos is not None:
             raise SystemExit(0 if modo_negativos(config, args.negativos) else 1)
         if args.tarefas:

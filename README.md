@@ -421,6 +421,24 @@ E para virar trabalho, na ordem em que se resolve:
 python agente_auto.py --tarefas
 ```
 
+Para levar ao balcão em papel:
+
+```
+python agente_auto.py --comparacao
+python agente_auto.py --comparacao ESCITALOPRAM
+```
+
+Gera `comparacao_AAAA-MM-DD.html` na pasta do agente. Abra e imprima com
+Ctrl+P — o estilo é feito para A4, com o cabeçalho repetindo a cada página,
+linha que não parte no meio, coluna em branco para anotar a contagem física
+e espaço de assinatura.
+
+**Lote com saldo negativo fica de fora dessa folha**, junto com o que não
+tem registro M.S. Nenhum dos dois é divergência de estoque, e nenhuma
+contagem os resolve — são acerto no cadastro do Digifarma. Quantos ficaram
+de fora sai no cabeçalho da folha: sumir em silêncio seria esconder
+trabalho, não poupar.
+
 Para a primeira lista — os lotes com saldo negativo — há um comando que abre
 cada um:
 
