@@ -9,6 +9,45 @@ Conferência do estoque de controlados entre o **Digifarma** e o que foi
 
 O estoque manual do balcão fica no repositório separado **ESTOQUE**.
 
+## O que a conferência descobriu (agosto/2026)
+
+Vale registrar o resultado, porque a investigação levou dois dias e o
+raciocínio se perde se ficar só no histórico de commits.
+
+O app começou mostrando **4135 divergências de saldo** e um escitalopram com
+200 comprimidos num lote vencido em 2024. Depois de corrigir a apuração,
+sobraram ~104, e a pergunta virou: essas são de verdade?
+
+**São — e quase todas apontam para o Digifarma, não para a ANVISA.**
+
+O que foi medido, não suposto:
+
+| Verificação | Comando | Resultado |
+|---|---|---|
+| A comparação casa lote com lote? | `--resumo` | 208 lotes casados, **191 batendo**; **0** casariam com lote comparado de forma mais frouxa |
+| O inventário do SNGPC está limpo? | `--inventario` | 230 linhas, **todas** controladas, **todas** com produto no cadastro; nenhuma descartada, nenhuma órfã |
+| O site da ANVISA confirma o inventário baixado? | conferência manual | sim — TORVAL CR e DUAL aparecem zerados no site, como no inventário |
+
+Com isso, três hipóteses caíram: não é grafia de lote, não é inventário
+sujo ou parcial, não é vínculo perdido no cadastro. Sobra o Digifarma.
+
+Os padrões que restaram:
+
+- **39 lotes com saldo negativo.** Saída lançada sem a entrada. Não é
+  estoque, é lançamento errado — e é o que mais suja a conferência: na
+  lamotrigina 100mg, o lote com estoque real batia 11 = 11 com a ANVISA, e
+  só os três lotes negativos (−3, −3, −1) faziam o total do produto parecer
+  errado.
+- **Lotes antigos com estoque no Digifarma e zero na ANVISA.** Confirmados
+  no site: o SNGPC tem zero mesmo, e o Digifarma é que carrega estoque
+  fantasma.
+- **Entradas recentes** que ainda não estavam na foto do inventário. Saem
+  sozinhas no próximo download.
+
+A ordem de trabalho sai do `--tarefas`, e é essa: corrigir o que está torto
+no Digifarma primeiro, porque reaparece em toda conferência até ser
+corrigido.
+
 ## Regra de ouro
 
 **O Digifarma é a verdade.** O app só LÊ o inventário; o agente só faz
