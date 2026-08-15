@@ -216,8 +216,20 @@ python agente_auto.py --teste         testa Firebird e Firebase
 python teste_agente.py                roda tudo com banco simulado
 ```
 
-**Não existe .exe.** Atualizar o agente é trocar o `agente_auto.py` e rodar
-o `.bat` de novo.
+```
+python agente_auto.py --config transmitido_ate_venda=46108
+python agente_auto.py --atualizar
+```
+
+**Não existe .exe.** Atualizar o agente é trocar o `agente_auto.py`. Há três
+jeitos, do mais fácil para o mais manual: o botão **Atualizar o agente** no
+app, o `ATUALIZAR_AGENTE.bat` (que guarda backup, confere o arquivo baixado
+antes de trocar e ainda pergunta a configuração), ou baixar o arquivo à mão.
+
+O `--config` existe para ninguém precisar editar JSON com pressa: uma vírgula
+fora do lugar no `agente_config.json` derruba o agente inteiro. E ele recusa
+valor que não é número — `transmitido_ate_venda=46l08` digitado errado viraria
+zero em silêncio, desligando o ajuste sem ninguém perceber.
 
 ### Consultas SQL
 

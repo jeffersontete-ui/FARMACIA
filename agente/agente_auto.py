@@ -1839,7 +1839,14 @@ def aplicar_config(config, pedido):
     bruto = pedido.get('valor')
     tipo = CONFIG_REMOTO[chave]
     if tipo == 'inteiro':
-        valor = int(numero(bruto))
+        # numero() devolve 0 para texto que não é número, e aqui isso seria
+        # péssimo: "46l08" digitado errado viraria 0 em silêncio, desligando
+        # o ajuste sem ninguém perceber. Melhor recusar.
+        try:
+            valor = int(str(bruto).strip())
+        except (TypeError, ValueError):
+            raise RuntimeError('%s só aceita número inteiro, e veio "%s"'
+                               % (chave, bruto))
         if valor < 0:
             raise RuntimeError('%s não aceita número negativo' % chave)
     elif tipo == 'modo':
@@ -1859,6 +1866,43 @@ def aplicar_config(config, pedido):
         json.dump(atual, f, indent=2, ensure_ascii=False)
     config[chave] = valor
     return '%s: %s -> %s' % (chave, antigo, valor)
+
+
+def modo_config(par):
+    """--config chave=valor, para não precisar editar JSON à mão.
+
+    Uma vírgula fora do lugar no agente_config.json derruba o agente inteiro,
+    e quem está no servidor às pressas não é a pessoa certa para editar JSON.
+    Aceita as chaves do app mais permitir_ajuste_estoque — essa só por aqui,
+    porque ligar a escrita no Digifarma tem que ser um ato local."""
+    if '=' not in texto(par):
+        print('Use assim: --config transmitido_ate_venda=46108')
+        print('Chaves: %s, permitir_ajuste_estoque'
+              % ', '.join(sorted(CONFIG_REMOTO)))
+        return False
+
+    chave, _, bruto = texto(par).partition('=')
+    chave, bruto = chave.strip(), bruto.strip()
+    config = carregar_config()
+
+    if chave == 'permitir_ajuste_estoque':
+        valor = bruto.lower() in ('true', 'sim', 's', '1', 'on')
+        antigo = config.get(chave, False)
+        config[chave] = valor
+        with open(ARQUIVO_CONFIG, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        print('permitir_ajuste_estoque: %s -> %s' % (antigo, valor))
+        if valor:
+            print('A escrita no Digifarma está LIGADA: o app pode zerar lote')
+            print('negativo e gravar contagem. Toda alteração fica registrada.')
+        return True
+
+    try:
+        print(aplicar_config(config, {'chave': chave, 'valor': bruto}))
+    except Exception as e:
+        print('Não deu: %s' % e)
+        return False
+    return True
 
 
 def texto_do_modo(funcao, *argumentos):
@@ -3260,6 +3304,8 @@ def principal():
                         help='mostra o cadastro: registro M.S., código de barras e a marcação')
     parser.add_argument('--atualizar', action='store_true',
                         help='baixa a versão mais nova do agente do GitHub e se substitui')
+    parser.add_argument('--config', metavar='CHAVE=VALOR',
+                        help='muda uma chave do agente_config.json sem editar JSON à mão')
     args = parser.parse_args()
 
     config = carregar_config()
@@ -3275,6 +3321,8 @@ def principal():
     try:
         if args.colunas:
             raise SystemExit(0 if modo_colunas(config, args.colunas) else 1)
+        if args.config:
+            raise SystemExit(0 if modo_config(args.config) else 1)
         if args.atualizar:
             print(atualizar_agente(config))
             raise SystemExit(0)
