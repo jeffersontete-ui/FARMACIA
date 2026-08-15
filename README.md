@@ -9,6 +9,45 @@ Conferência do estoque de controlados entre o **Digifarma** e o que foi
 
 O estoque manual do balcão fica no repositório separado **ESTOQUE**.
 
+## O que a conferência descobriu (agosto/2026)
+
+Vale registrar o resultado, porque a investigação levou dois dias e o
+raciocínio se perde se ficar só no histórico de commits.
+
+O app começou mostrando **4135 divergências de saldo** e um escitalopram com
+200 comprimidos num lote vencido em 2024. Depois de corrigir a apuração,
+sobraram ~104, e a pergunta virou: essas são de verdade?
+
+**São — e quase todas apontam para o Digifarma, não para a ANVISA.**
+
+O que foi medido, não suposto:
+
+| Verificação | Comando | Resultado |
+|---|---|---|
+| A comparação casa lote com lote? | `--resumo` | 208 lotes casados, **191 batendo**; **0** casariam com lote comparado de forma mais frouxa |
+| O inventário do SNGPC está limpo? | `--inventario` | 230 linhas, **todas** controladas, **todas** com produto no cadastro; nenhuma descartada, nenhuma órfã |
+| O site da ANVISA confirma o inventário baixado? | conferência manual | sim — TORVAL CR e DUAL aparecem zerados no site, como no inventário |
+
+Com isso, três hipóteses caíram: não é grafia de lote, não é inventário
+sujo ou parcial, não é vínculo perdido no cadastro. Sobra o Digifarma.
+
+Os padrões que restaram:
+
+- **39 lotes com saldo negativo.** Saída lançada sem a entrada. Não é
+  estoque, é lançamento errado — e é o que mais suja a conferência: na
+  lamotrigina 100mg, o lote com estoque real batia 11 = 11 com a ANVISA, e
+  só os três lotes negativos (−3, −3, −1) faziam o total do produto parecer
+  errado.
+- **Lotes antigos com estoque no Digifarma e zero na ANVISA.** Confirmados
+  no site: o SNGPC tem zero mesmo, e o Digifarma é que carrega estoque
+  fantasma.
+- **Entradas recentes** que ainda não estavam na foto do inventário. Saem
+  sozinhas no próximo download.
+
+A ordem de trabalho sai do `--tarefas`, e é essa: corrigir o que está torto
+no Digifarma primeiro, porque reaparece em toda conferência até ser
+corrigido.
+
 ## Regra de ouro
 
 **O Digifarma é a verdade.** O app só LÊ o inventário; o agente só faz
@@ -381,6 +420,78 @@ E para virar trabalho, na ordem em que se resolve:
 ```
 python agente_auto.py --tarefas
 ```
+
+Para levar ao balcão em papel:
+
+```
+python agente_auto.py --comparacao
+python agente_auto.py --comparacao ESCITALOPRAM
+```
+
+Gera `comparacao_AAAA-MM-DD.html` na pasta do agente. Abra e imprima com
+Ctrl+P — o estilo é feito para A4, com o cabeçalho repetindo a cada página,
+linha que não parte no meio, coluna em branco para anotar a contagem física
+e espaço de assinatura.
+
+**Duas listas, não uma:** psicotrópicos/entorpecentes primeiro,
+antimicrobianos depois, **cada uma começando em página nova**, com o seu
+próprio total e a sua própria assinatura. São duas escriturações diferentes
+— a receita de psicotrópico fica retida, a de antimicrobiano não — e assim
+as duas conferências podem sair ao mesmo tempo, em mãos diferentes. Dentro
+de cada lista os medicamentos vêm em **ordem alfabética**, que é como se
+procura na prateleira, e abaixo de cada um os seus lotes.
+
+A classe sai do cadastro do Digifarma (`PSICOTROPICO` / `ANTIMICROBIANO`),
+o mesmo critério que decide o que é importado. Cadastro marcado como os
+dois entra em psicotrópico, a lista mais rígida. Se algum medicamento
+estiver sem marcação nenhuma, sai numa terceira lista no fim, dizendo que é
+acerto de cadastro — melhor do que ser posto na lista errada em silêncio.
+
+A tela de divergências do app segue a mesma divisão e a mesma ordem
+alfabética, para o papel e o celular não contarem histórias diferentes.
+
+**As vendas do dia saem na folha**, e por um motivo prático: o inventário do
+SNGPC é a **foto do último envio** e a prateleira é de **agora**. O que foi
+vendido hoje já saiu da prateleira e ainda está na foto — quem conta encontra
+a caixa faltando e marca divergência de uma venda que está certa. Por isso a
+tabela tem cinco números, e não três:
+
+```
+SNGPC (foto do envio) + Movim. = Esperado        Dif. = Digifarma − Esperado
+```
+
+A coluna **Movim.** é o que se moveu depois do envio e ainda não subiu, lote a
+lote. No fim de cada lista vem o detalhe desse movimento — **número da venda,
+data e hora, medicamento, lote e quantidade** —, na ordem em que aconteceu,
+para dar baixa no papel na hora da contagem. Entradas e perdas pendentes
+entram na mesma lista, com o tipo em cada linha. A diferença **nunca** é
+contra a foto do envio; é contra o esperado.
+
+**Lote com saldo negativo fica de fora dessa folha**, junto com o que não
+tem registro M.S. Nenhum dos dois é divergência de estoque, e nenhuma
+contagem os resolve — são acerto no cadastro do Digifarma. Quantos ficaram
+de fora sai no cabeçalho da folha: sumir em silêncio seria esconder
+trabalho, não poupar.
+
+Para a primeira lista — os lotes com saldo negativo — há um comando que abre
+cada um:
+
+```
+python agente_auto.py --negativos
+python agente_auto.py --negativos LAMOTRIGINA
+```
+
+Ele mostra o que entrou (nota e data), o que foi vendido (venda e data) e
+**quais outros lotes do mesmo medicamento têm saldo**. Essa última linha é a
+que aponta a causa, e são duas, com consertos diferentes:
+
+- **lote negativo com irmão cheio** — assinatura de venda lançada no lote
+  errado: o produto saiu do lote novo e o sistema debitou o antigo. O
+  conserto é corrigir o lote na venda;
+- **lote negativo sem irmão nenhum** — entrada que nunca foi lançada. O
+  conserto é lançar a nota.
+
+O rodapé conta quantos caíram em cada caso.
 
 Três listas, e a ordem não é gosto: **(1)** saldo negativo no Digifarma vem
 primeiro porque é dado torto que reaparece em toda conferência até alguém

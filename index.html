@@ -164,6 +164,7 @@
       <div class="cabeca-vista"><h2>Aceites da ANVISA</h2></div>
       <p class="sublinha">A pasta de retorno do Digifarma fica vazia: o aceite só existe no site da ANVISA.
       Confira lá e marque aqui — fica registrado quem marcou e quando.</p>
+      <div id="aceites-alerta" class="barra-comando" hidden></div>
       <div id="lista-aceites" class="pilha"></div>
       <p id="aceites-vazio" class="vazio" hidden>Nenhum envio registrado ainda.</p>
     </section>
@@ -200,7 +201,7 @@
     </button>
     <button class="nav-item" data-vista="aceites">
       <svg class="nav-icone" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-aceites"/></svg>
-      <span class="nav-rotulo">Aceites</span>
+      <span class="nav-rotulo">Aceites</span><span id="selo-aceites" class="selo" hidden>0</span>
     </button>
   </nav>
 </div>

@@ -18,6 +18,8 @@ Modos:
     python agente_auto.py --resumo          separa divergência real de lote escrito diferente
     python agente_auto.py --inventario      mostra o que entra e o que sai do inventário SNGPC
     python agente_auto.py --tarefas         três listas de trabalho, na ordem de resolver
+    python agente_auto.py --negativos       abre cada lote negativo e aponta a causa provável
+    python agente_auto.py --comparacao      folha de conferência em HTML, para imprimir
     python agente_auto.py --teste           testa conexão com Firebird e Firebase
 
 Não gera .exe. Atualizar o agente = trocar este arquivo.
@@ -86,6 +88,7 @@ CONSULTAS = {
     "saidas_pendentes": """
         SELECT C.VENDA_NOTA_ID,
                CAST(C.VENDA_DATA_HORA AS DATE) AS DATA,
+               C.VENDA_DATA_HORA AS DATA_HORA,
                P.PRODUTO, P.REGISTRO_MS, P.COD_BARRAS,
                IVL.NUM_LOTE, IVL.QUANTIDADE
           FROM CAB_VENDAS C
@@ -254,7 +257,8 @@ CONSULTAS = {
     # quem é controlado, para filtrar o inventário do SNGPC pelo mesmo
     # critério das vendas: PSICOTROPICO='S' OU ANTIMICROBIANO='S'
     "produtos_controlados": """
-        SELECT PRODUTO_ID, PRODUTO, PSICOTROPICO, ANTIMICROBIANO FROM PRODUTOS
+        SELECT PRODUTO_ID, PRODUTO, REGISTRO_MS, PSICOTROPICO, ANTIMICROBIANO
+          FROM PRODUTOS
     """,
 
     # --- saldo por lote no Digifarma ---
@@ -341,6 +345,18 @@ CONSULTAS = {
           JOIN CAB_VENDAS C ON (C.VENDA_NOTA_ID = I.VENDA_NOTA_ID)
          WHERE UPPER(CAST(IVL.NUM_LOTE AS VARCHAR(500))) = ?
          ORDER BY C.VENDA_NOTA_ID
+    """,
+
+    # --- entradas de um lote, com a nota e a data (--negativos) ---
+    # LEFT JOIN em CAB_NOTAS: lote cuja nota sumiu do banco continua sendo
+    # entrada, e é justamente o caso que interessa investigar.
+    "entradas_do_lote": """
+        SELECT P.REGISTRO_MS, C.CAB_NOTA_ID, C.NOTA_FISCAL, C.DATA_RECEBIMENTO,
+               {COLUNAS}
+          FROM LOTES L
+          JOIN PRODUTOS P ON (P.PRODUTO_ID = L.PRODUTO_ID)
+          LEFT JOIN CAB_NOTAS C ON (C.CAB_NOTA_ID = L.CAB_NOTA_ID)
+         WHERE UPPER(CAST(L.NUM_LOTE AS VARCHAR(500))) = ?
     """,
 
     # --- diagnóstico: linhas cruas de LOTES de um produto (--saldo) ---
@@ -772,6 +788,44 @@ def classes_dos_produtos(conexao):
     return controlados, conhecidos
 
 
+CLASSES = ('psicotropico', 'antimicrobiano')
+NOME_CLASSE = {
+    'psicotropico': 'Psicotrópicos e entorpecentes',
+    'antimicrobiano': 'Antimicrobianos',
+    '': 'Sem marcação de classe no cadastro',
+}
+
+
+def classes_por_medicamento(conexao):
+    """De que lista é cada medicamento: psicotrópico ou antimicrobiano.
+
+    São duas escriturações diferentes na farmácia — a receita de psicotrópico
+    fica retida e a de antimicrobiano não —, e quem confere prateleira confere
+    uma lista de cada vez. Por isso a folha sai separada.
+
+    Cadastro marcado como os dois entra em psicotrópico: é a lista mais
+    rígida, e conferir por lá não deixa nada de fora.
+
+    Devolve (por_produto, por_ms). O segundo é o desempate para o lote que
+    só existe no inventário da ANVISA, que chega sem PRODUTO_ID."""
+    por_produto, por_ms = {}, {}
+    for linha in consultar(conexao, CONSULTAS['produtos_controlados']):
+        psico = texto(linha.get('PSICOTROPICO')).upper() == 'S'
+        anti = texto(linha.get('ANTIMICROBIANO')).upper() == 'S'
+        if not psico and not anti:
+            continue
+        classe = 'psicotropico' if psico else 'antimicrobiano'
+        produto = texto(linha.get('PRODUTO_ID'))
+        if produto:
+            por_produto[produto] = classe
+        ms = so_digitos(linha.get('REGISTRO_MS'))
+        # dois cadastros com o mesmo registro e marcações diferentes: fica o
+        # psicotrópico, para não sumir da lista que exige receita retida
+        if ms and (classe == 'psicotropico' or ms not in por_ms):
+            por_ms[ms] = classe
+    return por_produto, por_ms
+
+
 def ler_inventario_anvisa(conexao):
     """Lê INVENTARIO_SNGPC — a tabela que o Anvisa.exe regrava com o
     inventário do site da ANVISA.
@@ -849,6 +903,13 @@ DESCRICOES_POR_MS = {}  # ms -> descrição, vinda do cadastro do Digifarma
 
 def so_digitos(valor):
     return ''.join(c for c in str(valor or '') if c.isdigit())
+
+
+def normalizar_texto(valor):
+    """Para busca no terminal: sem acento e em maiúsculas, como o app faz."""
+    import unicodedata
+    sem_acento = unicodedata.normalize('NFD', str(valor or ''))
+    return ''.join(c for c in sem_acento if unicodedata.category(c) != 'Mn').upper()
 
 
 def formatar_ms(valor):
@@ -997,6 +1058,9 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
         tipo: [{
             'id': l.get('VENDA_NOTA_ID') or l.get('CAB_NOTA_ID') or l.get('PERDA_ID'),
             'data': texto(l.get('DATA') or l.get('DATA_RECEBIMENTO') or l.get('DATA_EMISSAO')),
+            # a hora só existe na venda, e é ela que deixa a folha de
+            # conferência conversar com o cupom: mesma venda, mesma hora
+            'hora': texto_hora(l.get('DATA_HORA'))[11:16],
             'descricao': texto(l.get('PRODUTO')),
             'ms': texto(l.get('REGISTRO_MS')),
             'lote': texto(l.get('NUM_LOTE')),
@@ -1143,6 +1207,21 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
             item['movimentoDesdeEnvio'] = pendente
             item['esperadoSngpc'] = esperado
         itens.append(item)
+    # de que lista é cada item — psicotrópico ou antimicrobiano. Vai junto
+    # com o item para o app e para a folha de conferência não precisarem
+    # voltar ao banco só para separar as duas listas.
+    try:
+        classe_produto, classe_ms = classes_por_medicamento(conexao)
+        for i in itens:
+            i['classe'] = (classe_produto.get(i.get('codigo'))
+                           or classe_ms.get(i['ms']) or '')
+        # o movimento pendente também: cada lista leva as suas vendas
+        for linhas_tipo in resultado['pendentes'].values():
+            for p in linhas_tipo:
+                p['classe'] = classe_ms.get(so_digitos(p['ms']), '')
+    except Exception as e:
+        registrar('Falha ao classificar psicotrópico/antimicrobiano: %s' % e)
+
     resultado['itens'] = itens
     resultado['resumoSaldo'] = {}
     for i in itens:
@@ -1604,6 +1683,445 @@ def chave_frouxa(chave):
     não é usada na comparação de verdade, que continua exata."""
     ms, lote = chave
     return (ms, ''.join(c for c in lote if c.isalnum()).lstrip('0'))
+
+
+FOLHA_ESTILO = """
+  @page { size: A4 portrait; margin: 14mm 12mm; }
+  * { box-sizing: border-box; }
+  body { font: 11px/1.4 Arial, Helvetica, sans-serif; color: #000; margin: 0; }
+  h1 { font-size: 16px; margin: 0 0 2px; }
+  .sub { font-size: 10.5px; color: #444; margin: 0 0 10px; }
+  .aviso { border: 1px solid #000; padding: 6px 8px; margin: 0 0 10px; font-size: 10.5px; }
+  table { width: 100%; border-collapse: collapse; }
+  thead { display: table-header-group; }   /* repete o cabeçalho a cada página */
+  tr { page-break-inside: avoid; }
+  th, td { border-bottom: 1px solid #BBB; padding: 4px 5px; text-align: left;
+           vertical-align: top; }
+  th { border-bottom: 1.5px solid #000; font-size: 9.5px; text-transform: uppercase;
+       letter-spacing: .04em; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .contar { width: 62px; border-bottom: 1px solid #BBB; }
+  .med td { background: #EEE; border-top: 1.5px solid #000; padding-top: 6px; }
+  .med .ms { font-weight: normal; font-size: 9.5px; color: #444; }
+  .lote .rec { padding-left: 16px; }
+  .lote.bate td { color: #555; }        /* já bate: fica, mas não chama */
+  .secao h2 { font-size: 13px; margin: 0 0 6px; border-bottom: 2px solid #000;
+              padding-bottom: 3px; }
+  .secao h3 { font-size: 11.5px; margin: 20px 0 2px; page-break-after: avoid; }
+  .movimento { margin-top: 4px; }
+  .movimento td { font-size: 10.5px; }
+  .movimento .semlote td { font-weight: 700; }
+  .secao h2 .conta { float: right; font-weight: normal; font-size: 10px;
+                     color: #444; padding-top: 3px; }
+  /* cada lista começa em página nova: dá para conferir as duas ao mesmo
+     tempo, em duas mãos diferentes */
+  .quebra { page-break-before: always; }
+  .rodape { margin-top: 18px; font-size: 10px; color: #444;
+            page-break-inside: avoid; }
+  .vazio { border: 1px solid #000; padding: 10px; }
+  .assinatura { margin-top: 22px; border-top: 1px solid #000; width: 62%;
+                padding-top: 4px; font-size: 10px; page-break-inside: avoid; }
+  @media print { .naoimprime { display: none; } }
+"""
+
+
+def escapar_html(valor):
+    return (texto(valor).replace('&', '&amp;').replace('<', '&lt;')
+            .replace('>', '&gt;').replace('"', '&quot;'))
+
+
+NOME_MOVIMENTO = {'vendas': 'Venda', 'entradas': 'Entrada',
+                  'perdas': 'Perda', 'transferencias': 'Transferência'}
+
+
+def bloco_movimento(movimentos):
+    """O que se moveu depois do último envio: venda, entrada, perda.
+
+    Sem esta lista a folha parece errada. O inventário do SNGPC é a FOTO do
+    último envio e a prateleira é de agora: o que foi vendido hoje já saiu da
+    prateleira e ainda está na foto. Quem conta encontra a caixa faltando e
+    marca divergência de uma venda que está certa. Aqui estão, com número da
+    venda, hora, lote e quantidade, para dar baixa no papel na hora."""
+    if not movimentos:
+        return ('<p class="sub">Nenhuma venda, entrada ou perda desta lista '
+                'desde o último envio — a foto do SNGPC ainda vale como está.</p>')
+    linhas = []
+    sem_lote = 0
+    for m in movimentos:
+        # sem lote não entra na conta de lote nenhum: aparece na lista, mas
+        # marcado, senão a soma da coluna Movim. não fecha com este anexo —
+        # e o lançamento sem lote é problema por si só, o SNGPC exige o lote
+        if not texto(m.get('lote')):
+            sem_lote += 1
+        linhas.append(
+            '<tr%s><td>%s%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>'
+            '<td class="num">%s</td></tr>' % (
+                ' class="semlote"' if not texto(m.get('lote')) else '',
+                br(m['data']) if m.get('data') else '—',
+                (' %s' % escapar_html(m['hora'])) if m.get('hora') else '',
+                escapar_html(NOME_MOVIMENTO.get(m['tipo'], m['tipo'])),
+                escapar_html(m.get('id')) or '—',
+                escapar_html(m.get('descricao'))[:42] or '—',
+                escapar_html(m.get('lote')) or '(sem lote) *',
+                '%+g' % m['assinado']))
+    return """<h3>Movimento desde o último envio &mdash; %d lançamento(s)</h3>
+<p class="sub">Já saiu (ou entrou) na prateleira e ainda <strong>não</strong> está
+no inventário do SNGPC. A coluna Movim. da tabela acima é a soma disto, lote a lote.</p>
+<table class="movimento">
+<thead><tr>
+  <th>Data e hora</th><th>Tipo</th><th>Nº</th><th>Medicamento</th><th>Lote</th>
+  <th class="num">Qtd.</th>
+</tr></thead>
+<tbody>
+%s
+</tbody></table>%s""" % (len(movimentos), '\n'.join(linhas),
+                         ('\n<p class="sub">* %d lançamento(s) sem lote: não entram '
+                          'na coluna Movim. porque não há em qual lote somar, e o '
+                          'SNGPC exige o lote. Corrija no Digifarma antes do envio.</p>'
+                          % sem_lote) if sem_lote else '')
+
+
+def bloco_conferencia(titulo, medicamentos, quebra=False, nota='', movimentos=None):
+    """Uma lista da folha: o título da classe e a tabela dos medicamentos
+    dela, em ordem alfabética, cada um com os seus lotes embaixo, e no fim o
+    movimento do dia que ainda não subiu ao SNGPC."""
+    linhas = []
+    lotes = 0
+    for m in medicamentos:
+        lotes += len(m['lotes'])
+        linhas.append(
+            '<tr class="med"><td><strong>%s</strong><br><span class="ms">M.S. %s</span>%s</td>'
+            '<td></td><td class="num">%g</td><td class="num">%g</td>'
+            '<td class="num">%s</td><td class="num">%g</td>'
+            '<td class="num">%s</td><td class="contar"></td></tr>' % (
+                escapar_html(m['descricao'])[:62], escapar_html(formatar_ms(m['ms'])),
+                ('<span class="ms"> · %d lote(s) negativo(s) fora desta folha</span>'
+                 % m['omitidos']) if m['omitidos'] else '',
+                m['digifarma'], m['sngpc'],
+                ('%+g' % m['movimento']) if m['movimento'] else '—',
+                m['esperado'],
+                # total do medicamento batendo com lotes divergentes é o
+                # caso mais informativo da folha: o estoque existe, o que
+                # está errado é em qual lote ele foi lançado
+                ('%+g' % round(m['digifarma'] - m['esperado'], 3))
+                if round(m['digifarma'] - m['esperado'], 3) else 'total bate'))
+        for l in m['lotes']:
+            bate = ' bate' if not numero(l.get('diferenca')) else ''
+            movido = numero(l.get('movimentoDesdeEnvio'))
+            linhas.append(
+                '<tr class="lote%s"><td class="rec">lote %s</td><td>%s</td>'
+                '<td class="num">%g</td><td class="num">%g</td><td class="num">%s</td>'
+                '<td class="num">%g</td><td class="num">%s</td>'
+                '<td class="contar"></td></tr>' % (
+                    bate, escapar_html(l['lote']) or '—',
+                    br(l['validade']) if l['validade'] else '—',
+                    numero(l['saldoDigifarma']), numero(l['saldoSngpc']),
+                    ('%+g' % movido) if movido else '—',
+                    numero(l.get('esperadoSngpc', l['saldoSngpc'])),
+                    ('%+g' % numero(l['diferenca'])) if numero(l['diferenca']) else '—'))
+
+    return """<section class="secao%s">
+<h2>%s <span class="conta">%d medicamento(s), %d lote(s)</span></h2>
+%s<table>
+<thead><tr>
+  <th>Medicamento &middot; lote</th><th>Validade</th>
+  <th class="num">Digifarma</th><th class="num">SNGPC<br>(envio)</th>
+  <th class="num">Movim.</th><th class="num">Esperado</th>
+  <th class="num">Dif.</th><th>Contado</th>
+</tr></thead>
+<tbody>
+%s
+</tbody></table>
+%s
+<p class="assinatura">Conferido por __________________________________ em ____/____/______</p>
+</section>""" % (
+        ' quebra' if quebra else '', escapar_html(titulo),
+        len(medicamentos), lotes,
+        ('<p class="sub">%s</p>' % escapar_html(nota)) if nota else '',
+        '\n'.join(linhas),
+        bloco_movimento(movimentos or []))
+
+
+def modo_comparacao(config, filtro=''):
+    """Gera a comparação Digifarma × SNGPC em HTML, para imprimir.
+
+    Fica de fora o lote com saldo NEGATIVO: negativo é lançamento errado, não
+    estoque, e quem for conferir prateleira com o papel na mão perde tempo
+    com linha que não existe. Quantos ficaram de fora sai no cabeçalho —
+    sumir em silêncio seria esconder trabalho, não poupar."""
+    conexao = conectar_firebird(config)
+    try:
+        dados = montar_inventario(conexao, config)
+    finally:
+        fechar(conexao)
+
+    todos = dados.get('itens', [])
+    negativos = [i for i in todos if i.get('motivo') == 'negativo']
+    sem_ms = [i for i in todos if i.get('motivo') == 'sem_ms']
+
+    # Agrupado por MEDICAMENTO, não por lote solto: quem confere vai à
+    # prateleira, acha o remédio e conta as caixas. Para a conta fechar
+    # precisa ver TODOS os lotes dele, inclusive os que batem — foi
+    # exatamente isso que faltou na pregabalina, com 6 no app e 9 na tela.
+    por_ms = {}
+    for i in todos:
+        if i.get('motivo') == 'sem_ms':
+            continue
+        por_ms.setdefault((i['ms'], i['descricao']), []).append(i)
+
+    medicamentos = []
+    for (ms, descricao), lotes in por_ms.items():
+        # lote negativo não está na prateleira: é lançamento errado, e mandar
+        # alguém procurar por ele é desperdiçar a conferência
+        visiveis = [l for l in lotes if numero(l['saldoDigifarma']) >= 0]
+        se_conta = [l for l in visiveis
+                    if l.get('motivo') and l['motivo'] not in ('negativo', 'sem_ms')]
+        if not se_conta or not visiveis:
+            continue
+        if filtro:
+            alvo = normalizar_texto(filtro)
+            if alvo not in normalizar_texto(descricao) and not any(alvo in l['lote'] for l in visiveis):
+                continue
+        # de que lista o medicamento é. O lote que só existe no inventário da
+        # ANVISA chega sem classe; basta um irmão classificado para o
+        # medicamento inteiro cair na lista certa.
+        classe = ''
+        for l in visiveis:
+            if l.get('classe'):
+                classe = l['classe']
+                break
+        medicamentos.append({
+            'ms': ms, 'descricao': descricao, 'classe': classe,
+            'lotes': sorted(visiveis, key=lambda l: l['lote']),
+            'omitidos': len(lotes) - len(visiveis),
+            'digifarma': round(sum(numero(l['saldoDigifarma']) for l in visiveis), 3),
+            'sngpc': round(sum(numero(l['saldoSngpc']) for l in visiveis), 3),
+            # o que se moveu depois do envio, e o que o SNGPC teria hoje se
+            # já tivesse recebido esse movimento. É contra o ESPERADO que a
+            # contagem da prateleira fecha — a foto do envio já está velha.
+            'movimento': round(sum(numero(l.get('movimentoDesdeEnvio'))
+                                   for l in visiveis), 3),
+            'esperado': round(sum(numero(l.get('esperadoSngpc', l['saldoSngpc']))
+                                  for l in visiveis), 3),
+        })
+    # ordem alfabética pelo nome, sem acento e sem caixa — é assim que o
+    # medicamento é procurado na prateleira
+    medicamentos.sort(key=lambda m: normalizar_texto(m['descricao']))
+
+    inventario = dados.get('inventario', {})
+    envio = dados.get('envio', {})
+
+    # Psicotrópico e antimicrobiano são duas escriturações e duas
+    # conferências: saem em listas separadas, cada uma começando em página
+    # nova, para poderem ser conferidas por pessoas diferentes ao mesmo tempo.
+    # cada lista repete de onde saiu: a segunda folha vai para outra mão, e
+    # papel sem data não serve de conferência
+    origem = 'Inventário do SNGPC de %s · gerado em %s' % (
+        br(inventario.get('data')) if inventario.get('data') else '(sem data)',
+        datetime.datetime.now().strftime('%d/%m/%Y %H:%M'))
+
+    # o movimento que ainda não subiu, em ordem de acontecido — é o que
+    # explica a prateleira não bater com a foto do último envio
+    movimentos = []
+    for tipo, linhas_tipo in (dados.get('pendentes') or {}).items():
+        sinal = 1 if tipo == 'entradas' else -1
+        for p in linhas_tipo:
+            movimentos.append(dict(p, tipo=tipo,
+                                   assinado=round(sinal * numero(p['quantidade']), 3)))
+    movimentos.sort(key=lambda p: (texto(p.get('data')), texto(p.get('hora')),
+                                   normalizar_texto(p.get('descricao'))))
+
+    # a lista do movimento segue a classe do MEDICAMENTO na folha; só quando
+    # ele não está na folha é que vale a classe que o agente carimbou
+    classe_na_folha = {m['ms']: m['classe'] for m in medicamentos}
+
+    def classe_do_movimento(p):
+        return classe_na_folha.get(so_digitos(p['ms']), p.get('classe') or '')
+
+    secoes = []
+    conferir = []
+    for classe in CLASSES + ('',):
+        do_grupo = [m for m in medicamentos if m['classe'] == classe]
+        if not do_grupo:
+            continue
+        for m in do_grupo:
+            conferir.extend(m['lotes'])
+        # a primeira lista já tem a data no cabeçalho da folha; a partir da
+        # segunda a página é outra, e repetir é o que faz a folha solta valer
+        nota = origem if secoes else ''
+        if not classe:
+            nota = ((nota + ' · ') if nota else '') + (
+                'classe não marcada no cadastro do Digifarma: estes não '
+                'entraram em nenhuma das duas listas.')
+        # o filtro da linha de comando também vale para o movimento: folha
+        # de um medicamento só com a venda de outro em anexo é ruído
+        do_grupo_ms = {m['ms'] for m in do_grupo}
+        secoes.append(bloco_conferencia(
+            NOME_CLASSE[classe], do_grupo, quebra=bool(secoes), nota=nota,
+            movimentos=[p for p in movimentos
+                        if (classe_do_movimento(p) == classe
+                            and (not filtro or so_digitos(p['ms']) in do_grupo_ms))]))
+
+    fora = []
+    if negativos:
+        fora.append('%d lote(s) com saldo NEGATIVO no Digifarma' % len(negativos))
+    if sem_ms:
+        fora.append('%d lote(s) sem registro M.S. no cadastro' % len(sem_ms))
+
+    html = """<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<title>Conferência Digifarma × SNGPC</title>
+<style>%s</style></head><body>
+<h1>Conferência Digifarma &times; SNGPC</h1>
+<p class="sub">Inventário do SNGPC de %s &middot; último envio em %s &middot;
+saldo por LOTES.%s &middot; gerado em %s</p>
+%s
+%s
+<p class="rodape"><strong>A conta é esta:</strong> SNGPC (foto do último envio)
++ Movim. (o que se moveu depois, e ainda não subiu) = Esperado. A diferença é
+<strong>Digifarma &minus; Esperado</strong>, nunca contra a foto do envio — senão
+toda venda de hoje vira divergência. O movimento vem detalhado no fim de cada
+lista, com número da venda, hora, lote e quantidade.<br>
+%d medicamento(s), %d lote(s) no total. Psicotrópicos e antimicrobianos saem em
+listas separadas, cada uma em página nova, e dentro de cada lista os
+medicamentos vêm em ordem alfabética. A linha em cinza é o medicamento, com a
+soma dos lotes abaixo dela — é esse total que aparece na tela do Digifarma. As
+linhas seguintes são os lotes, e o SNGPC guarda o estoque assim, lote a lote. Os
+lotes que já batem vêm listados de propósito: sem eles a soma não fecha na hora
+de conferir a prateleira.</p>
+</body></html>
+""" % (
+        FOLHA_ESTILO,
+        br(inventario.get('data')) if inventario.get('data') else '(sem data)',
+        br(envio.get('data')) if envio.get('data') else '(sem data)',
+        escapar_html(inventario.get('colunaSaldo', '?')),
+        datetime.datetime.now().strftime('%d/%m/%Y %H:%M'),
+        ('<p class="aviso"><strong>Fora desta folha:</strong> %s. '
+         'Não são divergência de estoque e nenhuma contagem os resolve — '
+         'são acerto no cadastro do Digifarma. Use --negativos e --tarefas.</p>'
+         % '; '.join(fora)) if fora else '',
+        '\n'.join(secoes) or '<p class="vazio">Nada a conferir: os lotes que '
+                             'entrariam nesta folha já batem com o SNGPC.</p>',
+        len(medicamentos), len(conferir))
+
+    caminho = os.path.join(PASTA, 'comparacao_%s.html' % datetime.date.today().isoformat())
+    with open(caminho, 'w', encoding='utf-8') as f:
+        f.write(html)
+    print('%d lote(s) na folha de conferência.' % len(conferir))
+    for classe in CLASSES + ('',):
+        do_grupo = [m for m in medicamentos if m['classe'] == classe]
+        if do_grupo:
+            print('  %s: %d medicamento(s), %d lote(s)' % (
+                NOME_CLASSE[classe], len(do_grupo),
+                sum(len(m['lotes']) for m in do_grupo)))
+    if movimentos:
+        print('%d lançamento(s) desde o último envio vão em anexo (venda, hora, '
+              'lote e quantidade): sem eles a contagem do dia acusa divergência '
+              'que não existe.' % len(movimentos))
+    if fora:
+        print('Fora dela: %s.' % '; '.join(fora))
+    print('\nGravado em %s' % caminho)
+    print('Abra o arquivo (clique duas vezes) e imprima com Ctrl+P.')
+    return True
+
+
+ROTULO_IMPRESSO = {
+    'so_na_anvisa': 'O SNGPC tem e o Digifarma não',
+    'quantidade': 'Contagem diferente dos dois lados',
+    'anvisa_zerada_lote': 'Lote zerado na ANVISA',
+    'anvisa_zerada_produto': 'Zerado na ANVISA',
+}
+
+
+def modo_negativos(config, filtro=''):
+    """Abre cada lote com saldo negativo: o que entrou, o que foi vendido, e
+    quais outros lotes do mesmo medicamento têm saldo.
+
+    A última coluna é a que aponta a causa. Lote negativo com IRMÃO cheio é
+    assinatura de venda lançada no lote errado — o produto saiu do lote novo
+    e o sistema debitou o antigo. Lote negativo sem irmão nenhum é entrada
+    que nunca foi lançada. São consertos diferentes."""
+    conexao = conectar_firebird(config)
+    try:
+        por_chave, info = saldo_por_lote(conexao, config)
+        negativos = {k: v for k, v in por_chave.items() if v['saldoDigifarma'] < 0}
+        if filtro:
+            alvo = normalizar_texto(filtro)
+            negativos = {k: v for k, v in negativos.items()
+                         if alvo in normalizar_texto(v['descricao']) or alvo in k[1]}
+        if not negativos:
+            print('Nenhum lote com saldo negativo%s.'
+                  % (' para "%s"' % filtro if filtro else ''))
+            return True
+
+        colunas = ['L.NUM_LOTE'] + ['L.%s' % info['coluna']]
+        if 'QUANTIDADE_COMPRA' in info['campos'] and info['coluna'] != 'QUANTIDADE_COMPRA':
+            colunas.append('L.QUANTIDADE_COMPRA')
+        if 'ENTRADA_SAIDA' in info['campos']:
+            colunas.append('L.ENTRADA_SAIDA')
+        sql_entradas = CONSULTAS['entradas_do_lote'].replace('{COLUNAS}', ', '.join(colunas))
+
+        print('LOTES COM SALDO NEGATIVO — %d\n' % len(negativos))
+        com_irmao, sem_irmao = [], []
+
+        for chave, registro in sorted(negativos.items(), key=lambda x: x[1]['saldoDigifarma']):
+            ms, lote = chave
+            print('%s' % (registro['descricao'] or '(sem descrição)'))
+            print('  M.S. %s · lote %s · saldo %g%s' % (
+                formatar_ms(ms), lote or '(vazio)', registro['saldoDigifarma'],
+                ' · vence %s' % br(registro['validade']) if registro['validade'] else ''))
+
+            try:
+                entradas = [l for l in consultar(conexao, sql_entradas, (lote,))
+                            if so_digitos(l.get('REGISTRO_MS')) == ms]
+            except Exception as e:
+                registrar('Não consegui ler as entradas do lote %s: %s' % (lote, e))
+                entradas = []
+            for l in entradas:
+                # o que ENTROU e o que RESTA são colunas diferentes: mostrar
+                # só o saldo na linha da entrada faz parecer que entrou -3
+                comprou = ('comprou %g · ' % numero(l.get('QUANTIDADE_COMPRA'))
+                           if 'QUANTIDADE_COMPRA' in l else '')
+                print('    entrou   nota %-10s de %-10s  %sresta %g' % (
+                    texto(l.get('NOTA_FISCAL')) or '—', br(texto(l.get('DATA_RECEBIMENTO'))),
+                    comprou, numero(l.get(info['coluna']))))
+            if not entradas:
+                print('    entrou   (nenhuma linha de entrada em LOTES)')
+
+            try:
+                vendas = [l for l in consultar(conexao, CONSULTAS['vendas_do_lote'], (lote,))]
+            except Exception as e:
+                registrar('Não consegui ler as vendas do lote %s: %s' % (lote, e))
+                vendas = []
+            for v in vendas[:12]:
+                print('    vendeu   venda %-8s de %-10s  %g' % (
+                    texto(v.get('VENDA_NOTA_ID')), br(texto(v.get('DATA'))),
+                    numero(v.get('QUANTIDADE'))))
+            if len(vendas) > 12:
+                print('             ... e mais %d venda(s)' % (len(vendas) - 12))
+
+            irmaos = [(k[1], r['saldoDigifarma']) for k, r in por_chave.items()
+                      if k[0] == ms and k[1] != lote and r['saldoDigifarma'] > 0]
+            if irmaos:
+                com_irmao.append(chave)
+                print('    outros lotes deste medicamento COM saldo:')
+                for l, s in sorted(irmaos, key=lambda x: -x[1])[:6]:
+                    print('             lote %-14s %g' % (l, s))
+                print('    -> a venda pode ter saído de um destes e sido lançada aqui')
+            else:
+                sem_irmao.append(chave)
+                print('    -> nenhum outro lote deste medicamento tem saldo:')
+                print('       parece entrada que nunca foi lançada')
+            print('')
+
+        print('=' * 74)
+        print('%d com outro lote cheio — provável venda lançada no lote errado' % len(com_irmao))
+        print('%d sem nenhum lote cheio — provável entrada não lançada' % len(sem_irmao))
+        print('')
+        print('Nada aqui foi alterado no Digifarma: esta lista só lê.')
+        return True
+    finally:
+        fechar(conexao)
 
 
 def modo_tarefas(config):
@@ -2096,6 +2614,10 @@ def principal():
                         help='mostra o inventário do SNGPC: o que entra, o que sai e por quê')
     parser.add_argument('--tarefas', action='store_true',
                         help='as divergências em três listas de trabalho, na ordem de resolver')
+    parser.add_argument('--negativos', metavar='TEXTO', nargs='?', const='',
+                        help='abre cada lote negativo: o que entrou, o que vendeu, e os lotes irmãos')
+    parser.add_argument('--comparacao', metavar='TEXTO', nargs='?', const='',
+                        help='gera a folha de conferência em HTML, para imprimir')
     args = parser.parse_args()
 
     config = carregar_config()
@@ -2111,6 +2633,10 @@ def principal():
     try:
         if args.colunas:
             raise SystemExit(0 if modo_colunas(config, args.colunas) else 1)
+        if args.comparacao is not None:
+            raise SystemExit(0 if modo_comparacao(config, args.comparacao) else 1)
+        if args.negativos is not None:
+            raise SystemExit(0 if modo_negativos(config, args.negativos) else 1)
         if args.tarefas:
             raise SystemExit(0 if modo_tarefas(config) else 1)
         if args.inventario:

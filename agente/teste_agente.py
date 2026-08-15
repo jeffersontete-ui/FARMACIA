@@ -53,7 +53,8 @@ RESPOSTAS = {
                    'ULTIMO_ENVIO_SNGPC': datetime.date(2026, 8, 5),
                    'ENVIO_API': 'N', 'CNPJ': '00000000000000'}],
     'saidas_pendentes': [
-        {'VENDA_NOTA_ID': 8830, 'DATA': datetime.date(2026, 8, 6), 'PRODUTO': 'CLONAZEPAM',
+        {'VENDA_NOTA_ID': 8830, 'DATA': datetime.date(2026, 8, 6),
+         'DATA_HORA': datetime.datetime(2026, 8, 6, 14, 23, 11), 'PRODUTO': 'CLONAZEPAM',
          'REGISTRO_MS': '1003301220019', 'COD_BARRAS': '789', 'NUM_LOTE': 'L2345A', 'QUANTIDADE': 30},
     ],
     'entradas_pendentes': [
@@ -270,6 +271,10 @@ def principal():
              'farmacia/agentes/agente-sngpc' in ag.recado_de_permissao(ag.CONFIG_PADRAO),
              ag.recado_de_permissao(ag.CONFIG_PADRAO))
 
+    conferir('busca no terminal ignora acento e caixa',
+             ag.normalizar_texto('Solução') == 'SOLUCAO'
+             and ag.normalizar_texto('lamotrigina') == 'LAMOTRIGINA')
+
     conferir('a chave frouxa ignora zero à esquerda e pontuação do lote',
              ag.chave_frouxa(('123', '00036467')) == ag.chave_frouxa(('123', '36.467'))
              and ag.chave_frouxa(('123', 'BQ37J001')) != ag.chave_frouxa(('123', 'BQ37J002')))
@@ -396,6 +401,76 @@ def principal():
     conferir('produto sem registro M.S. não é divergência de estoque',
              ag.classificar_divergencia(
                  {'saldoDigifarma': 4, 'ms': ''}, 0.0, {'111'}) == 'sem_ms')
+
+    # psicotrópico e antimicrobiano são duas escriturações e duas
+    # conferências: o item leva a classe para a folha impressa e o app
+    # poderem separar as listas sem voltar ao banco
+    conferir('o item leva a classe do cadastro',
+             all(i.get('classe') == 'psicotropico' for i in dados['itens']
+                 if i['ms'] == '1023506630204'),
+             [i.get('classe') for i in dados['itens']])
+
+    def consultar_classes(conexao, sql, parametros=()):
+        return [
+            {'PRODUTO_ID': 1, 'REGISTRO_MS': '1.0525.0018.018-9',
+             'PSICOTROPICO': 'S', 'ANTIMICROBIANO': 'N'},
+            {'PRODUTO_ID': 2, 'REGISTRO_MS': '1023500960041',
+             'PSICOTROPICO': 'N', 'ANTIMICROBIANO': 'S'},
+            # marcado como os dois: vale a lista mais rígida
+            {'PRODUTO_ID': 3, 'REGISTRO_MS': '1023500960041',
+             'PSICOTROPICO': 'S', 'ANTIMICROBIANO': 'S'},
+            {'PRODUTO_ID': 4, 'REGISTRO_MS': '1999900000001',
+             'PSICOTROPICO': 'N', 'ANTIMICROBIANO': 'N'},
+        ]
+
+    ag.consultar = consultar_classes
+    por_produto, por_ms = ag.classes_por_medicamento(None)
+    ag.consultar = consultar_falso
+    conferir('psicotrópico e antimicrobiano saem separados pelo cadastro',
+             por_produto.get('1') == 'psicotropico'
+             and por_produto.get('2') == 'antimicrobiano', por_produto)
+    conferir('produto não controlado não entra em lista nenhuma',
+             '4' not in por_produto, por_produto)
+    conferir('marcado como os dois vale como psicotrópico',
+             por_produto.get('3') == 'psicotropico'
+             and por_ms.get('1023500960041') == 'psicotropico', por_ms)
+    conferir('a classe também é achada pelo M.S., para o lote só da ANVISA',
+             por_ms.get('1052500180189') == 'psicotropico', por_ms)
+
+    # a folha de conferência mostra as vendas do dia: sem elas, quem conta a
+    # prateleira acha a caixa faltando e marca divergência de uma venda que
+    # está certa. Para isso a venda precisa levar a HORA e a classe.
+    venda = dados['pendentes']['vendas'][0]
+    conferir('a venda pendente leva a hora, para conferir com o cupom',
+             venda.get('hora') == '14:23', venda)
+    conferir('a venda pendente leva o lote e a quantidade',
+             venda.get('lote') == 'L2345A' and venda.get('quantidade') == 30.0, venda)
+    conferir('a venda pendente leva a classe, para ir na lista certa',
+             'classe' in venda, venda)
+
+    # a mesma folha, montada de ponta a ponta: a venda tem que sair no anexo
+    folha = ag.bloco_conferencia('Psicotrópicos', [{
+        'ms': '1003301220019', 'descricao': 'CLONAZEPAM 2MG', 'omitidos': 0,
+        'digifarma': 10.0, 'sngpc': 40.0, 'movimento': -30.0, 'esperado': 10.0,
+        'lotes': [{'lote': 'L2345A', 'validade': '', 'saldoDigifarma': 10.0,
+                   'saldoSngpc': 40.0, 'movimentoDesdeEnvio': -30.0,
+                   'esperadoSngpc': 10.0, 'diferenca': 0.0}],
+    }], movimentos=[dict(venda, tipo='vendas', assinado=-30.0)])
+    conferir('a folha traz a venda do dia, com número, hora, lote e quantidade',
+             '8830' in folha and '14:23' in folha and 'L2345A' in folha
+             and '-30' in folha, folha[-400:])
+    conferir('o lote que só se moveu não vira divergência na folha',
+             'total bate' in folha, folha[:400])
+
+    # venda sem lote não entra na conta de lote nenhum: se sair no anexo sem
+    # marcação, a soma da coluna Movim. não fecha com a lista e parece erro
+    anexo = ag.bloco_movimento([
+        dict(venda, tipo='vendas', assinado=-30.0),
+        dict(venda, tipo='vendas', lote='', assinado=-2.0),
+    ])
+    conferir('venda sem lote sai marcada no anexo, fora da conta',
+             '(sem lote)' in anexo and 'semlote' in anexo
+             and 'não entram na coluna Movim.' in anexo, anexo[-300:])
     # medicamento com dois lotes: o que bate some da lista, e sem os irmãos
     # no detalhe o total do Digifarma fica sem explicação — foi o caso da
     # pregabalina, 6 no app contra 9 na tela do Digifarma

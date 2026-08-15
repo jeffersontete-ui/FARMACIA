@@ -247,7 +247,7 @@ function escutar(caminho, aoMudar) {
 function ligarEscutas() {
   if (escutas.length) return;
   escutar('farmacia/inventario', (v) => { estado.inventario = v || {}; pintar(); });
-  escutar('farmacia/aceites', (v) => { estado.aceites = v || {}; if (estado.vista === 'aceites') pintarAceites(); });
+  escutar('farmacia/aceites', (v) => { estado.aceites = v || {}; pintar(); });
   escutar('farmacia/comando', (v) => { estado.comando = v; pintarComando(); });
   escutar('farmacia/operadores', (v) => {
     estado.operadores = Array.isArray(v) ? v.filter(Boolean) : Object.values(v || {});
@@ -335,7 +335,10 @@ function vendasProblema() {
 function pintar() {
   if (!estado.operador) return;
   const s = divergenciasDeSaldo().length, x = pendenciasXml().length, v = vendasProblema().length;
-  [['selo-saldo', s], ['selo-xml', x], ['selo-vendas', v]].forEach(([id, n]) => {
+  // envio sem aceite marcado também é pendência: sem saber o que a ANVISA
+  // aceitou, não há como explicar divergência de saldo
+  const ac = envioSemAceite().length;
+  [['selo-saldo', s], ['selo-xml', x], ['selo-vendas', v], ['selo-aceites', ac]].forEach(([id, n]) => {
     // 4 dígitos no selo transbordam por cima do item vizinho da navegação
     const el = $(id); el.textContent = n > 999 ? '999+' : n; el.hidden = n === 0;
   });
@@ -531,10 +534,33 @@ const MOTIVO_SALDO = {
     'O próprio Digifarma está com saldo negativo neste lote: saída lançada sem a entrada. Corrija no Digifarma.']
 };
 
-/* Ordem de gravidade, não alfabética: é a ordem em que a farmácia resolve.
-   Um motivo fora desta lista cai no fim, que é o certo para o desconhecido. */
+/* Ordem de gravidade, não alfabética: é a ordem em que a farmácia resolve. */
 const ORDEM_MOTIVO = ['negativo', 'so_na_anvisa', 'quantidade',
   'anvisa_zerada_lote', 'anvisa_zerada_produto'];
+
+/* indexOf devolve -1 para o que não está na lista, e -1 ordena ANTES de
+   tudo: item sem motivo — de uma publicação antiga do agente, por exemplo —
+   ia parar no topo, acima dos saldos negativos. Desconhecido vai para o fim. */
+function ordemDoMotivo(motivo) {
+  const i = ORDEM_MOTIVO.indexOf(motivo);
+  return i === -1 ? ORDEM_MOTIVO.length : i;
+}
+
+/* Psicotrópico e antimicrobiano são duas escriturações e duas conferências:
+   a receita de psicotrópico fica retida, a de antimicrobiano não. Quem
+   confere faz uma lista de cada vez, então a tela separa as duas.
+   O agente antigo publicava item sem classe; esses ficam no fim, juntos. */
+const CLASSES_SALDO = ['psicotropico', 'antimicrobiano'];
+const NOME_CLASSE = {
+  psicotropico: 'Psicotrópicos e entorpecentes',
+  antimicrobiano: 'Antimicrobianos',
+  '': 'Sem classe marcada no cadastro'
+};
+
+function ordemDaClasse(classe) {
+  const i = CLASSES_SALDO.indexOf(classe);
+  return i === -1 ? CLASSES_SALDO.length : i;
+}
 
 function pintarAlertaSaldo() {
   const barra = $('saldo-alerta');
@@ -604,24 +630,46 @@ function pintarSaldo() {
   // ordem de gravidade: dado torto no Digifarma primeiro, porque reaparece
   // em toda conferência; depois o que sumiu do estoque e o SNGPC ainda
   // acusa; por último o que a ANVISA só não recebeu ainda.
+  // Dentro do grupo, ordem alfabética pelo nome: é assim que o medicamento
+  // é procurado na prateleira, e é a ordem em que a folha impressa sai.
   const itens = divergenciasDeSaldo()
     .filter((i) => combina(i, estado.buscaSaldo, ['descricao', 'ms', 'ean', 'lote', 'codigo']))
-    .sort((a, b) => (ORDEM_MOTIVO.indexOf(a.motivo) - ORDEM_MOTIVO.indexOf(b.motivo))
-      || (Math.abs(Number(b.diferenca || 0)) - Math.abs(Number(a.diferenca || 0))));
+    .sort((a, b) => (ordemDaClasse(a.classe) - ordemDaClasse(b.classe))
+      || (ordemDoMotivo(a.motivo) - ordemDoMotivo(b.motivo))
+      || (a.descricao || '').localeCompare(b.descricao || '', 'pt-BR')
+      || (a.lote || '').localeCompare(b.lote || '', 'pt-BR'));
   $('saldo-vazio').hidden = itens.length > 0 || !!estado.buscaSaldo;
 
   const quantosPorMotivo = {};
-  itens.forEach((i) => { quantosPorMotivo[i.motivo] = (quantosPorMotivo[i.motivo] || 0) + 1; });
+  const quantosPorClasse = {};
+  itens.forEach((i) => {
+    const c = CLASSES_SALDO.includes(i.classe) ? i.classe : '';
+    quantosPorMotivo[c + '|' + i.motivo] = (quantosPorMotivo[c + '|' + i.motivo] || 0) + 1;
+    quantosPorClasse[c] = (quantosPorClasse[c] || 0) + 1;
+  });
 
+  let classeAtual = null;
   let grupoAtual = null;
   itens.forEach((i, n) => {
+    const daLista = CLASSES_SALDO.includes(i.classe) ? i.classe : '';
+    if (daLista !== classeAtual) {
+      classeAtual = daLista;
+      grupoAtual = null;
+      const cabeca = criar('h3', 'grupo-saldo grupo-classe');
+      const nome = criar('span');
+      nome.textContent = NOME_CLASSE[daLista];
+      const conta = criar('span', 'grupo-conta');
+      conta.textContent = quantosPorClasse[daLista];
+      cabeca.append(nome, conta);
+      alvo.appendChild(cabeca);
+    }
     if (i.motivo && i.motivo !== grupoAtual) {
       grupoAtual = i.motivo;
       const cabeca = criar('h3', 'grupo-saldo');
       const nome = criar('span');
       nome.textContent = MOTIVO_SALDO[grupoAtual]?.[0] || grupoAtual;
       const conta = criar('span', 'grupo-conta');
-      conta.textContent = quantosPorMotivo[grupoAtual];
+      conta.textContent = quantosPorMotivo[classeAtual + '|' + grupoAtual];
       cabeca.append(nome, conta);
       alvo.appendChild(cabeca);
     }
@@ -652,7 +700,7 @@ function pintarSaldo() {
       ['Código de barras', i.ean],
       ['Lote', i.lote],
       ['Validade', i.validade],
-      ['Classe', i.classe]
+      ['Classe', i.classe ? (NOME_CLASSE[i.classe] || i.classe) : undefined]
     ]);
     if (explicacao) {
       const nota = criar('p', 'nota-info');
@@ -925,7 +973,32 @@ function datasDeEnvio() {
   return [...datas].filter(Boolean).sort().reverse();
 }
 
+/* Movimento de envio recusado NÃO entra no inventário do SNGPC. Por isso um
+   envio sem aceite marcado não é só papelada atrasada: é a explicação mais
+   provável para lote que a farmácia transmitiu e a ANVISA não tem. A aba
+   precisa cobrar, não esperar. */
+function envioSemAceite() {
+  return datasDeEnvio().filter((d) => !estado.aceites?.[d]?.status);
+}
+
+function pintarAlertaAceites() {
+  const barra = $('aceites-alerta');
+  const pendentes = envioSemAceite();
+  if (!pendentes.length) { barra.hidden = true; return; }
+
+  const zerados = (estado.inventario?.resumoSaldo || {}).anvisa_zerada_produto || 0;
+  barra.textContent = pendentes.length === 1
+    ? 'O envio de ' + dataBR(pendentes[0]) + ' ainda não foi conferido no site da ANVISA.'
+      + (zerados ? ' Há ' + zerados + ' lote(s) que a farmácia transmitiu e o SNGPC não '
+        + 'tem — se este envio foi recusado, é exatamente isso que acontece.' : '')
+    : pendentes.length + ' envios sem aceite marcado, de ' + dataBR(pendentes[pendentes.length - 1])
+      + ' a ' + dataBR(pendentes[0]) + '. Envio recusado não entra no inventário do SNGPC: '
+      + 'enquanto não se sabe quais foram aceitos, divergência de saldo fica sem explicação.';
+  barra.hidden = false;
+}
+
 function pintarAceites() {
+  pintarAlertaAceites();
   const alvo = $('lista-aceites');
   alvo.innerHTML = '';
   const datas = datasDeEnvio();
