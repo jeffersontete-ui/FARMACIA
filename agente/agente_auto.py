@@ -1448,6 +1448,15 @@ def publicar(db, dados):
         ', '.join('%d %s' % (n, t) for t, n in sorted(
             dados.get('resumoSaldo', {}).items())) or 'nenhuma',
     ))
+    # o motivo é um só por item, e 'negativo' ganha de 'sem_ms': contar por
+    # aqui é o único jeito de o controlado sem registro aparecer quando o
+    # lote dele também está negativo — que foi como um deles passou meses
+    # se movimentando fora do SNGPC
+    sem_ms = sum(1 for i in dados.get('itens', []) if not i.get('ms'))
+    if sem_ms:
+        registrar('%d lote(s) de controlado SEM registro M.S.: não são '
+                  'escriturados, nem a entrada nem a venda. Use --produto '
+                  'para achar o cadastro.' % sem_ms)
 
 
 # ============================================================

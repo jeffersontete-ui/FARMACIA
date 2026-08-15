@@ -322,8 +322,13 @@ function divergenciasDeSaldo(itens) {
   return (itens || lista('itens'))
     .filter((i) => Number(i.diferenca || 0) !== 0 && i.motivo !== 'sem_ms');
 }
+/* Pelo M.S. em falta, não pelo motivo: o motivo é um só por item, e
+   'negativo' ganha de 'sem_ms' na classificação. Um controlado sem registro
+   E com saldo negativo saía rotulado de negativo e sumia desta lista — foi
+   assim que a amoxicilina da Cimed passou meses sem ser escriturada, com as
+   entradas e as vendas fora do SNGPC, sem aparecer em lugar nenhum. */
 function pendenciasDeCadastro(itens) {
-  return (itens || lista('itens')).filter((i) => i.motivo === 'sem_ms');
+  return (itens || lista('itens')).filter((i) => !i.ms);
 }
 function pendenciasXml() {
   return lista('conferencia_xml').filter((c) => c && c.situacao !== 'ok');
