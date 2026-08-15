@@ -468,6 +468,15 @@ def principal():
         dict(venda, tipo='vendas', assinado=-30.0),
         dict(venda, tipo='vendas', lote='', assinado=-2.0),
     ])
+    # envio feito por outra máquina: o ponteiro daqui não avança, e sem o
+    # remendo o agente desconta de novo o que a ANVISA já descontou
+    conferir('transmitido_ate_venda só vale para cima',
+             ag.ponteiro_de_venda({'ULT_SAIDA_VENDA_NOTA_ID': 100},
+                                  {'transmitido_ate_venda': 200}) == (200, True)
+             and ag.ponteiro_de_venda({'ULT_SAIDA_VENDA_NOTA_ID': 300},
+                                      {'transmitido_ate_venda': 200}) == (300, False)
+             and ag.ponteiro_de_venda({'ULT_SAIDA_VENDA_NOTA_ID': 300}, {}) == (300, False))
+
     conferir('venda sem lote sai marcada no anexo, fora da conta',
              '(sem lote)' in anexo and 'semlote' in anexo
              and 'não entram na coluna Movim.' in anexo, anexo[-300:])

@@ -55,7 +55,15 @@ CONFIG_PADRAO = {
     #                                e o saldo é apurado descontando as baixas
     #                   "auto"       decide pelo nome da coluna
     "coluna_saldo": "",
-    "modo_saldo": "auto"
+    "modo_saldo": "auto",
+    # Envio feito por OUTRA máquina: a ANVISA recebeu, mas o ponteiro deste
+    # Digifarma não avançou e ele continua oferecendo as mesmas vendas como
+    # pendentes — o agente desconta duas vezes e infla a divergência.
+    # Ponha aqui o número da ÚLTIMA VENDA transmitida e o agente passa a
+    # tratar tudo até ela como enviado. Só vale para cima: nunca esconde
+    # venda que o próprio Digifarma ainda considera pendente.
+    # Volte para 0 quando o ponteiro do Digifarma for acertado.
+    "transmitido_ate_venda": 0
 }
 
 
@@ -436,6 +444,28 @@ def carregar_config():
             json.dump(config, f, indent=2, ensure_ascii=False)
         registrar('Criei %s com os valores padrão. Confira antes de agendar.' % ARQUIVO_CONFIG)
     return config
+
+
+def ponteiro_de_venda(ponteiros, config, avisar=True):
+    """O ponteiro da última venda transmitida, com o remendo do config.
+
+    Envio feito por OUTRA máquina não avança o ponteiro daqui: o Digifarma
+    continua oferecendo as mesmas vendas como pendentes, o agente desconta
+    de novo o que a ANVISA já descontou, e a divergência incha. O config
+    transmitido_ate_venda cobre esse buraco enquanto o ponteiro não é
+    acertado — só para CIMA, para nunca esconder venda que o Digifarma
+    ainda considera pendente, e sempre dito no log: ponteiro remendado à
+    mão é coisa que precisa aparecer."""
+    do_banco = int(numero(ponteiros.get('ULT_SAIDA_VENDA_NOTA_ID')))
+    forcado = int(numero((config or {}).get('transmitido_ate_venda')))
+    if forcado > do_banco:
+        if avisar:
+            registrar('Config transmitido_ate_venda=%d: tratando como enviado tudo '
+                      'até a venda %d (o Digifarma ainda diz %d). Volte para 0 '
+                      'quando o ponteiro do Digifarma for acertado.'
+                      % (forcado, forcado, do_banco))
+        return forcado, True
+    return do_banco, False
 
 
 def conectar_firebird(config):
@@ -954,12 +984,12 @@ def vendas_recentes(conexao, dias=DIAS_VENDAS_RECENTES):
     } for l in linhas]
 
 
-def vendas_sem_receita_pendentes(conexao):
+def vendas_sem_receita_pendentes(conexao, config=None):
     """Vendas de controlado que ainda vão subir e estão sem receita
     escriturada. É a lista para corrigir ANTES do próximo envio — depois de
     transmitido, o conserto é bem mais caro."""
     linhas = consultar(conexao, CONSULTAS['ponteiros'])
-    ptr_venda = int(numero((linhas[0] if linhas else {}).get('ULT_SAIDA_VENDA_NOTA_ID')))
+    ptr_venda = ponteiro_de_venda(linhas[0] if linhas else {}, config, avisar=False)[0]
     return [{
         'venda': l.get('VENDA'),
         'quando': texto_hora(l.get('QUANDO')),
@@ -1008,7 +1038,7 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
     # ------------------------------------------------------------
     linhas = consultar(conexao, CONSULTAS['ponteiros'])
     ponteiros = linhas[0] if linhas else {}
-    ptr_venda = int(numero(ponteiros.get('ULT_SAIDA_VENDA_NOTA_ID')))
+    ptr_venda, ponteiro_forcado = ponteiro_de_venda(ponteiros, config)
     ptr_entrada = int(numero(ponteiros.get('ULT_ENTRADA_CAB_NOTA_ID')))
     ptr_perda = int(numero(ponteiros.get('ULT_SAIDA_PERDA_ID')))
     ptr_transf = int(numero(ponteiros.get('ULT_SAIDA_TRANSFERENCIA_ID')))
@@ -1039,6 +1069,7 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
         'ULT_ENTRADA_CAB_NOTA_ID': ptr_entrada,
         'arquivoXml': os.path.basename(caminho_xml) if caminho_xml else None,
         'envioPorApi': texto(ponteiros.get('ENVIO_API')).upper() in ('S', 'T', '1', 'TRUE'),
+        'ponteiroForcado': ponteiro_forcado,
     }
 
     if dados_xml:
@@ -1331,7 +1362,7 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
     except Exception as e:
         registrar('Falha ao levantar as vendas recentes: %s' % e)
     try:
-        resultado['vendasSemReceita'] = vendas_sem_receita_pendentes(conexao)
+        resultado['vendasSemReceita'] = vendas_sem_receita_pendentes(conexao, config)
     except Exception as e:
         registrar('Falha ao levantar as vendas sem receita: %s' % e)
     try:
@@ -1474,6 +1505,14 @@ def publicar(db, dados):
                   'Digifarma não avançou (envio feito por outra máquina?). As '
                   'divergências acima estão infladas, e transmitir por AQUI '
                   'escrituraria as %d venda(s) em dobro.' % (ja, pendentes_vendas))
+        ids = sorted(int(numero(v['id'])) for v in
+                     (dados.get('pendentes') or {}).get('vendas', []) if v.get('id'))
+        if ids and not dados.get('envio', {}).get('ponteiroForcado'):
+            registrar('As vendas na fila vão de %d a %d. Confirme com quem transmitiu '
+                      'até qual delas foi, ponha esse número em '
+                      'transmitido_ate_venda no agente_config.json, e os números '
+                      'voltam ao certo enquanto o suporte não acerta o ponteiro.'
+                      % (ids[0], ids[-1]))
     sem_ms = sum(1 for i in dados.get('itens', []) if not i.get('ms'))
     if sem_ms:
         registrar('%d lote(s) de controlado SEM registro M.S.: não são '
@@ -1508,7 +1547,7 @@ def publicar_vendas_recentes(config, db):
     try:
         linhas = vendas_recentes(conexao)
         try:
-            sem_receita = vendas_sem_receita_pendentes(conexao)
+            sem_receita = vendas_sem_receita_pendentes(conexao, config)
         except Exception as e:
             registrar('Não consegui levantar as vendas sem receita: %s' % e)
             sem_receita = None
