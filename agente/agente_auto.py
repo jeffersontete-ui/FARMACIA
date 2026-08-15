@@ -2040,7 +2040,16 @@ def modo_negativos(config, filtro=''):
     A última coluna é a que aponta a causa. Lote negativo com IRMÃO cheio é
     assinatura de venda lançada no lote errado — o produto saiu do lote novo
     e o sistema debitou o antigo. Lote negativo sem irmão nenhum é entrada
-    que nunca foi lançada. São consertos diferentes."""
+    que nunca foi lançada. São consertos diferentes.
+
+    Grava a lista num .txt junto: 39 lotes não se resolvem lendo a tela, se
+    resolvem com o papel do lado do Digifarma."""
+    saida = []
+
+    def diz(linha=''):
+        saida.append(linha)
+        print(linha)
+
     conexao = conectar_firebird(config)
     try:
         por_chave, info = saldo_por_lote(conexao, config)
@@ -2050,7 +2059,7 @@ def modo_negativos(config, filtro=''):
             negativos = {k: v for k, v in negativos.items()
                          if alvo in normalizar_texto(v['descricao']) or alvo in k[1]}
         if not negativos:
-            print('Nenhum lote com saldo negativo%s.'
+            diz('Nenhum lote com saldo negativo%s.'
                   % (' para "%s"' % filtro if filtro else ''))
             return True
 
@@ -2061,15 +2070,22 @@ def modo_negativos(config, filtro=''):
             colunas.append('L.ENTRADA_SAIDA')
         sql_entradas = CONSULTAS['entradas_do_lote'].replace('{COLUNAS}', ', '.join(colunas))
 
-        print('LOTES COM SALDO NEGATIVO — %d\n' % len(negativos))
-        com_irmao, sem_irmao = [], []
+        diz('LOTES COM SALDO NEGATIVO — %d\n' % len(negativos))
+        com_irmao, sem_irmao, vencidos = [], [], []
+        hoje = datetime.date.today().isoformat()
 
         for chave, registro in sorted(negativos.items(), key=lambda x: x[1]['saldoDigifarma']):
             ms, lote = chave
-            print('%s' % (registro['descricao'] or '(sem descrição)'))
-            print('  M.S. %s · lote %s · saldo %g%s' % (
+            # lote vencido não está na prateleira: nenhuma contagem o
+            # resolve, e mandar procurar por ele é gastar a conferência
+            venceu = bool(registro['validade']) and registro['validade'][:10] < hoje
+            if venceu:
+                vencidos.append(chave)
+            diz('%s' % (registro['descricao'] or '(sem descrição)'))
+            diz('  M.S. %s · lote %s · saldo %g%s%s' % (
                 formatar_ms(ms), lote or '(vazio)', registro['saldoDigifarma'],
-                ' · vence %s' % br(registro['validade']) if registro['validade'] else ''))
+                ' · vence %s' % br(registro['validade']) if registro['validade'] else '',
+                ' · VENCIDO' if venceu else ''))
 
             try:
                 entradas = [l for l in consultar(conexao, sql_entradas, (lote,))
@@ -2082,11 +2098,11 @@ def modo_negativos(config, filtro=''):
                 # só o saldo na linha da entrada faz parecer que entrou -3
                 comprou = ('comprou %g · ' % numero(l.get('QUANTIDADE_COMPRA'))
                            if 'QUANTIDADE_COMPRA' in l else '')
-                print('    entrou   nota %-10s de %-10s  %sresta %g' % (
+                diz('    entrou   nota %-10s de %-10s  %sresta %g' % (
                     texto(l.get('NOTA_FISCAL')) or '—', br(texto(l.get('DATA_RECEBIMENTO'))),
                     comprou, numero(l.get(info['coluna']))))
             if not entradas:
-                print('    entrou   (nenhuma linha de entrada em LOTES)')
+                diz('    entrou   (nenhuma linha de entrada em LOTES)')
 
             try:
                 vendas = [l for l in consultar(conexao, CONSULTAS['vendas_do_lote'], (lote,))]
@@ -2094,31 +2110,45 @@ def modo_negativos(config, filtro=''):
                 registrar('Não consegui ler as vendas do lote %s: %s' % (lote, e))
                 vendas = []
             for v in vendas[:12]:
-                print('    vendeu   venda %-8s de %-10s  %g' % (
+                diz('    vendeu   venda %-8s de %-10s  %g' % (
                     texto(v.get('VENDA_NOTA_ID')), br(texto(v.get('DATA'))),
                     numero(v.get('QUANTIDADE'))))
             if len(vendas) > 12:
-                print('             ... e mais %d venda(s)' % (len(vendas) - 12))
+                diz('             ... e mais %d venda(s)' % (len(vendas) - 12))
 
             irmaos = [(k[1], r['saldoDigifarma']) for k, r in por_chave.items()
                       if k[0] == ms and k[1] != lote and r['saldoDigifarma'] > 0]
             if irmaos:
                 com_irmao.append(chave)
-                print('    outros lotes deste medicamento COM saldo:')
+                diz('    outros lotes deste medicamento COM saldo:')
                 for l, s in sorted(irmaos, key=lambda x: -x[1])[:6]:
-                    print('             lote %-14s %g' % (l, s))
-                print('    -> a venda pode ter saído de um destes e sido lançada aqui')
+                    diz('             lote %-14s %g' % (l, s))
+                diz('    -> a venda pode ter saído de um destes e sido lançada aqui')
             else:
                 sem_irmao.append(chave)
-                print('    -> nenhum outro lote deste medicamento tem saldo:')
-                print('       parece entrada que nunca foi lançada')
-            print('')
+                diz('    -> nenhum outro lote deste medicamento tem saldo:')
+                diz('       parece entrada que nunca foi lançada')
+            diz('')
 
-        print('=' * 74)
-        print('%d com outro lote cheio — provável venda lançada no lote errado' % len(com_irmao))
-        print('%d sem nenhum lote cheio — provável entrada não lançada' % len(sem_irmao))
-        print('')
-        print('Nada aqui foi alterado no Digifarma: esta lista só lê.')
+        diz('=' * 74)
+        diz('%d com outro lote cheio — provável venda lançada no lote errado' % len(com_irmao))
+        diz('%d sem nenhum lote cheio — provável entrada não lançada' % len(sem_irmao))
+        if vencidos:
+            diz('%d em lote VENCIDO — não está na prateleira, então não há o que'
+                ' contar: é acerto de escrituração, não conferência' % len(vencidos))
+        diz('Faltando ao todo: %g unidade(s).'
+            % abs(round(sum(r['saldoDigifarma'] for r in negativos.values()), 3)))
+        diz('')
+        diz('Nada aqui foi alterado no Digifarma: esta lista só lê.')
+
+        caminho = os.path.join(
+            PASTA, 'negativos_%s.txt' % datetime.date.today().isoformat())
+        try:
+            with open(caminho, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(saida) + '\n')
+            print('\nGravado em %s' % caminho)
+        except Exception as e:
+            registrar('Não consegui gravar a lista dos negativos: %s' % e)
         return True
     finally:
         fechar(conexao)
