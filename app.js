@@ -582,6 +582,20 @@ function pintarAlertaSaldo() {
     return;
   }
 
+  // O site da ANVISA já recebeu o que este Digifarma ainda tem na fila:
+  // a mesma venda é descontada dos dois lados e a lista incha. Avisar vale
+  // mais que o número, porque transmitir daqui escrituraria tudo em dobro.
+  const ja = Number(inv.jaNaAnvisa || 0);
+  const naFila = Number(estado.inventario?.resumoPendentes?.vendas || 0);
+  if (ja && naFila) {
+    barra.textContent = ja + ' lote(s) já batem com a ANVISA sem contar o que está na '
+      + 'fila: o site recebeu essas vendas e o ponteiro do Digifarma não avançou. '
+      + 'Os números abaixo estão inflados — e transmitir por este computador '
+      + 'escrituraria as ' + naFila + ' venda(s) em dobro.';
+    barra.hidden = false;
+    return;
+  }
+
   const resumo = estado.inventario?.resumoSaldo;
   if (resumo) {
     const partes = Object.entries(resumo)

@@ -1166,9 +1166,19 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
                 num_lote, {'lote': num_lote, 'digifarma': 0.0, 'sngpc': 0.0})
             irmao['sngpc'] = round(quantidade, 3)
 
+        ja_na_anvisa = 0
         for chave, registro in por_chave.items():
             anvisa = saldo_anvisa.pop(chave, 0.0)
             pendente = round(movimento_pendente.pop(chave, 0.0), 3)
+            # Lote que JÁ bate com a ANVISA sem precisar do movimento
+            # pendente: sinal de que o site já recebeu essa venda, mas o
+            # ponteiro deste Digifarma não avançou — envio feito por outra
+            # máquina, por exemplo. Aí a conta desconta a mesma venda duas
+            # vezes (a ANVISA já descontou, e o agente desconta de novo) e
+            # inventa divergência. Contamos para poder avisar em vez de
+            # publicar número inflado sem explicação.
+            if pendente and not round(registro['saldoDigifarma'] - anvisa, 3):
+                ja_na_anvisa += 1
             # lote zerado dos dois lados não é divergência nem notícia:
             # publicar tudo só engorda o farmacia/inventario
             if not registro['saldoDigifarma'] and not anvisa and not pendente:
@@ -1195,6 +1205,7 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
             if registro.get('motivo') and len(irmaos) > 1:
                 registro['lotesDoMs'] = sorted(irmaos.values(), key=lambda x: x['lote'])
             itens.append(registro)
+        resultado['inventario']['jaNaAnvisa'] = ja_na_anvisa
     except Exception as e:
         registrar('Falha ao levantar o saldo por lote: %s' % e)
 
@@ -1452,6 +1463,17 @@ def publicar(db, dados):
     # aqui é o único jeito de o controlado sem registro aparecer quando o
     # lote dele também está negativo — que foi como um deles passou meses
     # se movimentando fora do SNGPC
+    # o ponteiro deste Digifarma não avançou, mas a ANVISA já recebeu: a
+    # mesma venda é descontada duas vezes e a lista incha sem motivo. Pior
+    # que o número errado é o risco do próximo envio daqui reenviar tudo.
+    ja = dados.get('inventario', {}).get('jaNaAnvisa') or 0
+    pendentes_vendas = (dados.get('resumoPendentes') or {}).get('vendas') or 0
+    if ja and pendentes_vendas:
+        registrar('ATENÇÃO: %d lote(s) já batem com a ANVISA SEM contar o movimento '
+                  'pendente. O site já recebeu essas vendas e o ponteiro deste '
+                  'Digifarma não avançou (envio feito por outra máquina?). As '
+                  'divergências acima estão infladas, e transmitir por AQUI '
+                  'escrituraria as %d venda(s) em dobro.' % (ja, pendentes_vendas))
     sem_ms = sum(1 for i in dados.get('itens', []) if not i.get('ms'))
     if sem_ms:
         registrar('%d lote(s) de controlado SEM registro M.S.: não são '
