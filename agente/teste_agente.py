@@ -53,7 +53,8 @@ RESPOSTAS = {
                    'ULTIMO_ENVIO_SNGPC': datetime.date(2026, 8, 5),
                    'ENVIO_API': 'N', 'CNPJ': '00000000000000'}],
     'saidas_pendentes': [
-        {'VENDA_NOTA_ID': 8830, 'DATA': datetime.date(2026, 8, 6), 'PRODUTO': 'CLONAZEPAM',
+        {'VENDA_NOTA_ID': 8830, 'DATA': datetime.date(2026, 8, 6),
+         'DATA_HORA': datetime.datetime(2026, 8, 6, 14, 23, 11), 'PRODUTO': 'CLONAZEPAM',
          'REGISTRO_MS': '1003301220019', 'COD_BARRAS': '789', 'NUM_LOTE': 'L2345A', 'QUANTIDADE': 30},
     ],
     'entradas_pendentes': [
@@ -435,6 +436,31 @@ def principal():
              and por_ms.get('1023500960041') == 'psicotropico', por_ms)
     conferir('a classe também é achada pelo M.S., para o lote só da ANVISA',
              por_ms.get('1052500180189') == 'psicotropico', por_ms)
+
+    # a folha de conferência mostra as vendas do dia: sem elas, quem conta a
+    # prateleira acha a caixa faltando e marca divergência de uma venda que
+    # está certa. Para isso a venda precisa levar a HORA e a classe.
+    venda = dados['pendentes']['vendas'][0]
+    conferir('a venda pendente leva a hora, para conferir com o cupom',
+             venda.get('hora') == '14:23', venda)
+    conferir('a venda pendente leva o lote e a quantidade',
+             venda.get('lote') == 'L2345A' and venda.get('quantidade') == 30.0, venda)
+    conferir('a venda pendente leva a classe, para ir na lista certa',
+             'classe' in venda, venda)
+
+    # a mesma folha, montada de ponta a ponta: a venda tem que sair no anexo
+    folha = ag.bloco_conferencia('Psicotrópicos', [{
+        'ms': '1003301220019', 'descricao': 'CLONAZEPAM 2MG', 'omitidos': 0,
+        'digifarma': 10.0, 'sngpc': 40.0, 'movimento': -30.0, 'esperado': 10.0,
+        'lotes': [{'lote': 'L2345A', 'validade': '', 'saldoDigifarma': 10.0,
+                   'saldoSngpc': 40.0, 'movimentoDesdeEnvio': -30.0,
+                   'esperadoSngpc': 10.0, 'diferenca': 0.0}],
+    }], movimentos=[dict(venda, tipo='vendas', assinado=-30.0)])
+    conferir('a folha traz a venda do dia, com número, hora, lote e quantidade',
+             '8830' in folha and '14:23' in folha and 'L2345A' in folha
+             and '-30' in folha, folha[-400:])
+    conferir('o lote que só se moveu não vira divergência na folha',
+             'total bate' in folha, folha[:400])
     # medicamento com dois lotes: o que bate some da lista, e sem os irmãos
     # no detalhe o total do Digifarma fica sem explicação — foi o caso da
     # pregabalina, 6 no app contra 9 na tela do Digifarma

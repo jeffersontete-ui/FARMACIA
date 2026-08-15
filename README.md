@@ -450,6 +450,23 @@ acerto de cadastro — melhor do que ser posto na lista errada em silêncio.
 A tela de divergências do app segue a mesma divisão e a mesma ordem
 alfabética, para o papel e o celular não contarem histórias diferentes.
 
+**As vendas do dia saem na folha**, e por um motivo prático: o inventário do
+SNGPC é a **foto do último envio** e a prateleira é de **agora**. O que foi
+vendido hoje já saiu da prateleira e ainda está na foto — quem conta encontra
+a caixa faltando e marca divergência de uma venda que está certa. Por isso a
+tabela tem cinco números, e não três:
+
+```
+SNGPC (foto do envio) + Movim. = Esperado        Dif. = Digifarma − Esperado
+```
+
+A coluna **Movim.** é o que se moveu depois do envio e ainda não subiu, lote a
+lote. No fim de cada lista vem o detalhe desse movimento — **número da venda,
+data e hora, medicamento, lote e quantidade** —, na ordem em que aconteceu,
+para dar baixa no papel na hora da contagem. Entradas e perdas pendentes
+entram na mesma lista, com o tipo em cada linha. A diferença **nunca** é
+contra a foto do envio; é contra o esperado.
+
 **Lote com saldo negativo fica de fora dessa folha**, junto com o que não
 tem registro M.S. Nenhum dos dois é divergência de estoque, e nenhuma
 contagem os resolve — são acerto no cadastro do Digifarma. Quantos ficaram

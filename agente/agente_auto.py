@@ -88,6 +88,7 @@ CONSULTAS = {
     "saidas_pendentes": """
         SELECT C.VENDA_NOTA_ID,
                CAST(C.VENDA_DATA_HORA AS DATE) AS DATA,
+               C.VENDA_DATA_HORA AS DATA_HORA,
                P.PRODUTO, P.REGISTRO_MS, P.COD_BARRAS,
                IVL.NUM_LOTE, IVL.QUANTIDADE
           FROM CAB_VENDAS C
@@ -1057,6 +1058,9 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
         tipo: [{
             'id': l.get('VENDA_NOTA_ID') or l.get('CAB_NOTA_ID') or l.get('PERDA_ID'),
             'data': texto(l.get('DATA') or l.get('DATA_RECEBIMENTO') or l.get('DATA_EMISSAO')),
+            # a hora só existe na venda, e é ela que deixa a folha de
+            # conferência conversar com o cupom: mesma venda, mesma hora
+            'hora': texto_hora(l.get('DATA_HORA'))[11:16],
             'descricao': texto(l.get('PRODUTO')),
             'ms': texto(l.get('REGISTRO_MS')),
             'lote': texto(l.get('NUM_LOTE')),
@@ -1211,6 +1215,10 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
         for i in itens:
             i['classe'] = (classe_produto.get(i.get('codigo'))
                            or classe_ms.get(i['ms']) or '')
+        # o movimento pendente também: cada lista leva as suas vendas
+        for linhas_tipo in resultado['pendentes'].values():
+            for p in linhas_tipo:
+                p['classe'] = classe_ms.get(so_digitos(p['ms']), '')
     except Exception as e:
         registrar('Falha ao classificar psicotrópico/antimicrobiano: %s' % e)
 
@@ -1699,6 +1707,9 @@ FOLHA_ESTILO = """
   .lote.bate td { color: #555; }        /* já bate: fica, mas não chama */
   .secao h2 { font-size: 13px; margin: 0 0 6px; border-bottom: 2px solid #000;
               padding-bottom: 3px; }
+  .secao h3 { font-size: 11.5px; margin: 20px 0 2px; page-break-after: avoid; }
+  .movimento { margin-top: 4px; }
+  .movimento td { font-size: 10.5px; }
   .secao h2 .conta { float: right; font-weight: normal; font-size: 10px;
                      color: #444; padding-top: 3px; }
   /* cada lista começa em página nova: dá para conferir as duas ao mesmo
@@ -1718,9 +1729,50 @@ def escapar_html(valor):
             .replace('>', '&gt;').replace('"', '&quot;'))
 
 
-def bloco_conferencia(titulo, medicamentos, quebra=False, nota=''):
+NOME_MOVIMENTO = {'vendas': 'Venda', 'entradas': 'Entrada',
+                  'perdas': 'Perda', 'transferencias': 'Transferência'}
+
+
+def bloco_movimento(movimentos):
+    """O que se moveu depois do último envio: venda, entrada, perda.
+
+    Sem esta lista a folha parece errada. O inventário do SNGPC é a FOTO do
+    último envio e a prateleira é de agora: o que foi vendido hoje já saiu da
+    prateleira e ainda está na foto. Quem conta encontra a caixa faltando e
+    marca divergência de uma venda que está certa. Aqui estão, com número da
+    venda, hora, lote e quantidade, para dar baixa no papel na hora."""
+    if not movimentos:
+        return ('<p class="sub">Nenhuma venda, entrada ou perda desta lista '
+                'desde o último envio — a foto do SNGPC ainda vale como está.</p>')
+    linhas = []
+    for m in movimentos:
+        linhas.append(
+            '<tr><td>%s%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>'
+            '<td class="num">%s</td></tr>' % (
+                br(m['data']) if m.get('data') else '—',
+                (' %s' % escapar_html(m['hora'])) if m.get('hora') else '',
+                escapar_html(NOME_MOVIMENTO.get(m['tipo'], m['tipo'])),
+                escapar_html(m.get('id')) or '—',
+                escapar_html(m.get('descricao'))[:42] or '—',
+                escapar_html(m.get('lote')) or '(sem lote)',
+                '%+g' % m['assinado']))
+    return """<h3>Movimento desde o último envio &mdash; %d lançamento(s)</h3>
+<p class="sub">Já saiu (ou entrou) na prateleira e ainda <strong>não</strong> está
+no inventário do SNGPC. A coluna Movim. da tabela acima é a soma disto, lote a lote.</p>
+<table class="movimento">
+<thead><tr>
+  <th>Data e hora</th><th>Tipo</th><th>Nº</th><th>Medicamento</th><th>Lote</th>
+  <th class="num">Qtd.</th>
+</tr></thead>
+<tbody>
+%s
+</tbody></table>""" % (len(movimentos), '\n'.join(linhas))
+
+
+def bloco_conferencia(titulo, medicamentos, quebra=False, nota='', movimentos=None):
     """Uma lista da folha: o título da classe e a tabela dos medicamentos
-    dela, em ordem alfabética, cada um com os seus lotes embaixo."""
+    dela, em ordem alfabética, cada um com os seus lotes embaixo, e no fim o
+    movimento do dia que ainda não subiu ao SNGPC."""
     linhas = []
     lotes = 0
     for m in medicamentos:
@@ -1728,25 +1780,32 @@ def bloco_conferencia(titulo, medicamentos, quebra=False, nota=''):
         linhas.append(
             '<tr class="med"><td><strong>%s</strong><br><span class="ms">M.S. %s</span>%s</td>'
             '<td></td><td class="num">%g</td><td class="num">%g</td>'
+            '<td class="num">%s</td><td class="num">%g</td>'
             '<td class="num">%s</td><td class="contar"></td></tr>' % (
                 escapar_html(m['descricao'])[:62], escapar_html(formatar_ms(m['ms'])),
                 ('<span class="ms"> · %d lote(s) negativo(s) fora desta folha</span>'
                  % m['omitidos']) if m['omitidos'] else '',
                 m['digifarma'], m['sngpc'],
+                ('%+g' % m['movimento']) if m['movimento'] else '—',
+                m['esperado'],
                 # total do medicamento batendo com lotes divergentes é o
                 # caso mais informativo da folha: o estoque existe, o que
                 # está errado é em qual lote ele foi lançado
-                ('%+g' % round(m['digifarma'] - m['sngpc'], 3))
-                if round(m['digifarma'] - m['sngpc'], 3) else 'total bate'))
+                ('%+g' % round(m['digifarma'] - m['esperado'], 3))
+                if round(m['digifarma'] - m['esperado'], 3) else 'total bate'))
         for l in m['lotes']:
             bate = ' bate' if not numero(l.get('diferenca')) else ''
+            movido = numero(l.get('movimentoDesdeEnvio'))
             linhas.append(
                 '<tr class="lote%s"><td class="rec">lote %s</td><td>%s</td>'
                 '<td class="num">%g</td><td class="num">%g</td><td class="num">%s</td>'
+                '<td class="num">%g</td><td class="num">%s</td>'
                 '<td class="contar"></td></tr>' % (
                     bate, escapar_html(l['lote']) or '—',
                     br(l['validade']) if l['validade'] else '—',
                     numero(l['saldoDigifarma']), numero(l['saldoSngpc']),
+                    ('%+g' % movido) if movido else '—',
+                    numero(l.get('esperadoSngpc', l['saldoSngpc'])),
                     ('%+g' % numero(l['diferenca'])) if numero(l['diferenca']) else '—'))
 
     return """<section class="secao%s">
@@ -1754,18 +1813,21 @@ def bloco_conferencia(titulo, medicamentos, quebra=False, nota=''):
 %s<table>
 <thead><tr>
   <th>Medicamento &middot; lote</th><th>Validade</th>
-  <th class="num">Digifarma</th><th class="num">SNGPC</th><th class="num">Dif.</th>
-  <th>Contado</th>
+  <th class="num">Digifarma</th><th class="num">SNGPC<br>(envio)</th>
+  <th class="num">Movim.</th><th class="num">Esperado</th>
+  <th class="num">Dif.</th><th>Contado</th>
 </tr></thead>
 <tbody>
 %s
 </tbody></table>
+%s
 <p class="assinatura">Conferido por __________________________________ em ____/____/______</p>
 </section>""" % (
         ' quebra' if quebra else '', escapar_html(titulo),
         len(medicamentos), lotes,
         ('<p class="sub">%s</p>' % escapar_html(nota)) if nota else '',
-        '\n'.join(linhas))
+        '\n'.join(linhas),
+        bloco_movimento(movimentos or []))
 
 
 def modo_comparacao(config, filtro=''):
@@ -1822,6 +1884,13 @@ def modo_comparacao(config, filtro=''):
             'omitidos': len(lotes) - len(visiveis),
             'digifarma': round(sum(numero(l['saldoDigifarma']) for l in visiveis), 3),
             'sngpc': round(sum(numero(l['saldoSngpc']) for l in visiveis), 3),
+            # o que se moveu depois do envio, e o que o SNGPC teria hoje se
+            # já tivesse recebido esse movimento. É contra o ESPERADO que a
+            # contagem da prateleira fecha — a foto do envio já está velha.
+            'movimento': round(sum(numero(l.get('movimentoDesdeEnvio'))
+                                   for l in visiveis), 3),
+            'esperado': round(sum(numero(l.get('esperadoSngpc', l['saldoSngpc']))
+                                  for l in visiveis), 3),
         })
     # ordem alfabética pelo nome, sem acento e sem caixa — é assim que o
     # medicamento é procurado na prateleira
@@ -1839,6 +1908,24 @@ def modo_comparacao(config, filtro=''):
         br(inventario.get('data')) if inventario.get('data') else '(sem data)',
         datetime.datetime.now().strftime('%d/%m/%Y %H:%M'))
 
+    # o movimento que ainda não subiu, em ordem de acontecido — é o que
+    # explica a prateleira não bater com a foto do último envio
+    movimentos = []
+    for tipo, linhas_tipo in (dados.get('pendentes') or {}).items():
+        sinal = 1 if tipo == 'entradas' else -1
+        for p in linhas_tipo:
+            movimentos.append(dict(p, tipo=tipo,
+                                   assinado=round(sinal * numero(p['quantidade']), 3)))
+    movimentos.sort(key=lambda p: (texto(p.get('data')), texto(p.get('hora')),
+                                   normalizar_texto(p.get('descricao'))))
+
+    # a lista do movimento segue a classe do MEDICAMENTO na folha; só quando
+    # ele não está na folha é que vale a classe que o agente carimbou
+    classe_na_folha = {m['ms']: m['classe'] for m in medicamentos}
+
+    def classe_do_movimento(p):
+        return classe_na_folha.get(so_digitos(p['ms']), p.get('classe') or '')
+
     secoes = []
     conferir = []
     for classe in CLASSES + ('',):
@@ -1854,8 +1941,14 @@ def modo_comparacao(config, filtro=''):
             nota = ((nota + ' · ') if nota else '') + (
                 'classe não marcada no cadastro do Digifarma: estes não '
                 'entraram em nenhuma das duas listas.')
-        secoes.append(bloco_conferencia(NOME_CLASSE[classe], do_grupo,
-                                        quebra=bool(secoes), nota=nota))
+        # o filtro da linha de comando também vale para o movimento: folha
+        # de um medicamento só com a venda de outro em anexo é ruído
+        do_grupo_ms = {m['ms'] for m in do_grupo}
+        secoes.append(bloco_conferencia(
+            NOME_CLASSE[classe], do_grupo, quebra=bool(secoes), nota=nota,
+            movimentos=[p for p in movimentos
+                        if (classe_do_movimento(p) == classe
+                            and (not filtro or so_digitos(p['ms']) in do_grupo_ms))]))
 
     fora = []
     if negativos:
@@ -1872,13 +1965,18 @@ def modo_comparacao(config, filtro=''):
 saldo por LOTES.%s &middot; gerado em %s</p>
 %s
 %s
-<p class="rodape">%d medicamento(s), %d lote(s) no total. Psicotrópicos e
-antimicrobianos saem em listas separadas, cada uma em página nova, e dentro de
-cada lista os medicamentos vêm em ordem alfabética. A linha em cinza é o
-medicamento, com a soma dos lotes abaixo dela — é esse total que aparece na tela
-do Digifarma. As linhas seguintes são os lotes, e o SNGPC guarda o estoque
-assim, lote a lote. Os lotes que já batem vêm listados de propósito: sem eles a
-soma não fecha na hora de conferir a prateleira.</p>
+<p class="rodape"><strong>A conta é esta:</strong> SNGPC (foto do último envio)
++ Movim. (o que se moveu depois, e ainda não subiu) = Esperado. A diferença é
+<strong>Digifarma &minus; Esperado</strong>, nunca contra a foto do envio — senão
+toda venda de hoje vira divergência. O movimento vem detalhado no fim de cada
+lista, com número da venda, hora, lote e quantidade.<br>
+%d medicamento(s), %d lote(s) no total. Psicotrópicos e antimicrobianos saem em
+listas separadas, cada uma em página nova, e dentro de cada lista os
+medicamentos vêm em ordem alfabética. A linha em cinza é o medicamento, com a
+soma dos lotes abaixo dela — é esse total que aparece na tela do Digifarma. As
+linhas seguintes são os lotes, e o SNGPC guarda o estoque assim, lote a lote. Os
+lotes que já batem vêm listados de propósito: sem eles a soma não fecha na hora
+de conferir a prateleira.</p>
 </body></html>
 """ % (
         FOLHA_ESTILO,
@@ -1904,6 +2002,10 @@ soma não fecha na hora de conferir a prateleira.</p>
             print('  %s: %d medicamento(s), %d lote(s)' % (
                 NOME_CLASSE[classe], len(do_grupo),
                 sum(len(m['lotes']) for m in do_grupo)))
+    if movimentos:
+        print('%d lançamento(s) desde o último envio vão em anexo (venda, hora, '
+              'lote e quantidade): sem eles a contagem do dia acusa divergência '
+              'que não existe.' % len(movimentos))
     if fora:
         print('Fora dela: %s.' % '; '.join(fora))
     print('\nGravado em %s' % caminho)
