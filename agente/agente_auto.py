@@ -256,7 +256,8 @@ CONSULTAS = {
     # quem é controlado, para filtrar o inventário do SNGPC pelo mesmo
     # critério das vendas: PSICOTROPICO='S' OU ANTIMICROBIANO='S'
     "produtos_controlados": """
-        SELECT PRODUTO_ID, PRODUTO, PSICOTROPICO, ANTIMICROBIANO FROM PRODUTOS
+        SELECT PRODUTO_ID, PRODUTO, REGISTRO_MS, PSICOTROPICO, ANTIMICROBIANO
+          FROM PRODUTOS
     """,
 
     # --- saldo por lote no Digifarma ---
@@ -786,6 +787,44 @@ def classes_dos_produtos(conexao):
     return controlados, conhecidos
 
 
+CLASSES = ('psicotropico', 'antimicrobiano')
+NOME_CLASSE = {
+    'psicotropico': 'Psicotrópicos e entorpecentes',
+    'antimicrobiano': 'Antimicrobianos',
+    '': 'Sem marcação de classe no cadastro',
+}
+
+
+def classes_por_medicamento(conexao):
+    """De que lista é cada medicamento: psicotrópico ou antimicrobiano.
+
+    São duas escriturações diferentes na farmácia — a receita de psicotrópico
+    fica retida e a de antimicrobiano não —, e quem confere prateleira confere
+    uma lista de cada vez. Por isso a folha sai separada.
+
+    Cadastro marcado como os dois entra em psicotrópico: é a lista mais
+    rígida, e conferir por lá não deixa nada de fora.
+
+    Devolve (por_produto, por_ms). O segundo é o desempate para o lote que
+    só existe no inventário da ANVISA, que chega sem PRODUTO_ID."""
+    por_produto, por_ms = {}, {}
+    for linha in consultar(conexao, CONSULTAS['produtos_controlados']):
+        psico = texto(linha.get('PSICOTROPICO')).upper() == 'S'
+        anti = texto(linha.get('ANTIMICROBIANO')).upper() == 'S'
+        if not psico and not anti:
+            continue
+        classe = 'psicotropico' if psico else 'antimicrobiano'
+        produto = texto(linha.get('PRODUTO_ID'))
+        if produto:
+            por_produto[produto] = classe
+        ms = so_digitos(linha.get('REGISTRO_MS'))
+        # dois cadastros com o mesmo registro e marcações diferentes: fica o
+        # psicotrópico, para não sumir da lista que exige receita retida
+        if ms and (classe == 'psicotropico' or ms not in por_ms):
+            por_ms[ms] = classe
+    return por_produto, por_ms
+
+
 def ler_inventario_anvisa(conexao):
     """Lê INVENTARIO_SNGPC — a tabela que o Anvisa.exe regrava com o
     inventário do site da ANVISA.
@@ -1164,6 +1203,17 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
             item['movimentoDesdeEnvio'] = pendente
             item['esperadoSngpc'] = esperado
         itens.append(item)
+    # de que lista é cada item — psicotrópico ou antimicrobiano. Vai junto
+    # com o item para o app e para a folha de conferência não precisarem
+    # voltar ao banco só para separar as duas listas.
+    try:
+        classe_produto, classe_ms = classes_por_medicamento(conexao)
+        for i in itens:
+            i['classe'] = (classe_produto.get(i.get('codigo'))
+                           or classe_ms.get(i['ms']) or '')
+    except Exception as e:
+        registrar('Falha ao classificar psicotrópico/antimicrobiano: %s' % e)
+
     resultado['itens'] = itens
     resultado['resumoSaldo'] = {}
     for i in itens:
@@ -1647,10 +1697,18 @@ FOLHA_ESTILO = """
   .med .ms { font-weight: normal; font-size: 9.5px; color: #444; }
   .lote .rec { padding-left: 16px; }
   .lote.bate td { color: #555; }        /* já bate: fica, mas não chama */
+  .secao h2 { font-size: 13px; margin: 0 0 6px; border-bottom: 2px solid #000;
+              padding-bottom: 3px; }
+  .secao h2 .conta { float: right; font-weight: normal; font-size: 10px;
+                     color: #444; padding-top: 3px; }
+  /* cada lista começa em página nova: dá para conferir as duas ao mesmo
+     tempo, em duas mãos diferentes */
+  .quebra { page-break-before: always; }
   .rodape { margin-top: 18px; font-size: 10px; color: #444;
             page-break-inside: avoid; }
-  .assinatura { margin-top: 26px; border-top: 1px solid #000; width: 62%;
-                padding-top: 4px; font-size: 10px; }
+  .vazio { border: 1px solid #000; padding: 10px; }
+  .assinatura { margin-top: 22px; border-top: 1px solid #000; width: 62%;
+                padding-top: 4px; font-size: 10px; page-break-inside: avoid; }
   @media print { .naoimprime { display: none; } }
 """
 
@@ -1658,6 +1716,56 @@ FOLHA_ESTILO = """
 def escapar_html(valor):
     return (texto(valor).replace('&', '&amp;').replace('<', '&lt;')
             .replace('>', '&gt;').replace('"', '&quot;'))
+
+
+def bloco_conferencia(titulo, medicamentos, quebra=False, nota=''):
+    """Uma lista da folha: o título da classe e a tabela dos medicamentos
+    dela, em ordem alfabética, cada um com os seus lotes embaixo."""
+    linhas = []
+    lotes = 0
+    for m in medicamentos:
+        lotes += len(m['lotes'])
+        linhas.append(
+            '<tr class="med"><td><strong>%s</strong><br><span class="ms">M.S. %s</span>%s</td>'
+            '<td></td><td class="num">%g</td><td class="num">%g</td>'
+            '<td class="num">%s</td><td class="contar"></td></tr>' % (
+                escapar_html(m['descricao'])[:62], escapar_html(formatar_ms(m['ms'])),
+                ('<span class="ms"> · %d lote(s) negativo(s) fora desta folha</span>'
+                 % m['omitidos']) if m['omitidos'] else '',
+                m['digifarma'], m['sngpc'],
+                # total do medicamento batendo com lotes divergentes é o
+                # caso mais informativo da folha: o estoque existe, o que
+                # está errado é em qual lote ele foi lançado
+                ('%+g' % round(m['digifarma'] - m['sngpc'], 3))
+                if round(m['digifarma'] - m['sngpc'], 3) else 'total bate'))
+        for l in m['lotes']:
+            bate = ' bate' if not numero(l.get('diferenca')) else ''
+            linhas.append(
+                '<tr class="lote%s"><td class="rec">lote %s</td><td>%s</td>'
+                '<td class="num">%g</td><td class="num">%g</td><td class="num">%s</td>'
+                '<td class="contar"></td></tr>' % (
+                    bate, escapar_html(l['lote']) or '—',
+                    br(l['validade']) if l['validade'] else '—',
+                    numero(l['saldoDigifarma']), numero(l['saldoSngpc']),
+                    ('%+g' % numero(l['diferenca'])) if numero(l['diferenca']) else '—'))
+
+    return """<section class="secao%s">
+<h2>%s <span class="conta">%d medicamento(s), %d lote(s)</span></h2>
+%s<table>
+<thead><tr>
+  <th>Medicamento &middot; lote</th><th>Validade</th>
+  <th class="num">Digifarma</th><th class="num">SNGPC</th><th class="num">Dif.</th>
+  <th>Contado</th>
+</tr></thead>
+<tbody>
+%s
+</tbody></table>
+<p class="assinatura">Conferido por __________________________________ em ____/____/______</p>
+</section>""" % (
+        ' quebra' if quebra else '', escapar_html(titulo),
+        len(medicamentos), lotes,
+        ('<p class="sub">%s</p>' % escapar_html(nota)) if nota else '',
+        '\n'.join(linhas))
 
 
 def modo_comparacao(config, filtro=''):
@@ -1700,44 +1808,54 @@ def modo_comparacao(config, filtro=''):
             alvo = normalizar_texto(filtro)
             if alvo not in normalizar_texto(descricao) and not any(alvo in l['lote'] for l in visiveis):
                 continue
+        # de que lista o medicamento é. O lote que só existe no inventário da
+        # ANVISA chega sem classe; basta um irmão classificado para o
+        # medicamento inteiro cair na lista certa.
+        classe = ''
+        for l in visiveis:
+            if l.get('classe'):
+                classe = l['classe']
+                break
         medicamentos.append({
-            'ms': ms, 'descricao': descricao,
+            'ms': ms, 'descricao': descricao, 'classe': classe,
             'lotes': sorted(visiveis, key=lambda l: l['lote']),
             'omitidos': len(lotes) - len(visiveis),
             'digifarma': round(sum(numero(l['saldoDigifarma']) for l in visiveis), 3),
             'sngpc': round(sum(numero(l['saldoSngpc']) for l in visiveis), 3),
         })
+    # ordem alfabética pelo nome, sem acento e sem caixa — é assim que o
+    # medicamento é procurado na prateleira
     medicamentos.sort(key=lambda m: normalizar_texto(m['descricao']))
 
     inventario = dados.get('inventario', {})
     envio = dados.get('envio', {})
-    linhas = []
+
+    # Psicotrópico e antimicrobiano são duas escriturações e duas
+    # conferências: saem em listas separadas, cada uma começando em página
+    # nova, para poderem ser conferidas por pessoas diferentes ao mesmo tempo.
+    # cada lista repete de onde saiu: a segunda folha vai para outra mão, e
+    # papel sem data não serve de conferência
+    origem = 'Inventário do SNGPC de %s · gerado em %s' % (
+        br(inventario.get('data')) if inventario.get('data') else '(sem data)',
+        datetime.datetime.now().strftime('%d/%m/%Y %H:%M'))
+
+    secoes = []
     conferir = []
-    for m in medicamentos:
-        conferir.extend(m['lotes'])
-        linhas.append(
-            '<tr class="med"><td><strong>%s</strong><br><span class="ms">M.S. %s</span>%s</td>'
-            '<td></td><td class="num">%g</td><td class="num">%g</td>'
-            '<td class="num">%s</td><td class="contar"></td></tr>' % (
-                escapar_html(m['descricao'])[:62], escapar_html(formatar_ms(m['ms'])),
-                ('<span class="ms"> · %d lote(s) negativo(s) fora desta folha</span>'
-                 % m['omitidos']) if m['omitidos'] else '',
-                m['digifarma'], m['sngpc'],
-                # total do medicamento batendo com lotes divergentes é o
-                # caso mais informativo da folha: o estoque existe, o que
-                # está errado é em qual lote ele foi lançado
-                ('%+g' % round(m['digifarma'] - m['sngpc'], 3))
-                if round(m['digifarma'] - m['sngpc'], 3) else 'total bate'))
-        for l in m['lotes']:
-            diferente = ' bate' if not numero(l.get('diferenca')) else ''
-            linhas.append(
-                '<tr class="lote%s"><td class="rec">lote %s</td><td>%s</td>'
-                '<td class="num">%g</td><td class="num">%g</td><td class="num">%s</td>'
-                '<td class="contar"></td></tr>' % (
-                    diferente, escapar_html(l['lote']) or '—',
-                    br(l['validade']) if l['validade'] else '—',
-                    numero(l['saldoDigifarma']), numero(l['saldoSngpc']),
-                    ('%+g' % numero(l['diferenca'])) if numero(l['diferenca']) else '—'))
+    for classe in CLASSES + ('',):
+        do_grupo = [m for m in medicamentos if m['classe'] == classe]
+        if not do_grupo:
+            continue
+        for m in do_grupo:
+            conferir.extend(m['lotes'])
+        # a primeira lista já tem a data no cabeçalho da folha; a partir da
+        # segunda a página é outra, e repetir é o que faz a folha solta valer
+        nota = origem if secoes else ''
+        if not classe:
+            nota = ((nota + ' · ') if nota else '') + (
+                'classe não marcada no cadastro do Digifarma: estes não '
+                'entraram em nenhuma das duas listas.')
+        secoes.append(bloco_conferencia(NOME_CLASSE[classe], do_grupo,
+                                        quebra=bool(secoes), nota=nota))
 
     fora = []
     if negativos:
@@ -1753,21 +1871,14 @@ def modo_comparacao(config, filtro=''):
 <p class="sub">Inventário do SNGPC de %s &middot; último envio em %s &middot;
 saldo por LOTES.%s &middot; gerado em %s</p>
 %s
-<table>
-<thead><tr>
-  <th>Medicamento &middot; lote</th><th>Validade</th>
-  <th class="num">Digifarma</th><th class="num">SNGPC</th><th class="num">Dif.</th>
-  <th>Contado</th>
-</tr></thead>
-<tbody>
 %s
-</tbody></table>
-<p class="rodape">%d medicamento(s), %d lote(s). A linha em cinza é o medicamento,
-com a soma dos lotes abaixo dela — é esse total que aparece na tela do Digifarma.
-As linhas seguintes são os lotes, e o SNGPC guarda o estoque assim, lote a lote.
-Os lotes que já batem vêm listados de propósito: sem eles a soma não fecha
-na hora de conferir a prateleira.</p>
-<p class="assinatura">Conferido por __________________________________ em ____/____/______</p>
+<p class="rodape">%d medicamento(s), %d lote(s) no total. Psicotrópicos e
+antimicrobianos saem em listas separadas, cada uma em página nova, e dentro de
+cada lista os medicamentos vêm em ordem alfabética. A linha em cinza é o
+medicamento, com a soma dos lotes abaixo dela — é esse total que aparece na tela
+do Digifarma. As linhas seguintes são os lotes, e o SNGPC guarda o estoque
+assim, lote a lote. Os lotes que já batem vêm listados de propósito: sem eles a
+soma não fecha na hora de conferir a prateleira.</p>
 </body></html>
 """ % (
         FOLHA_ESTILO,
@@ -1779,13 +1890,20 @@ na hora de conferir a prateleira.</p>
          'Não são divergência de estoque e nenhuma contagem os resolve — '
          'são acerto no cadastro do Digifarma. Use --negativos e --tarefas.</p>'
          % '; '.join(fora)) if fora else '',
-        '\n'.join(linhas) or '<tr><td colspan="6">Nada a conferir.</td></tr>',
+        '\n'.join(secoes) or '<p class="vazio">Nada a conferir: os lotes que '
+                             'entrariam nesta folha já batem com o SNGPC.</p>',
         len(medicamentos), len(conferir))
 
     caminho = os.path.join(PASTA, 'comparacao_%s.html' % datetime.date.today().isoformat())
     with open(caminho, 'w', encoding='utf-8') as f:
         f.write(html)
     print('%d lote(s) na folha de conferência.' % len(conferir))
+    for classe in CLASSES + ('',):
+        do_grupo = [m for m in medicamentos if m['classe'] == classe]
+        if do_grupo:
+            print('  %s: %d medicamento(s), %d lote(s)' % (
+                NOME_CLASSE[classe], len(do_grupo),
+                sum(len(m['lotes']) for m in do_grupo)))
     if fora:
         print('Fora dela: %s.' % '; '.join(fora))
     print('\nGravado em %s' % caminho)

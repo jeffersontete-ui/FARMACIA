@@ -546,6 +546,22 @@ function ordemDoMotivo(motivo) {
   return i === -1 ? ORDEM_MOTIVO.length : i;
 }
 
+/* Psicotrópico e antimicrobiano são duas escriturações e duas conferências:
+   a receita de psicotrópico fica retida, a de antimicrobiano não. Quem
+   confere faz uma lista de cada vez, então a tela separa as duas.
+   O agente antigo publicava item sem classe; esses ficam no fim, juntos. */
+const CLASSES_SALDO = ['psicotropico', 'antimicrobiano'];
+const NOME_CLASSE = {
+  psicotropico: 'Psicotrópicos e entorpecentes',
+  antimicrobiano: 'Antimicrobianos',
+  '': 'Sem classe marcada no cadastro'
+};
+
+function ordemDaClasse(classe) {
+  const i = CLASSES_SALDO.indexOf(classe);
+  return i === -1 ? CLASSES_SALDO.length : i;
+}
+
 function pintarAlertaSaldo() {
   const barra = $('saldo-alerta');
   const inv = estado.inventario?.inventario;
@@ -614,24 +630,46 @@ function pintarSaldo() {
   // ordem de gravidade: dado torto no Digifarma primeiro, porque reaparece
   // em toda conferência; depois o que sumiu do estoque e o SNGPC ainda
   // acusa; por último o que a ANVISA só não recebeu ainda.
+  // Dentro do grupo, ordem alfabética pelo nome: é assim que o medicamento
+  // é procurado na prateleira, e é a ordem em que a folha impressa sai.
   const itens = divergenciasDeSaldo()
     .filter((i) => combina(i, estado.buscaSaldo, ['descricao', 'ms', 'ean', 'lote', 'codigo']))
-    .sort((a, b) => (ordemDoMotivo(a.motivo) - ordemDoMotivo(b.motivo))
-      || (Math.abs(Number(b.diferenca || 0)) - Math.abs(Number(a.diferenca || 0))));
+    .sort((a, b) => (ordemDaClasse(a.classe) - ordemDaClasse(b.classe))
+      || (ordemDoMotivo(a.motivo) - ordemDoMotivo(b.motivo))
+      || (a.descricao || '').localeCompare(b.descricao || '', 'pt-BR')
+      || (a.lote || '').localeCompare(b.lote || '', 'pt-BR'));
   $('saldo-vazio').hidden = itens.length > 0 || !!estado.buscaSaldo;
 
   const quantosPorMotivo = {};
-  itens.forEach((i) => { quantosPorMotivo[i.motivo] = (quantosPorMotivo[i.motivo] || 0) + 1; });
+  const quantosPorClasse = {};
+  itens.forEach((i) => {
+    const c = CLASSES_SALDO.includes(i.classe) ? i.classe : '';
+    quantosPorMotivo[c + '|' + i.motivo] = (quantosPorMotivo[c + '|' + i.motivo] || 0) + 1;
+    quantosPorClasse[c] = (quantosPorClasse[c] || 0) + 1;
+  });
 
+  let classeAtual = null;
   let grupoAtual = null;
   itens.forEach((i, n) => {
+    const daLista = CLASSES_SALDO.includes(i.classe) ? i.classe : '';
+    if (daLista !== classeAtual) {
+      classeAtual = daLista;
+      grupoAtual = null;
+      const cabeca = criar('h3', 'grupo-saldo grupo-classe');
+      const nome = criar('span');
+      nome.textContent = NOME_CLASSE[daLista];
+      const conta = criar('span', 'grupo-conta');
+      conta.textContent = quantosPorClasse[daLista];
+      cabeca.append(nome, conta);
+      alvo.appendChild(cabeca);
+    }
     if (i.motivo && i.motivo !== grupoAtual) {
       grupoAtual = i.motivo;
       const cabeca = criar('h3', 'grupo-saldo');
       const nome = criar('span');
       nome.textContent = MOTIVO_SALDO[grupoAtual]?.[0] || grupoAtual;
       const conta = criar('span', 'grupo-conta');
-      conta.textContent = quantosPorMotivo[grupoAtual];
+      conta.textContent = quantosPorMotivo[classeAtual + '|' + grupoAtual];
       cabeca.append(nome, conta);
       alvo.appendChild(cabeca);
     }
@@ -662,7 +700,7 @@ function pintarSaldo() {
       ['Código de barras', i.ean],
       ['Lote', i.lote],
       ['Validade', i.validade],
-      ['Classe', i.classe]
+      ['Classe', i.classe ? (NOME_CLASSE[i.classe] || i.classe) : undefined]
     ]);
     if (explicacao) {
       const nota = criar('p', 'nota-info');

@@ -433,6 +433,23 @@ Ctrl+P — o estilo é feito para A4, com o cabeçalho repetindo a cada página,
 linha que não parte no meio, coluna em branco para anotar a contagem física
 e espaço de assinatura.
 
+**Duas listas, não uma:** psicotrópicos/entorpecentes primeiro,
+antimicrobianos depois, **cada uma começando em página nova**, com o seu
+próprio total e a sua própria assinatura. São duas escriturações diferentes
+— a receita de psicotrópico fica retida, a de antimicrobiano não — e assim
+as duas conferências podem sair ao mesmo tempo, em mãos diferentes. Dentro
+de cada lista os medicamentos vêm em **ordem alfabética**, que é como se
+procura na prateleira, e abaixo de cada um os seus lotes.
+
+A classe sai do cadastro do Digifarma (`PSICOTROPICO` / `ANTIMICROBIANO`),
+o mesmo critério que decide o que é importado. Cadastro marcado como os
+dois entra em psicotrópico, a lista mais rígida. Se algum medicamento
+estiver sem marcação nenhuma, sai numa terceira lista no fim, dizendo que é
+acerto de cadastro — melhor do que ser posto na lista errada em silêncio.
+
+A tela de divergências do app segue a mesma divisão e a mesma ordem
+alfabética, para o papel e o celular não contarem histórias diferentes.
+
 **Lote com saldo negativo fica de fora dessa folha**, junto com o que não
 tem registro M.S. Nenhum dos dois é divergência de estoque, e nenhuma
 contagem os resolve — são acerto no cadastro do Digifarma. Quantos ficaram

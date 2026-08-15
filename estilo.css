@@ -285,6 +285,12 @@ main{padding:16px 16px 96px;max-width:900px;margin:0 auto}
   color:var(--tinta-fraca);text-transform:uppercase;
 }
 .pilha>.grupo-saldo:first-child{margin-top:4px}
+/* a classe é a divisão maior: dentro dela é que vêm os grupos por motivo */
+.grupo-classe{
+  margin-top:26px;padding-bottom:6px;border-bottom:2px solid var(--linha);
+  color:var(--tinta);font-size:13px;letter-spacing:.04em;font-weight:700;
+}
+.pilha>.grupo-classe+.grupo-saldo{margin-top:12px}
 .grupo-conta{
   background:var(--linha);color:var(--tinta);border-radius:999px;
   padding:2px 9px;font-size:11px;letter-spacing:0;font-variant-numeric:tabular-nums;

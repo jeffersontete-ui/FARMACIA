@@ -400,6 +400,41 @@ def principal():
     conferir('produto sem registro M.S. não é divergência de estoque',
              ag.classificar_divergencia(
                  {'saldoDigifarma': 4, 'ms': ''}, 0.0, {'111'}) == 'sem_ms')
+
+    # psicotrópico e antimicrobiano são duas escriturações e duas
+    # conferências: o item leva a classe para a folha impressa e o app
+    # poderem separar as listas sem voltar ao banco
+    conferir('o item leva a classe do cadastro',
+             all(i.get('classe') == 'psicotropico' for i in dados['itens']
+                 if i['ms'] == '1023506630204'),
+             [i.get('classe') for i in dados['itens']])
+
+    def consultar_classes(conexao, sql, parametros=()):
+        return [
+            {'PRODUTO_ID': 1, 'REGISTRO_MS': '1.0525.0018.018-9',
+             'PSICOTROPICO': 'S', 'ANTIMICROBIANO': 'N'},
+            {'PRODUTO_ID': 2, 'REGISTRO_MS': '1023500960041',
+             'PSICOTROPICO': 'N', 'ANTIMICROBIANO': 'S'},
+            # marcado como os dois: vale a lista mais rígida
+            {'PRODUTO_ID': 3, 'REGISTRO_MS': '1023500960041',
+             'PSICOTROPICO': 'S', 'ANTIMICROBIANO': 'S'},
+            {'PRODUTO_ID': 4, 'REGISTRO_MS': '1999900000001',
+             'PSICOTROPICO': 'N', 'ANTIMICROBIANO': 'N'},
+        ]
+
+    ag.consultar = consultar_classes
+    por_produto, por_ms = ag.classes_por_medicamento(None)
+    ag.consultar = consultar_falso
+    conferir('psicotrópico e antimicrobiano saem separados pelo cadastro',
+             por_produto.get('1') == 'psicotropico'
+             and por_produto.get('2') == 'antimicrobiano', por_produto)
+    conferir('produto não controlado não entra em lista nenhuma',
+             '4' not in por_produto, por_produto)
+    conferir('marcado como os dois vale como psicotrópico',
+             por_produto.get('3') == 'psicotropico'
+             and por_ms.get('1023500960041') == 'psicotropico', por_ms)
+    conferir('a classe também é achada pelo M.S., para o lote só da ANVISA',
+             por_ms.get('1052500180189') == 'psicotropico', por_ms)
     # medicamento com dois lotes: o que bate some da lista, e sem os irmãos
     # no detalhe o total do Digifarma fica sem explicação — foi o caso da
     # pregabalina, 6 no app contra 9 na tela do Digifarma
