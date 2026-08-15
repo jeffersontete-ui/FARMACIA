@@ -322,8 +322,13 @@ function divergenciasDeSaldo(itens) {
   return (itens || lista('itens'))
     .filter((i) => Number(i.diferenca || 0) !== 0 && i.motivo !== 'sem_ms');
 }
+/* Pelo M.S. em falta, não pelo motivo: o motivo é um só por item, e
+   'negativo' ganha de 'sem_ms' na classificação. Um controlado sem registro
+   E com saldo negativo saía rotulado de negativo e sumia desta lista — foi
+   assim que a amoxicilina da Cimed passou meses sem ser escriturada, com as
+   entradas e as vendas fora do SNGPC, sem aparecer em lugar nenhum. */
 function pendenciasDeCadastro(itens) {
-  return (itens || lista('itens')).filter((i) => i.motivo === 'sem_ms');
+  return (itens || lista('itens')).filter((i) => !i.ms);
 }
 function pendenciasXml() {
   return lista('conferencia_xml').filter((c) => c && c.situacao !== 'ok');
@@ -573,6 +578,20 @@ function pintarAlertaSaldo() {
     barra.textContent = 'O inventário da ANVISA está vazio, então todo lote do Digifarma '
       + 'aparece aqui como sobra. Rode o Anvisa.exe no servidor e faça o login no site do '
       + 'SNGPC antes de conferir estes números.';
+    barra.hidden = false;
+    return;
+  }
+
+  // O site da ANVISA já recebeu o que este Digifarma ainda tem na fila:
+  // a mesma venda é descontada dos dois lados e a lista incha. Avisar vale
+  // mais que o número, porque transmitir daqui escrituraria tudo em dobro.
+  const ja = Number(inv.jaNaAnvisa || 0);
+  const naFila = Number(estado.inventario?.resumoPendentes?.vendas || 0);
+  if (ja && naFila) {
+    barra.textContent = ja + ' lote(s) já batem com a ANVISA sem contar o que está na '
+      + 'fila: o site recebeu essas vendas e o ponteiro do Digifarma não avançou. '
+      + 'Os números abaixo estão inflados — e transmitir por este computador '
+      + 'escrituraria as ' + naFila + ' venda(s) em dobro.';
     barra.hidden = false;
     return;
   }
