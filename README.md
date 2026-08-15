@@ -474,6 +474,29 @@ dois entra em psicotrópico, a lista mais rígida. Se algum medicamento
 estiver sem marcação nenhuma, sai numa terceira lista no fim, dizendo que é
 acerto de cadastro — melhor do que ser posto na lista errada em silêncio.
 
+### O que a contagem da lamotrigina decidiu
+
+Primeiro medicamento contado, e serve de régua para os outros 21 iguais.
+Lamotrigina 100 mg, três lotes negativos somando −7 e o lote BLGH24024 com 11:
+
+| | BLGH24024 | lotes velhos | total |
+|---|---|---|---|
+| prateleira | 11 | 0 | 11 |
+| ANVISA | 11 | 0 | 11 |
+| Digifarma | 11 | −7 | 4 |
+
+A prateleira bate com a ANVISA lote a lote: **o único errado é o Digifarma**.
+Conserto: zerar os três negativos e **não encostar no lote cheio**.
+
+E o cuidado que não é óbvio: **esse acerto não pode ser transmitido**. Zerar
+um lote negativo lança 7 unidades a mais no Digifarma; se isso entrar no
+próximo XML, a ANVISA passa de 11 para 18 e o erro migra para o lado mais
+caro de consertar. A ANVISA já está certa — é correção interna de estoque,
+não movimento novo.
+
+A folha de conferência passou a imprimir essa regra, com os dois desfechos
+possíveis, para quem conta decidir sem precisar perguntar.
+
 A tela de divergências do app segue a mesma divisão e a mesma ordem
 alfabética, para o papel e o celular não contarem histórias diferentes.
 

@@ -2119,6 +2119,16 @@ def modo_comparacao(config, filtro=''):
 saldo por LOTES.%s &middot; gerado em %s</p>
 %s
 %s
+<p class="aviso"><strong>Medicamento com lote negativo &mdash; o que fazer com a
+contagem.</strong> Não se corrige o lote de uma venda já transmitida, então o
+acerto é no estoque, e a contagem diz qual dos dois:<br>
+&bull; <strong>contou igual ao SNGPC</strong> &rarr; zere só o(s) lote(s)
+negativo(s) e <strong>não encoste no lote cheio</strong>. Os três lados passam a
+bater. <strong>Esse acerto NÃO vai para a ANVISA</strong>: ela já está certa, e
+transmitir faria o saldo dela subir indevidamente.<br>
+&bull; <strong>contou menos que o SNGPC</strong> &rarr; a baixa foi no lote
+errado: acerte o lote cheio para o valor contado, zere o negativo, e a diferença
+que sobrar contra a ANVISA precisa ser regularizada com ela.</p>
 <p class="rodape"><strong>A conta é esta:</strong> SNGPC (foto do último envio)
 + Movim. (o que se moveu depois, e ainda não subiu) = Esperado. A diferença é
 <strong>Digifarma &minus; Esperado</strong>, nunca contra a foto do envio — senão
