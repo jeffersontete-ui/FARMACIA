@@ -1781,7 +1781,41 @@ no inventário do SNGPC. A coluna Movim. da tabela acima é a soma disto, lote a
                           % sem_lote) if sem_lote else '')
 
 
-def bloco_conferencia(titulo, medicamentos, quebra=False, nota='', movimentos=None):
+def bloco_sem_prateleira(medicamentos):
+    """Medicamento cujo ÚNICO lote está negativo.
+
+    Não tem uma linha para conferir: o saldo que o Digifarma conhece não
+    existe. Mas a caixa pode estar na prateleira, vinda de uma entrada que
+    nunca foi lançada — e é o lote impresso NA CAIXA que diz qual nota
+    procurar. Por isso aqui os campos vão em branco: quem conta escreve o
+    lote e a quantidade que achou, ou risca se não achou nada."""
+    if not medicamentos:
+        return ''
+    linhas = []
+    for m in medicamentos:
+        linhas.append(
+            '<tr><td><strong>%s</strong><br><span class="ms">M.S. %s · '
+            'Digifarma diz %+g no lote %s</span></td>'
+            '<td class="contar"></td><td class="contar"></td>'
+            '<td class="contar"></td></tr>' % (
+                escapar_html(m['descricao'])[:62], escapar_html(formatar_ms(m['ms'])),
+                m['negativo'], escapar_html(', '.join(m['lotes'])[:40]) or '—'))
+    return """<h3>Sem lote para conferir &mdash; %d medicamento(s)</h3>
+<p class="sub">O único saldo que o Digifarma tem destes é negativo, então não há
+linha para conferir. Procure na prateleira: se houver caixa, <strong>copie o lote
+da caixa</strong> — é ele que diz qual nota de entrada nunca foi lançada. Se não
+houver nada, risque.</p>
+<table>
+<thead><tr>
+  <th>Medicamento</th><th>Lote na caixa</th><th>Validade</th><th>Quantidade</th>
+</tr></thead>
+<tbody>
+%s
+</tbody></table>""" % (len(medicamentos), '\n'.join(linhas))
+
+
+def bloco_conferencia(titulo, medicamentos, quebra=False, nota='', movimentos=None,
+                      sem_prateleira=None):
     """Uma lista da folha: o título da classe e a tabela dos medicamentos
     dela, em ordem alfabética, cada um com os seus lotes embaixo, e no fim o
     movimento do dia que ainda não subiu ao SNGPC."""
@@ -1834,12 +1868,14 @@ def bloco_conferencia(titulo, medicamentos, quebra=False, nota='', movimentos=No
 %s
 </tbody></table>
 %s
+%s
 <p class="assinatura">Conferido por __________________________________ em ____/____/______</p>
 </section>""" % (
         ' quebra' if quebra else '', escapar_html(titulo),
         len(medicamentos), lotes,
         ('<p class="sub">%s</p>' % escapar_html(nota)) if nota else '',
         '\n'.join(linhas),
+        bloco_sem_prateleira(sem_prateleira or []),
         bloco_movimento(movimentos or []))
 
 
@@ -1870,7 +1906,7 @@ def modo_comparacao(config, filtro=''):
             continue
         por_ms.setdefault((i['ms'], i['descricao']), []).append(i)
 
-    medicamentos = []
+    medicamentos, sem_prateleira = [], []
     for (ms, descricao), lotes in por_ms.items():
         # lote negativo não está na prateleira: é lançamento errado, e mandar
         # alguém procurar por ele é desperdiçar a conferência
@@ -1884,22 +1920,29 @@ def modo_comparacao(config, filtro=''):
         # ANVISA está sobrando. Sem contar, não dá para escolher o conserto —
         # foi o que aconteceu com a lamotrigina, fora da folha com −7 abertos.
         negativos_do_ms = len(lotes) - len(visiveis)
-        if not visiveis or (not se_conta and not negativos_do_ms):
-            continue
         if filtro:
             alvo = normalizar_texto(filtro)
-            if alvo not in normalizar_texto(descricao) and not any(alvo in l['lote'] for l in visiveis):
+            if alvo not in normalizar_texto(descricao) and not any(alvo in l['lote'] for l in lotes):
                 continue
-        # de que lista o medicamento é. O lote que só existe no inventário da
-        # ANVISA chega sem classe; basta um irmão classificado para o
-        # medicamento inteiro cair na lista certa.
-        classe = ''
-        for l in visiveis:
+        classe_do_ms = ''
+        for l in lotes:
             if l.get('classe'):
-                classe = l['classe']
+                classe_do_ms = l['classe']
                 break
+        # medicamento cujo ÚNICO lote é negativo não tem linha para conferir,
+        # mas a caixa pode estar na prateleira: vai para um bloco à parte,
+        # com os campos em branco, para quem contar copiar o lote da caixa
+        if not visiveis:
+            sem_prateleira.append({
+                'ms': ms, 'descricao': descricao, 'classe': classe_do_ms,
+                'lotes': sorted(l['lote'] for l in lotes),
+                'negativo': round(sum(numero(l['saldoDigifarma']) for l in lotes), 3),
+            })
+            continue
+        if not se_conta and not negativos_do_ms:
+            continue
         medicamentos.append({
-            'ms': ms, 'descricao': descricao, 'classe': classe,
+            'ms': ms, 'descricao': descricao, 'classe': classe_do_ms,
             'lotes': sorted(visiveis, key=lambda l: l['lote']),
             'omitidos': negativos_do_ms,
             # quanto os lotes negativos somam: é o tamanho do acerto que a
@@ -1920,6 +1963,7 @@ def modo_comparacao(config, filtro=''):
     # ordem alfabética pelo nome, sem acento e sem caixa — é assim que o
     # medicamento é procurado na prateleira
     medicamentos.sort(key=lambda m: normalizar_texto(m['descricao']))
+    sem_prateleira.sort(key=lambda m: normalizar_texto(m['descricao']))
 
     inventario = dados.get('inventario', {})
     envio = dados.get('envio', {})
@@ -1955,7 +1999,10 @@ def modo_comparacao(config, filtro=''):
     conferir = []
     for classe in CLASSES + ('',):
         do_grupo = [m for m in medicamentos if m['classe'] == classe]
-        if not do_grupo:
+        # a lista pode existir só por causa dos medicamentos sem lote para
+        # conferir: são trabalho igual, e sumiriam se o corte fosse só o
+        # do_grupo
+        if not do_grupo and not any(m['classe'] == classe for m in sem_prateleira):
             continue
         for m in do_grupo:
             conferir.extend(m['lotes'])
@@ -1971,6 +2018,7 @@ def modo_comparacao(config, filtro=''):
         do_grupo_ms = {m['ms'] for m in do_grupo}
         secoes.append(bloco_conferencia(
             NOME_CLASSE[classe], do_grupo, quebra=bool(secoes), nota=nota,
+            sem_prateleira=[m for m in sem_prateleira if m['classe'] == classe],
             movimentos=[p for p in movimentos
                         if (classe_do_movimento(p) == classe
                             and (not filtro or so_digitos(p['ms']) in do_grupo_ms))]))
@@ -2023,10 +2071,16 @@ de conferir a prateleira.</p>
     print('%d lote(s) na folha de conferência.' % len(conferir))
     for classe in CLASSES + ('',):
         do_grupo = [m for m in medicamentos if m['classe'] == classe]
-        if do_grupo:
-            print('  %s: %d medicamento(s), %d lote(s)' % (
+        soltos = [m for m in sem_prateleira if m['classe'] == classe]
+        if do_grupo or soltos:
+            print('  %s: %d medicamento(s), %d lote(s)%s' % (
                 NOME_CLASSE[classe], len(do_grupo),
-                sum(len(m['lotes']) for m in do_grupo)))
+                sum(len(m['lotes']) for m in do_grupo),
+                (' · %d sem lote para conferir' % len(soltos)) if soltos else ''))
+    if sem_prateleira:
+        print('%d medicamento(s) só têm lote negativo: vão num bloco à parte, '
+              'para quem contar copiar o lote da caixa — é ele que aponta a '
+              'nota que nunca foi lançada.' % len(sem_prateleira))
     if movimentos:
         print('%d lançamento(s) desde o último envio vão em anexo (venda, hora, '
               'lote e quantidade): sem eles a contagem do dia acusa divergência '
