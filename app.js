@@ -461,7 +461,12 @@ function pintarEnvio() {
     ['Data do envio', dataBR(e.data)],
     ['Movimentos de', e.movimentosDe ? dataBR(e.movimentosDe) + ' a ' + dataBR(e.movimentosAte) : '—'],
     ['Envio por API', e.envioPorApi ? 'ligado no Digifarma' : 'desligado (envio manual)'],
-    ['Última venda transmitida', e.ULT_SAIDA_VENDA_NOTA_ID ?? '—'],
+    // o remendo do transmitido_ate_venda tem que aparecer aqui: quem lê
+    // "última venda transmitida" no celular precisa saber que esse número
+    // saiu do agente_config.json e não do ponteiro do Digifarma
+    ['Última venda transmitida', (e.ULT_SAIDA_VENDA_NOTA_ID ?? '—')
+      + (e.ponteiroForcado ? ' (posto à mão no agente_config.json — o ponteiro do '
+        + 'Digifarma ficou atrás, por envio feito em outra máquina)' : '')],
     ['Última entrada transmitida', e.ULT_ENTRADA_CAB_NOTA_ID ?? '—'],
     ['XML arquivado', e.arquivoXml || '—']
   ];
