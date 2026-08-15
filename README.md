@@ -50,8 +50,11 @@ corrigido.
 
 ## Regra de ouro
 
-**O Digifarma é a verdade.** O app só LÊ o inventário; o agente só faz
-`SELECT`. Nada aqui escreve no Digifarma.
+**O Digifarma é a verdade.** O app só LÊ o inventário, e o agente faz
+`SELECT` em tudo — com **duas exceções**, ligadas à mão no servidor e
+descritas em "Escrever no Digifarma": zerar lote negativo e gravar a
+contagem de um lote. Foram abertas porque esses lotes não aparecem na tela
+do Digifarma e não havia como corrigi-los nem estando lá.
 
 ## O que o app mostra
 
