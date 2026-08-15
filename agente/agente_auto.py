@@ -2226,6 +2226,13 @@ def modo_negativos(config, filtro=''):
             colunas.append('L.QUANTIDADE_COMPRA')
         if 'ENTRADA_SAIDA' in info['campos']:
             colunas.append('L.ENTRADA_SAIDA')
+        # LOTE_ID e PRODUTO_ID identificam a LINHA no banco. A tela do
+        # Digifarma costuma esconder lote negativo, zerado ou vencido — e aí
+        # a farmácia não acha o que corrigir. Com estes dois números o
+        # suporte localiza o registro sem depender da tela.
+        for extra in ('LOTE_ID', 'PRODUTO_ID'):
+            if extra in info['campos']:
+                colunas.append('L.%s' % extra)
         sql_entradas = CONSULTAS['entradas_do_lote'].replace('{COLUNAS}', ', '.join(colunas))
 
         diz('LOTES COM SALDO NEGATIVO — %d\n' % len(negativos))
@@ -2244,6 +2251,8 @@ def modo_negativos(config, filtro=''):
                 formatar_ms(ms), lote or '(vazio)', registro['saldoDigifarma'],
                 ' · vence %s' % br(registro['validade']) if registro['validade'] else '',
                 ' · VENCIDO' if venceu else ''))
+            if registro.get('codigo'):
+                diz('  produto %s no cadastro do Digifarma' % registro['codigo'])
 
             try:
                 entradas = [l for l in consultar(conexao, sql_entradas, (lote,))
@@ -2256,9 +2265,12 @@ def modo_negativos(config, filtro=''):
                 # só o saldo na linha da entrada faz parecer que entrou -3
                 comprou = ('comprou %g · ' % numero(l.get('QUANTIDADE_COMPRA'))
                            if 'QUANTIDADE_COMPRA' in l else '')
-                diz('    entrou   nota %-10s de %-10s  %sresta %g' % (
+                # o LOTE_ID é o que a tela não mostra e o suporte precisa
+                diz('    entrou   nota %-10s de %-10s  %sresta %g%s' % (
                     texto(l.get('NOTA_FISCAL')) or '—', br(texto(l.get('DATA_RECEBIMENTO'))),
-                    comprou, numero(l.get(info['coluna']))))
+                    comprou, numero(l.get(info['coluna'])),
+                    ('   [LOTES.LOTE_ID %s]' % texto(l.get('LOTE_ID')))
+                    if l.get('LOTE_ID') else ''))
             if not entradas:
                 diz('    entrou   (nenhuma linha de entrada em LOTES)')
 
@@ -2296,6 +2308,12 @@ def modo_negativos(config, filtro=''):
                 ' contar: é acerto de escrituração, não conferência' % len(vencidos))
         diz('Faltando ao todo: %g unidade(s).'
             % abs(round(sum(r['saldoDigifarma'] for r in negativos.values()), 3)))
+        diz('')
+        diz('')
+        diz('Se o lote não aparece na tela do Digifarma — é comum esconder lote')
+        diz('negativo, zerado ou vencido —, a linha existe no banco assim mesmo.')
+        diz('Leve ao suporte o LOTE_ID e o código do produto acima: eles')
+        diz('identificam o registro em LOTES sem depender da tela.')
         diz('')
         diz('Nada aqui foi alterado no Digifarma: esta lista só lê.')
 
