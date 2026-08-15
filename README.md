@@ -67,6 +67,44 @@ Os dois botões da aba Situação escrevem em `farmacia/comando`. O agente
 atende em até 5 minutos e marca o pedido como concluído — o app mostra o
 estado da fila.
 
+## Comandar o servidor pelo celular
+
+A farmácia não fica no servidor o dia todo, e quase toda a investigação deste
+projeto foi feita por linha de comando. Por isso os comandos foram para o app,
+na aba **Servidor**: o celular escreve o pedido em `farmacia/comando`, a tarefa
+de 5 em 5 minutos executa **o mesmo modo do terminal**, e a saída volta em
+`farmacia/relatorios/<acao>` — o texto que apareceria no servidor, sem uma
+segunda versão para manter.
+
+| Botão | Equivale a |
+|---|---|
+| Tarefas | `--tarefas` |
+| Folha de conferência | `--comparacao` (o HTML volta junto, dá para abrir e imprimir do celular) |
+| Lotes negativos | `--negativos` |
+| Resumo / Inventário SNGPC | `--resumo` / `--inventario` |
+| Ver cadastro | `--produto TEXTO` |
+| Sincronizar tudo | `--auto` |
+| Atualizar o agente | baixa o `agente_auto.py` do GitHub e se substitui |
+
+E dois ajustes: `transmitido_ate_venda` (o remendo do ponteiro) e a coluna de
+saldo. Só essas chaves — nada que aponte para banco, arquivo ou credencial.
+
+**O limite continua o mesmo: nada disso escreve no Digifarma.** Zerar lote,
+acertar ponteiro ou corrigir venda é no sistema, no servidor ou por chamado.
+Um botão de celular gravando no banco de um sistema fiscalizado erra uma vez
+e custa caro.
+
+A autoatualização tem cinto e suspensório: o arquivo baixado é conferido em
+tamanho, conteúdo e **sintaxe** antes de encostar no que está rodando, e o
+atual vai para `agente_auto_antes_de_AAAA-MM-DD_HHMM.py`. Se qualquer coisa
+falhar, nada é trocado — agente quebrado num servidor onde ninguém está é
+pior que agente desatualizado. A aba mostra o hash e o tamanho do arquivo que
+está rodando lá, para não ser preciso confiar na fé.
+
+Para isso funcionar, **as regras do Firebase precisam ser republicadas**
+(`agente/regras-firebase.json`): elas validam quais ações o app pode pedir e
+liberam `farmacia/relatorios`.
+
 ## O agente
 
 ```

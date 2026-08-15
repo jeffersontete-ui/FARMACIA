@@ -39,6 +39,8 @@ const estado = {
   inventario: {},   // farmacia/inventario
   aceites: {},      // farmacia/aceites
   comando: null,    // farmacia/comando
+  relatorios: {},   // farmacia/relatorios — a saída dos comandos pedidos daqui
+  ultimoPedido: null,
   operadores: [],
   vista: 'painel',
   buscaSaldo: '',
@@ -248,7 +250,8 @@ function ligarEscutas() {
   if (escutas.length) return;
   escutar('farmacia/inventario', (v) => { estado.inventario = v || {}; pintar(); });
   escutar('farmacia/aceites', (v) => { estado.aceites = v || {}; pintar(); });
-  escutar('farmacia/comando', (v) => { estado.comando = v; pintarComando(); });
+  escutar('farmacia/comando', (v) => { estado.comando = v; pintarComando(); pintarServidor(); });
+  escutar('farmacia/relatorios', (v) => { estado.relatorios = v || {}; pintarServidor(); });
   escutar('farmacia/operadores', (v) => {
     estado.operadores = Array.isArray(v) ? v.filter(Boolean) : Object.values(v || {});
     pintarOperadores();
@@ -275,6 +278,134 @@ async function pedirAoAgente(acao, rotulo) {
 
 $('btn-sincronizar').onclick = () => pedirAoAgente('sincronizar_vendas', 'Sincronizar vendas');
 $('btn-atualizar-envio').onclick = () => pedirAoAgente('atualizar_envio', 'Atualizar envio');
+
+/* --- aba Servidor: os comandos do terminal, pedidos daqui ---
+   O agente devolve em farmacia/relatorios/<acao> exatamente o texto que
+   imprimiria no servidor. Nada aqui escreve no Digifarma: os pedidos são de
+   leitura, e o único que grava algo grava no agente_config.json. */
+const ROTULO_PEDIDO = {
+  tarefas: 'Tarefas', comparacao: 'Folha de conferência', negativos: 'Lotes negativos',
+  resumo: 'Resumo', inventario: 'Inventário SNGPC', produto: 'Cadastro do produto',
+  saldo: 'Apuração do saldo', sincronizar_vendas: 'Sincronizar tudo',
+  atualizar_envio: 'Atualizar envio', atualizar_agente: 'Atualizar o agente',
+  config: 'Ajuste do agente'
+};
+
+async function pedirRelatorio(acao, texto) {
+  await db.ref('farmacia/comando').set({
+    acao,
+    texto: texto || '',
+    pedidoEm: agora(),
+    pedidoPor: estado.operador,
+    estado: 'pendente'
+  });
+  estado.ultimoPedido = acao;
+  avisar((ROTULO_PEDIDO[acao] || acao) + ' pedido. O agente atende em até 5 minutos.');
+}
+
+document.querySelectorAll('[data-pedir]').forEach((b) => {
+  b.onclick = () => pedirRelatorio(b.dataset.pedir);
+});
+
+$('btn-produto').onclick = () => {
+  const alvo = $('campo-produto').value.trim();
+  if (!alvo) { avisar('Escreva parte do nome do medicamento.'); return; }
+  pedirRelatorio('produto', alvo);
+};
+
+$('btn-ponteiro').onclick = async () => {
+  const valor = Number($('campo-ponteiro').value || 0);
+  if (!Number.isInteger(valor) || valor < 0) { avisar('Número de venda inválido.'); return; }
+  const ok = await confirmar('Gravar no agente',
+    'O agente vai tratar como já transmitido tudo até a venda ' + valor + '. '
+    + 'Isso muda os números da conferência — e não conserta o Digifarma, que '
+    + 'continuará querendo retransmitir. Confirma?', 'Gravar');
+  if (!ok) return;
+  await db.ref('farmacia/comando').set({
+    acao: 'config', chave: 'transmitido_ate_venda', valor,
+    pedidoEm: agora(), pedidoPor: estado.operador, estado: 'pendente'
+  });
+  avisar('Ajuste pedido. O agente atende em até 5 minutos.');
+};
+
+$('btn-atualizar-agente').onclick = async () => {
+  const ok = await confirmar('Atualizar o agente',
+    'O servidor vai baixar a versão mais nova do GitHub e substituir o arquivo. '
+    + 'O atual vai para backup, e se o arquivo baixado tiver qualquer problema '
+    + 'nada é trocado. Confirma?', 'Atualizar');
+  if (ok) pedirRelatorio('atualizar_agente');
+};
+
+function pintarServidor() {
+  const c = estado.comando;
+  const barra = $('servidor-fila');
+  if (c && c.estado === 'pendente') {
+    barra.textContent = `“${ROTULO_PEDIDO[c.acao] || c.acao}” na fila desde `
+      + `${dataHora(c.pedidoEm)} — o agente roda de 5 em 5 minutos.`;
+    barra.hidden = false;
+  } else if (c && c.estado === 'erro') {
+    barra.textContent = `O agente não conseguiu: ${c.mensagem || 'sem detalhe'}`;
+    barra.hidden = false;
+  } else if (c && c.estado === 'concluido' && c.mensagem) {
+    barra.textContent = `${c.mensagem} (${dataHora(c.concluidoEm)})`;
+    barra.hidden = false;
+  } else {
+    barra.hidden = true;
+  }
+
+  // o relatório mostrado é o do último pedido, ou o mais recente que existir
+  const todos = estado.relatorios || {};
+  let acao = estado.ultimoPedido && todos[estado.ultimoPedido] ? estado.ultimoPedido : null;
+  if (!acao) {
+    acao = Object.keys(todos).sort((a, b) =>
+      String(todos[b]?.em || '').localeCompare(String(todos[a]?.em || '')))[0];
+  }
+  const r = acao ? todos[acao] : null;
+  $('relatorio-texto').textContent = r?.texto || '';
+  $('relatorio-carimbo').textContent = r
+    ? `${ROTULO_PEDIDO[acao] || acao} · ${dataHora(r.em)}`
+      + (r.filtro ? ` · filtro “${r.filtro}”` : '')
+      + (r.cortado ? ' · texto cortado, o arquivo completo está no servidor' : '')
+    : 'Nenhum relatório pedido ainda.';
+  $('btn-ver-folha').hidden = !(todos.comparacao && todos.comparacao.html);
+
+  const a = estado.inventario?.agente || {};
+  const dl = $('dados-agente');
+  dl.innerHTML = '';
+  [['Arquivo no servidor', a.hash ? a.hash + ' · ' + (a.bytes || 0) + ' bytes' : '—'],
+   ['Gravado em', a.em ? dataHora(a.em) : '—']].forEach(([k, v]) => {
+    const dt = criar('dt'); dt.textContent = k;
+    const dd = criar('dd'); dd.textContent = esc(v);
+    dl.append(dt, dd);
+  });
+
+  const ponteiroAtual = estado.inventario?.envio?.ULT_SAIDA_VENDA_NOTA_ID;
+  if (ponteiroAtual != null && !$('campo-ponteiro').value) {
+    $('campo-ponteiro').placeholder = String(ponteiroAtual);
+  }
+}
+
+/* A folha é HTML pronto para impressão: abrir num iframe evita depender de
+   pop-up, que o celular bloqueia, e o botão de imprimir fala com o iframe. */
+$('btn-ver-folha').onclick = () => {
+  const html = estado.relatorios?.comparacao?.html;
+  if (!html) { avisar('A folha ainda não foi gerada.'); return; }
+  const caixa = criar('div');
+  const quadro = criar('iframe', 'folha-quadro');
+  quadro.srcdoc = html;
+  caixa.appendChild(quadro);
+  abrirModal({
+    titulo: 'Folha de conferência',
+    corpo: caixa,
+    acoes: [
+      { texto: 'Fechar', aoClicar: fecharModal },
+      { texto: 'Imprimir', estilo: 'botao-principal', aoClicar: () => {
+        quadro.contentWindow.focus();
+        quadro.contentWindow.print();
+      } }
+    ]
+  });
+};
 
 function pintarComando() {
   const barra = $('fila-comando');
@@ -368,6 +499,7 @@ function pintar() {
   if (estado.vista === 'xml') pintarXml();
   if (estado.vista === 'vendas') { pintarSemReceita(); pintarVendas(); pintarVendasRecentes(); }
   if (estado.vista === 'aceites') pintarAceites();
+  if (estado.vista === 'servidor') pintarServidor();
 }
 
 const ROTULO_PENDENTE = {
