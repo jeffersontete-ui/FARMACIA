@@ -1795,8 +1795,9 @@ def bloco_conferencia(titulo, medicamentos, quebra=False, nota='', movimentos=No
             '<td class="num">%s</td><td class="num">%g</td>'
             '<td class="num">%s</td><td class="contar"></td></tr>' % (
                 escapar_html(m['descricao'])[:62], escapar_html(formatar_ms(m['ms'])),
-                ('<span class="ms"> · %d lote(s) negativo(s) fora desta folha</span>'
-                 % m['omitidos']) if m['omitidos'] else '',
+                ('<span class="ms"> · %d lote(s) negativo(s) fora desta folha, '
+                 'somando %+g: conte este medicamento para decidir o acerto</span>'
+                 % (m['omitidos'], m['negativo'])) if m['omitidos'] else '',
                 m['digifarma'], m['sngpc'],
                 ('%+g' % m['movimento']) if m['movimento'] else '—',
                 m['esperado'],
@@ -1876,7 +1877,14 @@ def modo_comparacao(config, filtro=''):
         visiveis = [l for l in lotes if numero(l['saldoDigifarma']) >= 0]
         se_conta = [l for l in visiveis
                     if l.get('motivo') and l['motivo'] not in ('negativo', 'sem_ms')]
-        if not se_conta or not visiveis:
+        # Medicamento com lote NEGATIVO entra mesmo que os lotes visíveis
+        # batam. O negativo diz que o lançamento está errado, e só a
+        # contagem decide de que lado: se a prateleira tem o que o irmão
+        # mostra, falta lançar; se tem menos, a baixa foi no lote errado e a
+        # ANVISA está sobrando. Sem contar, não dá para escolher o conserto —
+        # foi o que aconteceu com a lamotrigina, fora da folha com −7 abertos.
+        negativos_do_ms = len(lotes) - len(visiveis)
+        if not visiveis or (not se_conta and not negativos_do_ms):
             continue
         if filtro:
             alvo = normalizar_texto(filtro)
@@ -1893,7 +1901,12 @@ def modo_comparacao(config, filtro=''):
         medicamentos.append({
             'ms': ms, 'descricao': descricao, 'classe': classe,
             'lotes': sorted(visiveis, key=lambda l: l['lote']),
-            'omitidos': len(lotes) - len(visiveis),
+            'omitidos': negativos_do_ms,
+            # quanto os lotes negativos somam: é o tamanho do acerto que a
+            # contagem vai decidir, e sem ele a folha manda contar sem dizer
+            # o que está em jogo
+            'negativo': round(sum(numero(l['saldoDigifarma']) for l in lotes
+                                  if numero(l['saldoDigifarma']) < 0), 3),
             'digifarma': round(sum(numero(l['saldoDigifarma']) for l in visiveis), 3),
             'sngpc': round(sum(numero(l['saldoSngpc']) for l in visiveis), 3),
             # o que se moveu depois do envio, e o que o SNGPC teria hoje se
