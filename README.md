@@ -172,6 +172,33 @@ Regras que os SQLs do VerificaXML deixam explícitas e o agente segue:
   **não por data**; perdas e transferências, cujos ponteiros ficam em 0,
   cortam por data a partir do último envio.
 
+### Quando o envio é feito por outra máquina
+
+O ponteiro é o que o Digifarma **daquela instalação** grava ao fechar um
+envio. Transmitindo por outro computador, a ANVISA recebe e o ponteiro daqui
+não avança — o agente continua achando que aquelas vendas estão na fila e
+desconta do saldo o que a ANVISA **já** descontou. A mesma venda entra duas
+vezes na conta e a divergência incha (na farmácia: 71 viraram 87, sem nada
+ter mudado no estoque).
+
+A assinatura disso é o lote que **já bate com a ANVISA sem precisar do
+movimento pendente**. O agente conta esses lotes e avisa no log e no app,
+com o alerta que mais importa: **transmitir por esta máquina escrituraria as
+mesmas vendas em dobro** na ANVISA.
+
+O conserto é acertar o ponteiro no Digifarma, e isso o agente não faz — ele
+nunca escreve no Digifarma. Enquanto o suporte não acerta, o
+`agente_config.json` aceita:
+
+```json
+"transmitido_ate_venda": 46067
+```
+
+o número da última venda realmente transmitida. Vale **só para cima**, para
+nunca esconder venda que o próprio Digifarma ainda considera pendente, e sai
+dito no log a cada execução — ponteiro remendado à mão precisa aparecer.
+Volte para `0` quando o ponteiro do Digifarma for acertado.
+
 Duas coisas o agente descobre sozinho em tempo de execução, porque variam
 entre instalações: o nome da coluna de saldo em `LOTES` e as colunas de
 `INVENTARIO_SNGPC`. Se algo não bater:
