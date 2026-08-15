@@ -254,6 +254,17 @@ CONSULTAS = {
     # depois, em Python, por PRODUTO_ID — veja ler_inventario_anvisa().
     "inventario_sngpc": "SELECT * FROM INVENTARIO_SNGPC",
 
+    # --- cadastro de um produto, pelo nome (--produto) ---
+    # O CAST é o mesmo cuidado das outras: sem ele o fdb reclama que o
+    # parâmetro é maior que a coluna e a busca morre antes de rodar.
+    "produtos_por_nome": """
+        SELECT P.PRODUTO_ID, P.PRODUTO, P.REGISTRO_MS, P.COD_BARRAS,
+               P.PSICOTROPICO, P.ANTIMICROBIANO
+          FROM PRODUTOS P
+         WHERE UPPER(CAST(P.PRODUTO AS VARCHAR(500))) LIKE ?
+         ORDER BY P.PRODUTO
+    """,
+
     # quem é controlado, para filtrar o inventário do SNGPC pelo mesmo
     # critério das vendas: PSICOTROPICO='S' OU ANTIMICROBIANO='S'
     "produtos_controlados": """
@@ -2221,6 +2232,62 @@ def modo_negativos(config, filtro=''):
         fechar(conexao)
 
 
+def modo_produto(config, texto_busca):
+    """Mostra o cadastro dos produtos que casam com um nome: código, registro
+    M.S., código de barras e a marcação de controlado.
+
+    Serve para o caso do controlado sem registro M.S. — que não é
+    transmitido ao SNGPC, nem a entrada nem a venda. O registro em falta NÃO
+    se adivinha nem se copia de outro cadastro: ele é do produto daquele
+    fabricante, e está impresso na caixa e na nota fiscal. O que este modo
+    faz é mostrar o que a farmácia já tem cadastrado — inclusive um segundo
+    cadastro do mesmo produto, com o registro preenchido, que é o achado
+    mais comum."""
+    if not texto_busca:
+        print('Diga o que procurar, por exemplo: --produto AMOXICILINA')
+        return False
+
+    conexao = conectar_firebird(config)
+    try:
+        linhas = consultar(conexao, CONSULTAS['produtos_por_nome'],
+                           ('%%%s%%' % texto_busca.upper(),))
+    finally:
+        fechar(conexao)
+
+    if not linhas:
+        print('Nenhum cadastro com "%s" no nome.' % texto_busca)
+        return True
+
+    print('CADASTROS QUE CASAM COM "%s" — %d\n' % (texto_busca.upper(), len(linhas)))
+    sem_ms = 0
+    for l in linhas:
+        ms = so_digitos(l.get('REGISTRO_MS'))
+        marcas = []
+        if texto(l.get('PSICOTROPICO')).upper() == 'S':
+            marcas.append('psicotrópico')
+        if texto(l.get('ANTIMICROBIANO')).upper() == 'S':
+            marcas.append('antimicrobiano')
+        print('  cód %-8s %s' % (texto(l.get('PRODUTO_ID')), texto(l.get('PRODUTO'))))
+        if ms:
+            print('    registro M.S. %s' % formatar_ms(ms))
+        else:
+            print('    registro M.S. EM BRANCO  <-- não vai para o SNGPC')
+            if marcas:
+                sem_ms += 1
+        print('    cód. barras   %s' % (texto(l.get('COD_BARRAS')) or '(vazio)'))
+        print('    controlado    %s' % (' e '.join(marcas) or 'não marcado'))
+        print('')
+
+    if sem_ms:
+        print('=' * 74)
+        print('%d controlado(s) sem registro M.S.: enquanto ficar assim, nem a '
+              'entrada nem a venda dele são escrituradas.' % sem_ms)
+        print('O registro é do produto DAQUELE fabricante — não copie de outro')
+        print('cadastro da lista. Ele está impresso na caixa e na nota fiscal de')
+        print('entrada, e dá para conferir pelo código de barras no site da ANVISA.')
+    return True
+
+
 def modo_tarefas(config):
     """As divergências viram três listas de trabalho, na ordem em que se
     resolvem: primeiro o que é dado torto no Digifarma (vai reaparecer em
@@ -2715,6 +2782,8 @@ def principal():
                         help='abre cada lote negativo: o que entrou, o que vendeu, e os lotes irmãos')
     parser.add_argument('--comparacao', metavar='TEXTO', nargs='?', const='',
                         help='gera a folha de conferência em HTML, para imprimir')
+    parser.add_argument('--produto', metavar='TEXTO', nargs='?', const='',
+                        help='mostra o cadastro: registro M.S., código de barras e a marcação')
     args = parser.parse_args()
 
     config = carregar_config()
@@ -2730,6 +2799,8 @@ def principal():
     try:
         if args.colunas:
             raise SystemExit(0 if modo_colunas(config, args.colunas) else 1)
+        if args.produto is not None:
+            raise SystemExit(0 if modo_produto(config, args.produto) else 1)
         if args.comparacao is not None:
             raise SystemExit(0 if modo_comparacao(config, args.comparacao) else 1)
         if args.negativos is not None:
