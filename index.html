@@ -205,6 +205,34 @@
         <button id="btn-ponteiro" class="botao botao-secundario">Gravar</button>
       </div>
 
+      <div class="bloco bloco-perigo">
+        <h3>Corrigir estoque no Digifarma</h3>
+        <p class="sublinha">Estes dois <strong>escrevem no Digifarma</strong> — são a
+        única coisa em todo o projeto que escreve. Vêm desligados: alguém precisa pôr
+        <code>"permitir_ajuste_estoque": true</code> no <code>agente_config.json</code>,
+        no servidor. Cada alteração fica registrada com o antes, o depois e quem pediu.</p>
+        <p class="nota">Nenhum destes ajustes pode ser transmitido ao SNGPC. Se a ANVISA
+        já está com o número certo, um lançamento de entrada faria o saldo dela subir
+        indevidamente. É correção interna de estoque.</p>
+
+        <button id="btn-zerar-negativos" class="botao botao-perigo">Zerar os lotes negativos</button>
+        <p class="nota">Saldo negativo nunca é estoque: é lançamento errado, e o destino
+        é sempre zero. Por isso este botão não pergunta valor nenhum.</p>
+
+        <div class="grade-ajuste">
+          <label class="campo"><span>Registro M.S.</span>
+            <input id="ajuste-ms" type="text" inputmode="numeric" autocomplete="off" placeholder="1.5649.0009.003-4"></label>
+          <label class="campo"><span>Lote</span>
+            <input id="ajuste-lote" type="text" autocomplete="off" placeholder="BLGH24024"></label>
+          <label class="campo"><span>Quantidade contada</span>
+            <input id="ajuste-qtd" type="number" inputmode="numeric" min="0" placeholder="11"></label>
+        </div>
+        <button id="btn-ajustar-lote" class="botao botao-perigo">Gravar a contagem neste lote</button>
+        <p class="nota">Se o mesmo M.S. + lote tiver mais de uma linha no Digifarma, o
+        agente recusa: aí não existe “o saldo do lote”, e escolher em qual escrever seria
+        chute sobre o estoque de vocês.</p>
+      </div>
+
       <div class="bloco">
         <h3>Versão do agente</h3>
         <dl id="dados-agente" class="dados"></dl>

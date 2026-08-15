@@ -288,7 +288,8 @@ const ROTULO_PEDIDO = {
   resumo: 'Resumo', inventario: 'Inventário SNGPC', produto: 'Cadastro do produto',
   saldo: 'Apuração do saldo', sincronizar_vendas: 'Sincronizar tudo',
   atualizar_envio: 'Atualizar envio', atualizar_agente: 'Atualizar o agente',
-  config: 'Ajuste do agente'
+  config: 'Ajuste do agente', colunas: 'Colunas da tabela',
+  zerar_negativos: 'Zerar lotes negativos', ajustar_lote: 'Gravar contagem no lote'
 };
 
 async function pedirRelatorio(acao, texto) {
@@ -326,6 +327,43 @@ $('btn-ponteiro').onclick = async () => {
     pedidoEm: agora(), pedidoPor: estado.operador, estado: 'pendente'
   });
   avisar('Ajuste pedido. O agente atende em até 5 minutos.');
+};
+
+/* Os dois únicos botões do projeto que escrevem no Digifarma. A confirmação
+   diz o que vai mudar e o que NÃO pode ser feito depois — transmitir. */
+$('btn-zerar-negativos').onclick = async () => {
+  const ok = await confirmar('Zerar os lotes negativos',
+    'O agente vai pôr em zero, no Digifarma, todo lote com saldo negativo. '
+    + 'Saldo negativo não é estoque, é lançamento errado. Fica registrado o '
+    + 'antes, o depois e quem pediu. Este acerto NÃO pode ser transmitido ao '
+    + 'SNGPC. Confirma?', 'Zerar', 'botao-perigo');
+  if (!ok) return;
+  await db.ref('farmacia/comando').set({
+    acao: 'zerar_negativos', texto: '',
+    pedidoEm: agora(), pedidoPor: estado.operador, estado: 'pendente'
+  });
+  estado.ultimoPedido = 'zerar_negativos';
+  avisar('Pedido enviado. O agente atende em até 5 minutos.');
+};
+
+$('btn-ajustar-lote').onclick = async () => {
+  const ms = $('ajuste-ms').value.trim();
+  const lote = $('ajuste-lote').value.trim();
+  const qtd = $('ajuste-qtd').value;
+  if (!lote || qtd === '') { avisar('Preencha o lote e a quantidade contada.'); return; }
+  const ok = await confirmar('Gravar a contagem',
+    `O saldo do lote ${lote} no Digifarma vai passar a ser ${Number(qtd)}, `
+    + 'o que foi contado na prateleira. Fica registrado o antes, o depois e '
+    + 'quem pediu. Este acerto NÃO pode ser transmitido ao SNGPC. Confirma?',
+    'Gravar', 'botao-perigo');
+  if (!ok) return;
+  await db.ref('farmacia/comando').set({
+    acao: 'ajustar_lote', ms, lote, quantidade: Number(qtd),
+    motivo: 'contagem de prateleira',
+    pedidoEm: agora(), pedidoPor: estado.operador, estado: 'pendente'
+  });
+  estado.ultimoPedido = 'ajustar_lote';
+  avisar('Pedido enviado. O agente atende em até 5 minutos.');
 };
 
 $('btn-atualizar-agente').onclick = async () => {

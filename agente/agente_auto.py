@@ -56,6 +56,10 @@ CONFIG_PADRAO = {
     #                   "auto"       decide pelo nome da coluna
     "coluna_saldo": "",
     "modo_saldo": "auto",
+    # ESCRITA no Digifarma, pedida pelo app. Vem desligada: ligar é um ato
+    # deliberado, feito no servidor, por quem responde pela farmácia. Sem
+    # isto o agente é somente leitura, como sempre foi.
+    "permitir_ajuste_estoque": False,
     # Envio feito por OUTRA máquina: a ANVISA recebeu, mas o ponteiro deste
     # Digifarma não avançou e ele continua oferecendo as mesmas vendas como
     # pendentes — o agente desconta duas vezes e infla a divergência.
@@ -517,6 +521,28 @@ def consultar(conexao, sql, parametros=()):
         # sem isto o cursor da consulta que falhou fica pendurado na
         # transação, e o erro de verdade morre escondido atrás de um
         # "attempt to reclose a closed cursor" na hora de fechar
+        try:
+            cursor.close()
+        except Exception:
+            pass
+
+
+def executar(conexao, sql, parametros=()):
+    """A ÚNICA função deste arquivo que escreve no Digifarma.
+
+    Está sozinha de propósito: quem for auditar o que este agente altera no
+    banco da farmácia lê esta função e as poucas chamadas dela, não o
+    arquivo inteiro. Devolve quantas linhas foram afetadas."""
+    cursor = conexao.cursor()
+    try:
+        cursor.execute(sql, parametros)
+        afetadas = cursor.rowcount
+        conexao.commit()
+        return afetadas
+    except Exception:
+        conexao.rollback()
+        raise
+    finally:
         try:
             cursor.close()
         except Exception:
@@ -1638,6 +1664,168 @@ def atualizar_agente(config):
                os.path.basename(backup)))
 
 
+def linhas_do_lote_para_ajuste(conexao, info, ms, lote):
+    """As linhas de LOTES daquele M.S. + lote, com o saldo de cada uma.
+
+    A comparação agrupa por M.S. + lote, mas em LOTES isso pode ser mais de
+    uma linha. Ajustar sem olhar isso escreveria num pedaço do saldo e
+    deixaria o resto — por isso a lista vem inteira, e quem decide o que
+    fazer com mais de uma é a função que chama."""
+    sql = ("SELECT L.LOTE_ID, L.PRODUTO_ID, P.PRODUTO, P.REGISTRO_MS, L.NUM_LOTE, "
+           "L.%s AS SALDO FROM LOTES L JOIN PRODUTOS P ON (P.PRODUTO_ID = L.PRODUTO_ID) "
+           "WHERE UPPER(CAST(L.NUM_LOTE AS VARCHAR(500))) = ?" % info['coluna'])
+    return [l for l in consultar(conexao, sql, (texto(lote).upper(),))
+            if not ms or so_digitos(l.get('REGISTRO_MS')) == so_digitos(ms)]
+
+
+def conferir_permissao_de_ajuste(config, info):
+    """As duas travas que valem para qualquer escrita no Digifarma."""
+    if not config.get('permitir_ajuste_estoque'):
+        raise RuntimeError(
+            'ajuste de estoque desligado. Para ligar, ponha '
+            '"permitir_ajuste_estoque": true no agente_config.json, no servidor. '
+            'É de propósito que isso não se liga pelo app.')
+    if info['modo'] != 'saldo':
+        # nesta instalação a coluna é de MOVIMENTO: cada linha é um
+        # lançamento, e o saldo é a soma. Escrever nela não corrige saldo,
+        # inventa um lançamento com valor arbitrário.
+        raise RuntimeError(
+            'nesta instalação a coluna %s é de movimento, não de saldo. '
+            'Ajustar por aqui inventaria lançamento — corrija no Digifarma.'
+            % info['coluna'])
+
+
+def registrar_ajuste(db, dados):
+    """Guarda o antes e o depois: no arquivo, no log e no Firebase.
+
+    Escrita em banco de sistema fiscalizado sem rastro é o que transforma um
+    acerto em problema seis meses depois, quando ninguém lembra o que mudou."""
+    dados['em'] = datetime.datetime.now().isoformat(timespec='seconds')
+    caminho = os.path.join(PASTA, 'ajustes_%s.json' % datetime.date.today().isoformat())
+    try:
+        anteriores = []
+        if os.path.exists(caminho):
+            with open(caminho, encoding='utf-8') as f:
+                anteriores = json.load(f)
+        anteriores.append(dados)
+        with open(caminho, 'w', encoding='utf-8') as f:
+            json.dump(anteriores, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        registrar('Não consegui gravar o histórico do ajuste: %s' % e)
+    registrar('AJUSTE NO DIGIFARMA: %s' % json.dumps(dados, ensure_ascii=False))
+    try:
+        db.reference('farmacia/ajustes').push(dados)
+    except Exception as e:
+        registrar('Não consegui publicar o ajuste: %s' % e)
+
+
+def zerar_negativos(config, db, pedido):
+    """Põe em ZERO os lotes com saldo negativo.
+
+    É a única escrita com valor que não se escolhe: saldo negativo nunca é
+    estoque, é lançamento errado, e o destino certo é sempre zero. Por isso
+    ela é segura de fazer em lote — e por isso não aceita um valor vindo do
+    celular, que é onde um dedo errado viraria estoque inventado."""
+    alvo = texto(pedido.get('texto'))
+    conexao = conectar_firebird(config)
+    try:
+        info = detectar_coluna_saldo(conexao, config)
+        conferir_permissao_de_ajuste(config, info)
+
+        sql = ("SELECT L.LOTE_ID, L.PRODUTO_ID, P.PRODUTO, P.REGISTRO_MS, "
+               "L.NUM_LOTE, L.%s AS SALDO FROM LOTES L "
+               "JOIN PRODUTOS P ON (P.PRODUTO_ID = L.PRODUTO_ID) "
+               "WHERE L.%s < 0" % (info['coluna'], info['coluna']))
+        negativos = consultar(conexao, sql)
+        if alvo:
+            chave = normalizar_texto(alvo)
+            negativos = [l for l in negativos
+                         if chave in normalizar_texto(l.get('PRODUTO'))
+                         or chave in texto(l.get('NUM_LOTE')).upper()]
+        if not negativos:
+            return 'Nenhum lote negativo para zerar%s.' % (' em "%s"' % alvo if alvo else '')
+
+        feitos, total = [], 0.0
+        for linha in negativos:
+            lote_id = linha.get('LOTE_ID')
+            saldo = numero(linha.get('SALDO'))
+            afetadas = executar(
+                conexao,
+                'UPDATE LOTES SET %s = 0 WHERE LOTE_ID = ? AND %s < 0'
+                % (info['coluna'], info['coluna']),
+                (lote_id,))
+            if afetadas:
+                total += saldo
+                feitos.append({'loteId': lote_id, 'produtoId': linha.get('PRODUTO_ID'),
+                               'produto': texto(linha.get('PRODUTO')),
+                               'ms': so_digitos(linha.get('REGISTRO_MS')),
+                               'lote': texto(linha.get('NUM_LOTE')),
+                               'de': saldo, 'para': 0})
+        registrar_ajuste(db, {
+            'tipo': 'zerar_negativos', 'coluna': info['coluna'],
+            'por': texto(pedido.get('pedidoPor')), 'filtro': alvo,
+            'lotes': feitos, 'unidades': round(total, 3),
+        })
+        return ('%d lote(s) negativo(s) zerado(s), somando %g unidade(s). '
+                'ATENÇÃO: este acerto NÃO pode ser transmitido ao SNGPC.'
+                % (len(feitos), abs(round(total, 3))))
+    finally:
+        fechar(conexao)
+
+
+def ajustar_lote(config, db, pedido):
+    """Põe o saldo de UM lote no valor contado na prateleira.
+
+    Recusa quando o mesmo M.S. + lote tem mais de uma linha em LOTES: aí não
+    existe "o saldo do lote", e escolher em qual linha escrever seria chute
+    do agente sobre o estoque da farmácia."""
+    ms = so_digitos(pedido.get('ms'))
+    lote = texto(pedido.get('lote'))
+    contado = numero(pedido.get('quantidade'))
+    if not lote:
+        raise RuntimeError('diga qual lote')
+    if contado < 0:
+        raise RuntimeError('quantidade contada não pode ser negativa')
+
+    conexao = conectar_firebird(config)
+    try:
+        info = detectar_coluna_saldo(conexao, config)
+        conferir_permissao_de_ajuste(config, info)
+        linhas = linhas_do_lote_para_ajuste(conexao, info, ms, lote)
+        if not linhas:
+            raise RuntimeError('lote %s não encontrado em LOTES' % lote)
+        if len(linhas) > 1:
+            raise RuntimeError(
+                'o lote %s tem %d linhas em LOTES (saldos %s). Não dá para '
+                'saber em qual escrever — este caso é no Digifarma.'
+                % (lote, len(linhas),
+                   ', '.join('%g' % numero(l.get('SALDO')) for l in linhas)))
+
+        linha = linhas[0]
+        antes = numero(linha.get('SALDO'))
+        if antes == contado:
+            return 'O lote %s já está com %g. Nada a fazer.' % (lote, contado)
+        executar(conexao,
+                 'UPDATE LOTES SET %s = ? WHERE LOTE_ID = ?' % info['coluna'],
+                 (contado, linha.get('LOTE_ID')))
+        registrar_ajuste(db, {
+            'tipo': 'ajustar_lote', 'coluna': info['coluna'],
+            'por': texto(pedido.get('pedidoPor')),
+            'motivo': texto(pedido.get('motivo')) or 'contagem de prateleira',
+            'lotes': [{'loteId': linha.get('LOTE_ID'),
+                       'produtoId': linha.get('PRODUTO_ID'),
+                       'produto': texto(linha.get('PRODUTO')),
+                       'ms': so_digitos(linha.get('REGISTRO_MS')),
+                       'lote': texto(linha.get('NUM_LOTE')),
+                       'de': antes, 'para': contado}],
+        })
+        return ('%s lote %s: %g -> %g. Confira o total do produto na tela do '
+                'Digifarma antes de fazer os outros.'
+                % (texto(linha.get('PRODUTO'))[:40], lote, antes, contado))
+    finally:
+        fechar(conexao)
+
+
 def aplicar_config(config, pedido):
     """Muda uma chave do agente_config.json a pedido do app.
 
@@ -1695,6 +1883,7 @@ RELATORIOS = {
     'inventario': lambda config, alvo: texto_do_modo(modo_inventario, config),
     'produto': lambda config, alvo: texto_do_modo(modo_produto, config, alvo),
     'saldo': lambda config, alvo: texto_do_modo(modo_conferir_saldo, config, alvo),
+    'colunas': lambda config, alvo: texto_do_modo(modo_colunas, config, alvo or 'LOTES'),
 }
 
 LIMITE_TEXTO = 120000    # o relatório inteiro cabe; o corte é rede de segurança
@@ -1723,6 +1912,12 @@ def atender_pedido(config, db, pedido):
 
     if acao == 'atualizar_agente':
         return atualizar_agente(config)
+
+    if acao == 'zerar_negativos':
+        return zerar_negativos(config, db, pedido)
+
+    if acao == 'ajustar_lote':
+        return ajustar_lote(config, db, pedido)
 
     if acao == 'config':
         recado = aplicar_config(config, pedido)
