@@ -330,3 +330,23 @@ main{padding:16px 16px 96px;max-width:900px;margin:0 auto}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{transition-duration:.01ms !important;animation-duration:.01ms !important}
 }
+
+/* ---------- aba Servidor ----------
+   A saída é texto de terminal: fonte monoespaçada, rolagem própria e altura
+   limitada, senão um relatório de 39 lotes empurra o resto da tela para
+   fora do alcance do polegar. */
+.grade-botoes{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px}
+.saida{
+  background:var(--campo);border:1px solid var(--linha);border-radius:10px;
+  padding:12px;margin:0;max-height:60vh;overflow:auto;
+  font:12px/1.45 ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  white-space:pre;color:var(--tinta);
+  -webkit-overflow-scrolling:touch;
+}
+.saida:empty{display:none}
+/* a folha é feita para A4: no celular ela rola dentro da caixa, e o botão
+   Imprimir fala com este iframe */
+.folha-quadro{
+  width:100%;height:min(70vh,760px);border:1px solid var(--linha);
+  border-radius:10px;background:#FFF;
+}

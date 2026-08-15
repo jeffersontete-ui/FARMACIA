@@ -470,6 +470,49 @@ def principal():
     ])
     # envio feito por outra máquina: o ponteiro daqui não avança, e sem o
     # remendo o agente desconta de novo o que a ANVISA já descontou
+    # a fila do app: o agente atende relatório e ajuste, e recusa o resto.
+    # É a porta que o celular usa, então o que ela NÃO aceita importa tanto
+    # quanto o que ela aceita.
+    class RefFalsa:
+        def __init__(self):
+            self.gravado = None
+
+        def set(self, valor):
+            self.gravado = valor
+
+    class DbFalso:
+        def __init__(self):
+            self.refs = {}
+
+        def reference(self, caminho):
+            return self.refs.setdefault(caminho, RefFalsa())
+
+    db_falso = DbFalso()
+    guardado = ag.RELATORIOS['tarefas']
+    ag.RELATORIOS['tarefas'] = lambda config, alvo: 'saída de teste %s' % alvo
+    recado = ag.atender_pedido({}, db_falso, {'acao': 'tarefas', 'texto': 'ABC'})
+    ag.RELATORIOS['tarefas'] = guardado
+    publicado = db_falso.refs.get('farmacia/relatorios/tarefas')
+    conferir('a fila atende relatório e publica a saída para o app',
+             'tarefas' in recado
+             and publicado and publicado.gravado['texto'] == 'saída de teste ABC'
+             and publicado.gravado['filtro'] == 'ABC',
+             publicado.gravado if publicado else None)
+
+    recusou = False
+    try:
+        ag.atender_pedido({}, db_falso, {'acao': 'apagar_tudo'})
+    except Exception:
+        recusou = True
+    conferir('a fila recusa ação que não conhece', recusou)
+
+    recusou = False
+    try:
+        ag.aplicar_config({}, {'chave': 'banco', 'valor': 'C:/outro.fdb'})
+    except Exception:
+        recusou = True
+    conferir('o app não muda chave fora da lista (banco, chave, url)', recusou)
+
     conferir('transmitido_ate_venda só vale para cima',
              ag.ponteiro_de_venda({'ULT_SAIDA_VENDA_NOTA_ID': 100},
                                   {'transmitido_ate_venda': 200}) == (200, True)

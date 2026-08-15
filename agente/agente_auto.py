@@ -1374,6 +1374,9 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
     # 7. saúde da sincronização com o site da ANVISA
     # ------------------------------------------------------------
     resultado['anvisa'] = estado_do_anvisa(config, inventario_em)
+    # qual arquivo está rodando no servidor — sem isso, atualizar de longe é
+    # pedir e torcer
+    resultado['agente'] = versao_do_agente()
 
     # datas já arquivadas, para a aba Aceites
     pasta_enviados = os.path.join(config['pasta_xml'], 'enviados')
@@ -1572,6 +1575,182 @@ def publicar_vendas_recentes(config, db):
     return linhas
 
 
+URL_AGENTE = ('https://raw.githubusercontent.com/jeffersontete-ui/FARMACIA'
+              '/main/agente/agente_auto.py')
+
+# Só estas chaves podem ser mudadas pelo app. Nada que aponte para arquivo,
+# banco ou credencial entra aqui: o que se ajusta de longe é a leitura, não
+# a instalação.
+CONFIG_REMOTO = {
+    'transmitido_ate_venda': 'inteiro',
+    'coluna_saldo': 'texto',
+    'modo_saldo': 'modo',
+}
+
+
+def versao_do_agente():
+    """Tamanho e impressão digital do próprio arquivo. É o que diz, de fora,
+    se o servidor está rodando a versão que a gente acha que está."""
+    try:
+        with open(os.path.abspath(__file__), 'rb') as f:
+            dados = f.read()
+        import hashlib
+        return {'bytes': len(dados),
+                'hash': hashlib.sha1(dados).hexdigest()[:12],
+                'em': datetime.datetime.fromtimestamp(
+                    os.path.getmtime(os.path.abspath(__file__))).isoformat(timespec='seconds')}
+    except Exception:
+        return {}
+
+
+def atualizar_agente(config):
+    """Baixa o agente do GitHub e se substitui.
+
+    É o que tira a farmácia da obrigação de ir ao servidor a cada correção.
+    Por isso mesmo, com cinto e suspensório: o arquivo baixado é conferido
+    (tamanho, conteúdo e SINTAXE) antes de encostar no que está rodando, e o
+    atual é guardado em backup. Se qualquer coisa falhar, nada é trocado —
+    um agente quebrado num servidor onde ninguém está é pior do que um
+    agente desatualizado."""
+    import urllib.request
+    url = config.get('url_atualizacao') or URL_AGENTE
+    with urllib.request.urlopen(url, timeout=60) as resposta:
+        novo = resposta.read().decode('utf-8')
+
+    if len(novo) < 20000 or 'def principal(' not in novo or 'CONSULTAS' not in novo:
+        raise RuntimeError('o arquivo baixado não parece o agente (%d bytes)' % len(novo))
+    compile(novo, 'agente_auto.py', 'exec')  # erro de sintaxe morre aqui, não no servidor
+
+    atual = os.path.abspath(__file__)
+    antes = versao_do_agente()
+    backup = os.path.join(PASTA, 'agente_auto_antes_de_%s.py'
+                          % datetime.datetime.now().strftime('%Y-%m-%d_%H%M'))
+    shutil.copy2(atual, backup)
+    with open(atual, 'w', encoding='utf-8') as f:
+        f.write(novo)
+
+    depois = versao_do_agente()
+    if depois.get('hash') == antes.get('hash'):
+        return 'O agente já estava na versão mais nova (%s).' % antes.get('hash')
+    return ('Agente atualizado: %s -> %s (%d bytes). Backup em %s. A próxima '
+            'execução já roda a versão nova.'
+            % (antes.get('hash'), depois.get('hash'), depois.get('bytes'),
+               os.path.basename(backup)))
+
+
+def aplicar_config(config, pedido):
+    """Muda uma chave do agente_config.json a pedido do app.
+
+    Só as chaves de CONFIG_REMOTO, e nenhuma delas escreve no Digifarma —
+    mudam como o agente LÊ. O valor antigo volta na resposta: mexer na
+    configuração de longe só é aceitável se ficar registrado o que era."""
+    chave = texto(pedido.get('chave'))
+    if chave not in CONFIG_REMOTO:
+        raise RuntimeError('chave "%s" não pode ser mudada pelo app' % chave)
+
+    bruto = pedido.get('valor')
+    tipo = CONFIG_REMOTO[chave]
+    if tipo == 'inteiro':
+        valor = int(numero(bruto))
+        if valor < 0:
+            raise RuntimeError('%s não aceita número negativo' % chave)
+    elif tipo == 'modo':
+        valor = texto(bruto).lower()
+        if valor not in ('auto', 'saldo', 'movimento'):
+            raise RuntimeError('modo_saldo aceita auto, saldo ou movimento')
+    else:
+        valor = texto(bruto).upper()
+
+    atual = {}
+    if os.path.exists(ARQUIVO_CONFIG):
+        with open(ARQUIVO_CONFIG, encoding='utf-8') as f:
+            atual = json.load(f)
+    antigo = atual.get(chave, CONFIG_PADRAO.get(chave))
+    atual[chave] = valor
+    with open(ARQUIVO_CONFIG, 'w', encoding='utf-8') as f:
+        json.dump(atual, f, indent=2, ensure_ascii=False)
+    config[chave] = valor
+    return '%s: %s -> %s' % (chave, antigo, valor)
+
+
+def texto_do_modo(funcao, *argumentos):
+    """Roda um dos modos de linha de comando e devolve o que ele imprimiria.
+
+    Os modos foram escritos para o terminal; em vez de duplicá-los numa
+    versão "para o app", captura-se a saída. Assim o que aparece no celular
+    é exatamente o que apareceria no servidor — sem duas verdades."""
+    import contextlib
+    import io
+    balde = io.StringIO()
+    with contextlib.redirect_stdout(balde):
+        funcao(*argumentos)
+    return balde.getvalue()
+
+
+RELATORIOS = {
+    'tarefas': lambda config, alvo: texto_do_modo(modo_tarefas, config),
+    'negativos': lambda config, alvo: texto_do_modo(modo_negativos, config, alvo),
+    'comparacao': lambda config, alvo: texto_do_modo(modo_comparacao, config, alvo),
+    'resumo': lambda config, alvo: texto_do_modo(modo_resumo, config),
+    'inventario': lambda config, alvo: texto_do_modo(modo_inventario, config),
+    'produto': lambda config, alvo: texto_do_modo(modo_produto, config, alvo),
+    'saldo': lambda config, alvo: texto_do_modo(modo_conferir_saldo, config, alvo),
+}
+
+LIMITE_TEXTO = 120000    # o relatório inteiro cabe; o corte é rede de segurança
+LIMITE_HTML = 600000
+
+
+def publicar_relatorio(db, acao, texto_saida, extras=None):
+    """Grava o relatório em farmacia/relatorios/<acao>, para o app mostrar."""
+    corpo = {
+        'texto': texto_saida[:LIMITE_TEXTO],
+        'cortado': len(texto_saida) > LIMITE_TEXTO,
+        'em': datetime.datetime.now().isoformat(timespec='seconds'),
+    }
+    corpo.update(extras or {})
+    db.reference('farmacia/relatorios/%s' % acao).set(corpo)
+
+
+def atender_pedido(config, db, pedido):
+    """Um pedido do app. Devolve o recado que vai para a tela."""
+    acao = texto(pedido.get('acao'))
+    alvo = texto(pedido.get('texto'))
+
+    if acao in ('sincronizar_vendas', 'atualizar_envio'):
+        modo_auto(config, usar_envio=(acao == 'atualizar_envio'))
+        return 'Sincronização concluída.'
+
+    if acao == 'atualizar_agente':
+        return atualizar_agente(config)
+
+    if acao == 'config':
+        recado = aplicar_config(config, pedido)
+        # a mudança só aparece nos números depois de recalcular
+        modo_auto(config)
+        return recado
+
+    if acao in RELATORIOS:
+        saida = RELATORIOS[acao](config, alvo)
+        extras = {'filtro': alvo} if alvo else {}
+        if acao == 'comparacao':
+            caminho = os.path.join(
+                PASTA, 'comparacao_%s.html' % datetime.date.today().isoformat())
+            try:
+                with open(caminho, encoding='utf-8') as f:
+                    html = f.read()
+                if len(html) <= LIMITE_HTML:
+                    extras['html'] = html
+                else:
+                    extras['htmlGrande'] = len(html)
+            except Exception as e:
+                registrar('Não consegui ler a folha para publicar: %s' % e)
+        publicar_relatorio(db, acao, saida, extras)
+        return 'Relatório "%s" pronto.' % acao
+
+    raise RuntimeError('não sei atender "%s"' % acao)
+
+
 def modo_fila(config):
     """Atende os botões do app E atualiza as vendas. Roda de 5 em 5 minutos."""
     db = conectar_firebase(config)
@@ -1595,9 +1774,11 @@ def modo_fila(config):
     acao = pedido.get('acao')
     registrar('Atendendo "%s" pedido por %s.' % (acao, pedido.get('pedidoPor')))
     try:
-        modo_auto(config, usar_envio=(acao == 'atualizar_envio'))
+        recado = atender_pedido(config, db, pedido)
+        registrar(recado)
         ref.update({
             'estado': 'concluido',
+            'mensagem': recado[:300],
             'concluidoEm': datetime.datetime.now().isoformat(timespec='seconds'),
         })
     except Exception as e:
@@ -2882,6 +3063,8 @@ def principal():
                         help='gera a folha de conferência em HTML, para imprimir')
     parser.add_argument('--produto', metavar='TEXTO', nargs='?', const='',
                         help='mostra o cadastro: registro M.S., código de barras e a marcação')
+    parser.add_argument('--atualizar', action='store_true',
+                        help='baixa a versão mais nova do agente do GitHub e se substitui')
     args = parser.parse_args()
 
     config = carregar_config()
@@ -2897,6 +3080,9 @@ def principal():
     try:
         if args.colunas:
             raise SystemExit(0 if modo_colunas(config, args.colunas) else 1)
+        if args.atualizar:
+            print(atualizar_agente(config))
+            raise SystemExit(0)
         if args.produto is not None:
             raise SystemExit(0 if modo_produto(config, args.produto) else 1)
         if args.comparacao is not None:

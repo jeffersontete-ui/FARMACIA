@@ -161,6 +161,60 @@
       </div>
     </section>
 
+    <!-- SERVIDOR -->
+    <section id="v-servidor" class="vista" hidden>
+      <div class="cabeca-vista"><h2>Servidor</h2></div>
+      <p class="sublinha">Os mesmos comandos que se roda no servidor, pedidos daqui.
+      O agente atende em até 5 minutos e devolve o resultado nesta tela.</p>
+      <div id="servidor-fila" class="barra-comando" hidden></div>
+
+      <div class="bloco">
+        <h3>Relatórios</h3>
+        <div class="grade-botoes">
+          <button class="chip" data-pedir="tarefas">Tarefas</button>
+          <button class="chip" data-pedir="comparacao">Folha de conferência</button>
+          <button class="chip" data-pedir="negativos">Lotes negativos</button>
+          <button class="chip" data-pedir="resumo">Resumo</button>
+          <button class="chip" data-pedir="inventario">Inventário SNGPC</button>
+          <button class="chip" data-pedir="sincronizar_vendas">Sincronizar tudo</button>
+        </div>
+        <label class="campo"><span>Buscar um medicamento (cadastro, M.S. e código de barras)</span>
+          <input id="campo-produto" type="search" autocomplete="off" placeholder="AMOXICILINA"></label>
+        <button id="btn-produto" class="botao botao-secundario">Ver cadastro</button>
+      </div>
+
+      <div class="bloco">
+        <h3>Resultado</h3>
+        <div class="cabeca-acoes">
+          <button id="btn-ver-folha" class="botao botao-secundario" hidden>Abrir a folha</button>
+        </div>
+        <p id="relatorio-carimbo" class="sublinha">Nenhum relatório pedido ainda.</p>
+        <pre id="relatorio-texto" class="saida"></pre>
+      </div>
+
+      <div class="bloco">
+        <h3>Ajustes do agente</h3>
+        <p class="sublinha">Muda como o agente <strong>lê</strong> o Digifarma. Nada aqui
+        escreve no Digifarma — zerar lote, mexer em ponteiro ou corrigir venda continua
+        sendo no sistema, no servidor ou por chamado.</p>
+        <label class="campo"><span>Transmitido até a venda nº</span>
+          <input id="campo-ponteiro" type="number" inputmode="numeric" min="0" placeholder="0"></label>
+        <p class="nota">Use quando o envio for feito por outro computador: o ponteiro
+        daqui não avança e o agente desconta a mesma venda duas vezes. Vale só para
+        cima. Volte para 0 quando o Digifarma for acertado.</p>
+        <button id="btn-ponteiro" class="botao botao-secundario">Gravar</button>
+      </div>
+
+      <div class="bloco">
+        <h3>Versão do agente</h3>
+        <dl id="dados-agente" class="dados"></dl>
+        <button id="btn-atualizar-agente" class="botao botao-secundario">Atualizar o agente</button>
+        <p class="nota">Baixa a versão mais nova do GitHub e substitui o arquivo no
+        servidor. O arquivo é conferido antes de entrar e o atual vai para backup —
+        se algo estiver errado, nada é trocado.</p>
+      </div>
+    </section>
+
     <!-- ACEITES -->
     <section id="v-aceites" class="vista" hidden>
       <div class="cabeca-vista"><h2>Aceites da ANVISA</h2></div>
@@ -181,6 +235,7 @@
       <g id="i-xml"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5"/><path d="M10 13l-1.5 2L10 17M14 13l1.5 2L14 17"/></g>
       <g id="i-vendas"><path d="M4 4h11l5 5v11a1 1 0 0 1-1.5.9L15 19l-3 2-3-2-3.5 1.9A1 1 0 0 1 4 20z"/><path d="M8 9h6M8 13h8"/></g>
       <g id="i-aceites"><path d="M20 6 9 17l-5-5"/></g>
+      <g id="i-servidor"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></g>
     </defs>
   </svg>
 
@@ -200,6 +255,10 @@
     <button class="nav-item" data-vista="vendas">
       <svg class="nav-icone" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-vendas"/></svg>
       <span class="nav-rotulo">Vendas</span><span id="selo-vendas" class="selo" hidden>0</span>
+    </button>
+    <button class="nav-item" data-vista="servidor">
+      <svg class="nav-icone" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-servidor"/></svg>
+      <span class="nav-rotulo">Servidor</span>
     </button>
     <button class="nav-item" data-vista="aceites">
       <svg class="nav-icone" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-aceites"/></svg>
