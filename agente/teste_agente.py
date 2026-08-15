@@ -461,6 +461,16 @@ def principal():
              and '-30' in folha, folha[-400:])
     conferir('o lote que só se moveu não vira divergência na folha',
              'total bate' in folha, folha[:400])
+
+    # venda sem lote não entra na conta de lote nenhum: se sair no anexo sem
+    # marcação, a soma da coluna Movim. não fecha com a lista e parece erro
+    anexo = ag.bloco_movimento([
+        dict(venda, tipo='vendas', assinado=-30.0),
+        dict(venda, tipo='vendas', lote='', assinado=-2.0),
+    ])
+    conferir('venda sem lote sai marcada no anexo, fora da conta',
+             '(sem lote)' in anexo and 'semlote' in anexo
+             and 'não entram na coluna Movim.' in anexo, anexo[-300:])
     # medicamento com dois lotes: o que bate some da lista, e sem os irmãos
     # no detalhe o total do Digifarma fica sem explicação — foi o caso da
     # pregabalina, 6 no app contra 9 na tela do Digifarma

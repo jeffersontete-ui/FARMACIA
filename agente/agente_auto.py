@@ -1710,6 +1710,7 @@ FOLHA_ESTILO = """
   .secao h3 { font-size: 11.5px; margin: 20px 0 2px; page-break-after: avoid; }
   .movimento { margin-top: 4px; }
   .movimento td { font-size: 10.5px; }
+  .movimento .semlote td { font-weight: 700; }
   .secao h2 .conta { float: right; font-weight: normal; font-size: 10px;
                      color: #444; padding-top: 3px; }
   /* cada lista começa em página nova: dá para conferir as duas ao mesmo
@@ -1745,16 +1746,23 @@ def bloco_movimento(movimentos):
         return ('<p class="sub">Nenhuma venda, entrada ou perda desta lista '
                 'desde o último envio — a foto do SNGPC ainda vale como está.</p>')
     linhas = []
+    sem_lote = 0
     for m in movimentos:
+        # sem lote não entra na conta de lote nenhum: aparece na lista, mas
+        # marcado, senão a soma da coluna Movim. não fecha com este anexo —
+        # e o lançamento sem lote é problema por si só, o SNGPC exige o lote
+        if not texto(m.get('lote')):
+            sem_lote += 1
         linhas.append(
-            '<tr><td>%s%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>'
+            '<tr%s><td>%s%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>'
             '<td class="num">%s</td></tr>' % (
+                ' class="semlote"' if not texto(m.get('lote')) else '',
                 br(m['data']) if m.get('data') else '—',
                 (' %s' % escapar_html(m['hora'])) if m.get('hora') else '',
                 escapar_html(NOME_MOVIMENTO.get(m['tipo'], m['tipo'])),
                 escapar_html(m.get('id')) or '—',
                 escapar_html(m.get('descricao'))[:42] or '—',
-                escapar_html(m.get('lote')) or '(sem lote)',
+                escapar_html(m.get('lote')) or '(sem lote) *',
                 '%+g' % m['assinado']))
     return """<h3>Movimento desde o último envio &mdash; %d lançamento(s)</h3>
 <p class="sub">Já saiu (ou entrou) na prateleira e ainda <strong>não</strong> está
@@ -1766,7 +1774,11 @@ no inventário do SNGPC. A coluna Movim. da tabela acima é a soma disto, lote a
 </tr></thead>
 <tbody>
 %s
-</tbody></table>""" % (len(movimentos), '\n'.join(linhas))
+</tbody></table>%s""" % (len(movimentos), '\n'.join(linhas),
+                         ('\n<p class="sub">* %d lançamento(s) sem lote: não entram '
+                          'na coluna Movim. porque não há em qual lote somar, e o '
+                          'SNGPC exige o lote. Corrija no Digifarma antes do envio.</p>'
+                          % sem_lote) if sem_lote else '')
 
 
 def bloco_conferencia(titulo, medicamentos, quebra=False, nota='', movimentos=None):
