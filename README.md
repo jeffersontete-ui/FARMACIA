@@ -89,10 +89,42 @@ segunda versão para manter.
 E dois ajustes: `transmitido_ate_venda` (o remendo do ponteiro) e a coluna de
 saldo. Só essas chaves — nada que aponte para banco, arquivo ou credencial.
 
-**O limite continua o mesmo: nada disso escreve no Digifarma.** Zerar lote,
-acertar ponteiro ou corrigir venda é no sistema, no servidor ou por chamado.
-Um botão de celular gravando no banco de um sistema fiscalizado erra uma vez
-e custa caro.
+### Escrever no Digifarma
+
+Por muito tempo este projeto não escrevia no Digifarma, e essa continua sendo
+a regra para tudo. A exceção nasceu de um problema real: os lotes negativos
+**não aparecem na tela do Digifarma**, então a farmácia não conseguia
+corrigi-los nem estando no servidor — virava chamado. Duas operações, e só
+elas, gravam no banco:
+
+| Botão | O que faz |
+|---|---|
+| Zerar os lotes negativos | põe em 0 todo lote com saldo negativo |
+| Gravar a contagem neste lote | põe o saldo de um lote no valor contado na prateleira |
+
+As travas, todas de propósito:
+
+- **vêm desligadas.** É preciso pôr `"permitir_ajuste_estoque": true` no
+  `agente_config.json`, **no servidor** — ligar a escrita é um ato deliberado
+  de quem responde pela farmácia, não um toque no celular;
+- só a coluna de **saldo** do lote é escrita, nunca outra;
+- se a instalação usar `LOTES` como tabela de **movimento**, o ajuste é
+  recusado: ali escrever não corrige saldo, inventa lançamento;
+- "zerar negativo" **não aceita valor**: o destino é sempre zero, então não há
+  dedo errado possível;
+- "gravar contagem" **recusa** quando o mesmo M.S. + lote tem mais de uma
+  linha em `LOTES` — aí não existe "o saldo do lote", e escolher seria chute;
+- toda alteração grava o antes, o depois e quem pediu em três lugares:
+  `ajustes_AAAA-MM-DD.json`, o log do agente e `farmacia/ajustes`;
+- uma única função (`executar`) escreve no banco, para quem auditar ler ela e
+  as poucas chamadas dela, não o arquivo inteiro.
+
+**Nenhum desses acertos pode ser transmitido ao SNGPC.** Se a ANVISA já está
+com o número certo, um lançamento de entrada faria o saldo dela subir
+indevidamente.
+
+Continua fora do app, e continua sendo chamado ou acesso remoto: acertar o
+ponteiro de transmissão e corrigir o lote de uma venda já transmitida.
 
 A autoatualização tem cinto e suspensório: o arquivo baixado é conferido em
 tamanho, conteúdo e **sintaxe** antes de encostar no que está rodando, e o

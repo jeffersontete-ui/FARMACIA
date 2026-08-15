@@ -350,3 +350,8 @@ main{padding:16px 16px 96px;max-width:900px;margin:0 auto}
   width:100%;height:min(70vh,760px);border:1px solid var(--linha);
   border-radius:10px;background:#FFF;
 }
+/* o bloco que escreve no Digifarma não pode parecer com os outros */
+.bloco-perigo{border-color:var(--vermelho);border-top:4px solid var(--vermelho)}
+.bloco-perigo h3{color:var(--vermelho)}
+.bloco-perigo code{font-size:12px;background:var(--campo);padding:1px 5px;border-radius:4px;border:1px solid var(--linha)}
+.grade-ajuste{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 14px}
