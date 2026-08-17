@@ -148,6 +148,8 @@ agente/
   mapa_xml.py           leitor do XML do SNGPC
   teste_agente.py       roda tudo com banco simulado
   INSTALAR_AGENTE.bat   instalador (rodar como administrador)
+  ATUALIZAR_AGENTE.bat  atualiza o agente; /auto nao pergunta nada
+  ATUALIZAR_EM_SEGUNDO_PLANO.vbs  o mesmo, sem janela nenhuma
   regras-firebase.json  regras do Realtime Database
 ```
 
@@ -230,6 +232,21 @@ O `--config` existe para ninguém precisar editar JSON com pressa: uma vírgula
 fora do lugar no `agente_config.json` derruba o agente inteiro. E ele recusa
 valor que não é número — `transmitido_ate_venda=46l08` digitado errado viraria
 zero em silêncio, desligando o ajuste sem ninguém perceber.
+
+O `ATUALIZAR_AGENTE.bat` tem três jeitos de rodar:
+
+```
+ATUALIZAR_AGENTE.bat              pergunta a configuracao e espera
+ATUALIZAR_AGENTE.bat /auto        nao pergunta nada, grava log
+ATUALIZAR_AGENTE.bat /auto 46108 S   ja configura tudo
+```
+
+**Parâmetro que não vier não é alterado** — de propósito. Um `.bat` que muda
+configuração em silêncio por causa de um valor padrão é exatamente como se
+liga a escrita no Digifarma sem ninguém ter decidido isso.
+
+O `ATUALIZAR_EM_SEGUNDO_PLANO.vbs` roda o mesmo `.bat` **sem janela nenhuma**;
+o que aconteceu fica no `atualizacao_AAAA-MM-DD.log`, na pasta do agente.
 
 ### Consultas SQL
 
