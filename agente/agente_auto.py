@@ -443,6 +443,13 @@ def carregar_config():
     if os.path.exists(ARQUIVO_CONFIG):
         with open(ARQUIVO_CONFIG, encoding='utf-8') as f:
             config.update(json.load(f))
+        # chave_firebase sempre mora ao lado deste arquivo; se a pasta
+        # tiver sido movida/renomeada desde a última instalação, o
+        # caminho absoluto salvo no agente_config.json fica obsoleto.
+        if not os.path.exists(config['chave_firebase']):
+            padrao = os.path.join(PASTA, 'chave-firebase.json')
+            if os.path.exists(padrao):
+                config['chave_firebase'] = padrao
     else:
         with open(ARQUIVO_CONFIG, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
