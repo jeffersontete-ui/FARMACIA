@@ -3285,7 +3285,8 @@ def principal():
     parser.add_argument('--envio', action='store_true', help='usa o inventário vigente no último envio')
     parser.add_argument('--schema', action='store_true', help='confere as tabelas da base')
     parser.add_argument('--teste', action='store_true', help='testa Firebird e Firebase')
-    parser.add_argument('--colunas', metavar='TABELA', help='lista as colunas de uma tabela')
+    parser.add_argument('--colunas', metavar='TABELA', nargs='?', const='',
+                        help='lista as colunas de uma tabela; sem nome, lista as tabelas')
     parser.add_argument('--saldo', metavar='TEXTO', nargs='?', const='',
                         help='mostra como o saldo de um lote foi apurado')
     parser.add_argument('--linhas', metavar='LOTE',
@@ -3319,7 +3320,15 @@ def principal():
             raise SystemExit('Data em formato DD/MM/AAAA, por exemplo 31/07/2026.')
 
     try:
-        if args.colunas:
+        if args.colunas is not None:
+            # sem o nome da tabela, dizer QUAIS existem é mais útil que o
+            # erro do argparse — quem esqueceu o nome não o tem na cabeça
+            if not args.colunas:
+                print('Diga a tabela, por exemplo: --colunas PRODUTOS\n')
+                print('As que este agente conhece:')
+                for nome in TABELAS_ESPERADAS:
+                    print('  %s' % nome)
+                raise SystemExit(1)
             raise SystemExit(0 if modo_colunas(config, args.colunas) else 1)
         if args.config:
             raise SystemExit(0 if modo_config(args.config) else 1)
