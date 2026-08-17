@@ -289,6 +289,7 @@ const ROTULO_PEDIDO = {
   saldo: 'Apuração do saldo', sincronizar_vendas: 'Sincronizar tudo',
   atualizar_envio: 'Atualizar envio', atualizar_agente: 'Atualizar o agente',
   config: 'Ajuste do agente', colunas: 'Colunas da tabela',
+  totais: 'Total do produto x soma dos lotes',
   zerar_negativos: 'Zerar lotes negativos', ajustar_lote: 'Gravar contagem no lote'
 };
 
