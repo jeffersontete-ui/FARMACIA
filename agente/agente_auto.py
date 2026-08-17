@@ -188,16 +188,23 @@ CONSULTAS = {
     # --- últimas vendas de controlado, para o acompanhamento ao vivo ---
     # Uma linha por LOTE vendido: a mesma venda pode sair de dois lotes, e
     # é o lote que interessa para o SNGPC.
+    # O LEFT JOIN em VENDAS_PSICOTROPICOS é o que responde "essa venda já
+    # foi preenchida no Digifarma?": é lá que mora a receita escriturada.
+    # Sem isso a lista de vendas mostrava o que saiu, mas não o que falta
+    # fazer — e é a receita que falta, quase sempre.
     "vendas_recentes": """
         SELECT FIRST 300
                C.VENDA_NOTA_ID AS VENDA,
                C.VENDA_DATA_HORA AS QUANDO,
                P.PRODUTO, P.REGISTRO_MS,
-               IVL.NUM_LOTE, IVL.QUANTIDADE
+               IVL.NUM_LOTE, IVL.QUANTIDADE,
+               VP.VENDA_NOTA_ID AS RECEITA
           FROM CAB_VENDAS C
           JOIN ITEM_VENDAS I ON (I.VENDA_NOTA_ID = C.VENDA_NOTA_ID)
                             AND ((I.CANCELADO = 'N') OR (I.CANCELADO IS NULL))
           JOIN PRODUTOS P ON (P.PRODUTO_ID = I.PRODUTO_ID)
+          LEFT JOIN VENDAS_PSICOTROPICOS VP ON (VP.VENDA_NOTA_ID = I.VENDA_NOTA_ID)
+                                           AND (VP.ITEM_VENDA_ID = I.ITEM_VENDA_ID)
           JOIN ITEM_VENDAS_LOTES IVL ON (IVL.VENDA_NOTA_ID = I.VENDA_NOTA_ID)
                                     AND (IVL.ITEM_VENDA_ID = I.ITEM_VENDA_ID)
                                     AND (IVL.PRODUTO_ID = I.PRODUTO_ID)
@@ -1022,6 +1029,8 @@ def vendas_recentes(conexao, dias=DIAS_VENDAS_RECENTES):
         'ms': so_digitos(l.get('REGISTRO_MS')),
         'lote': texto(l.get('NUM_LOTE')),
         'quantidade': numero(l.get('QUANTIDADE')),
+        # já preenchida no Digifarma? É a receita escriturada que decide
+        'receita': bool(l.get('RECEITA')),
     } for l in linhas]
 
 
@@ -3204,6 +3213,12 @@ def snapshot_diagnostico(conexao):
         'ultimoEnvio': texto(ponteiros.get('ULTIMO_ENVIO_SNGPC'))[:10] or None,
         'pendentes': pendentes,
         'inventarioSngpc': inventario,
+        # A tabela SNGPC inteira, como está. É aqui que um campo de retorno
+        # ou aceite da ANVISA apareceria, se o Digifarma guardasse algum —
+        # e olhar é mais barato que supor. A consulta já lia S.*; o que
+        # faltava era mostrar.
+        'tabelaSngpc': {texto(k): texto(v)[:60] for k, v in ponteiros.items()
+                        if v is not None},
     }
 
 
