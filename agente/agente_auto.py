@@ -1624,6 +1624,9 @@ def publicar_vendas_recentes(config, db):
 URL_AGENTE = ('https://raw.githubusercontent.com/jeffersontete-ui/FARMACIA'
               '/main/agente/agente_auto.py')
 
+# quantos agente_auto_antes_de_*.py ficam na pasta depois de cada atualização
+BACKUPS_GUARDADOS = 3
+
 # Só estas chaves podem ser mudadas pelo app. Nada que aponte para arquivo,
 # banco ou credencial entra aqui: o que se ajusta de longe é a leitura, não
 # a instalação.
@@ -1674,6 +1677,21 @@ def atualizar_agente(config):
     shutil.copy2(atual, backup)
     with open(atual, 'w', encoding='utf-8') as f:
         f.write(novo)
+
+    # Guardar backup a cada atualização e nunca limpar enche a pasta de
+    # cópias quase iguais — cinco num único dia, na farmácia. Os últimos
+    # poucos servem para voltar atrás; os antigos só confundem quem procura
+    # o arquivo certo numa emergência.
+    try:
+        antigos = sorted(n for n in os.listdir(PASTA)
+                         if n.startswith('agente_auto_antes_de_') and n.endswith('.py'))
+        for velho in antigos[:-BACKUPS_GUARDADOS]:
+            os.remove(os.path.join(PASTA, velho))
+        if len(antigos) > BACKUPS_GUARDADOS:
+            registrar('Apaguei %d backup(s) antigo(s) do agente; ficaram os %d últimos.'
+                      % (len(antigos) - BACKUPS_GUARDADOS, BACKUPS_GUARDADOS))
+    except Exception as e:
+        registrar('Não consegui limpar os backups antigos: %s' % e)
 
     depois = versao_do_agente()
     if depois.get('hash') == antes.get('hash'):
