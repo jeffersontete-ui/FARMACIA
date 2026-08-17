@@ -1152,6 +1152,15 @@ function pintarVendasRecentes() {
     direita.style.display = 'flex';
     direita.style.gap = '10px';
     direita.style.alignItems = 'center';
+    // Preenchida no Digifarma ou não: é a receita escriturada que decide, e
+    // é ela que falta quase sempre. Ver a venda sem saber disso é ver
+    // metade — o agente antigo não mandava o campo, e aí não se mostra
+    // nada em vez de mostrar "preenchida" sem ter conferido.
+    if (v.receita !== undefined) {
+      const receita = criar('span', 'estado ' + (v.receita ? 'estado-aceito' : 'estado-recusado'));
+      receita.textContent = v.receita ? 'receita ok' : 'SEM RECEITA';
+      direita.appendChild(receita);
+    }
     const qtd = criar('span', 'estado estado-aceito');
     qtd.textContent = Number(v.quantidade || 0) + ' un';
     const hora = criar('span', 'sublinha');
