@@ -233,6 +233,14 @@ fora do lugar no `agente_config.json` derruba o agente inteiro. E ele recusa
 valor que não é número — `transmitido_ate_venda=46l08` digitado errado viraria
 zero em silêncio, desligando o ajuste sem ninguém perceber.
 
+**Baixando à mão, use `curl -fL`, nunca `curl -o` puro.** Sem o `-f` o curl
+grava a resposta de erro DENTRO do arquivo: um 429 do GitHub vira um `.bat`
+de 199 bytes com o texto do erro, que o `cmd` tenta executar. Aconteceu.
+
+```
+curl -fL -o ATUALIZAR_AGENTE.bat https://raw.githubusercontent.com/jeffersontete-ui/FARMACIA/main/agente/ATUALIZAR_AGENTE.bat
+```
+
 O `ATUALIZAR_AGENTE.bat` tem três jeitos de rodar:
 
 ```
