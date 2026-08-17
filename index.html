@@ -181,6 +181,14 @@
         <label class="campo"><span>Buscar um medicamento (cadastro, M.S. e código de barras)</span>
           <input id="campo-produto" type="search" autocomplete="off" placeholder="AMOXICILINA"></label>
         <button id="btn-produto" class="botao botao-secundario">Ver cadastro</button>
+
+        <label class="campo"><span>Colunas de uma tabela do Digifarma</span>
+          <input id="campo-tabela" type="search" autocomplete="off" placeholder="PRODUTOS"></label>
+        <button id="btn-colunas" class="botao botao-secundario">Ver colunas</button>
+        <p class="nota">Para conferir o esquema sem abrir o banco: <code>PRODUTOS</code>,
+        <code>LOTES</code>, <code>SNGPC</code>, <code>INVENTARIO_SNGPC</code>. É por aqui
+        que se descobre, por exemplo, se o Digifarma guarda um total de estoque por
+        produto além do saldo de cada lote.</p>
       </div>
 
       <div class="bloco">
