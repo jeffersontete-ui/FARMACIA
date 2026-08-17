@@ -2798,14 +2798,18 @@ def modo_totais(config, filtro=''):
         linhas = [l for l in linhas if alvo in normalizar_texto(l.get('PRODUTO'))]
 
     batem, divergem, sem_lote = 0, [], 0
+    sem_lote_com_saldo = []
     for l in linhas:
         total = numero(l.get('PROD_SALDO'))
         soma = l.get('SOMA_LOTES')
         if soma is None:
-            # produto controlado sem nenhuma linha em LOTES: nao ha o que
-            # comparar, e isso por si so pode ser cadastro sem controle de
-            # lote — que o SNGPC exige
+            # Controlado sem nenhuma linha em LOTES. Com saldo ZERO é só
+            # cadastro parado, e há milhares. Com saldo MAIOR que zero é
+            # outra coisa: o SNGPC escritura por lote, então esse estoque
+            # não tem como ser transmitido nem conferido.
             sem_lote += 1
+            if total:
+                sem_lote_com_saldo.append((total, l))
             continue
         diferenca = round(total - numero(soma), 3)
         if diferenca:
@@ -2818,8 +2822,20 @@ def modo_totais(config, filtro=''):
     print('  %d batem' % batem)
     print('  %d divergem' % len(divergem))
     if sem_lote:
-        print('  %d sem nenhuma linha em LOTES' % sem_lote)
+        print('  %d sem nenhuma linha em LOTES (%d com saldo, %d zerados)'
+              % (sem_lote, len(sem_lote_com_saldo), sem_lote - len(sem_lote_com_saldo)))
     print('')
+
+    if sem_lote_com_saldo:
+        sem_lote_com_saldo.sort(key=lambda x: -x[0])
+        print('CONTROLADO COM SALDO E SEM LOTE — %d' % len(sem_lote_com_saldo))
+        print('O SNGPC escritura por lote. Estoque aqui não tem como ser')
+        print('transmitido nem conferido: é acerto de cadastro.')
+        for total, l in sem_lote_com_saldo[:40]:
+            print('  %-46s %8g' % (texto(l.get('PRODUTO'))[:46], total))
+        if len(sem_lote_com_saldo) > 40:
+            print('  ... e mais %d' % (len(sem_lote_com_saldo) - 40))
+        print('')
 
     if divergem:
         divergem.sort(key=lambda x: -abs(x[0]))
