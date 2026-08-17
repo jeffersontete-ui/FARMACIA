@@ -314,6 +314,12 @@ $('btn-produto').onclick = () => {
   pedirRelatorio('produto', alvo);
 };
 
+$('btn-colunas').onclick = () => {
+  const tabela = $('campo-tabela').value.trim().toUpperCase();
+  if (!tabela) { avisar('Escreva o nome da tabela, por exemplo PRODUTOS.'); return; }
+  pedirRelatorio('colunas', tabela);
+};
+
 $('btn-ponteiro').onclick = async () => {
   const valor = Number($('campo-ponteiro').value || 0);
   if (!Number.isInteger(valor) || valor < 0) { avisar('Número de venda inválido.'); return; }
