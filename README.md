@@ -48,6 +48,43 @@ A ordem de trabalho sai do `--tarefas`, e é essa: corrigir o que está torto
 no Digifarma primeiro, porque reaparece em toda conferência até ser
 corrigido.
 
+### Como terminou (17/08/2026)
+
+| | 15/08 | 17/08 |
+|---|---|---|
+| divergências | 71 | 31 |
+| lotes com saldo negativo | 39 | **0** |
+| contagem de prateleira | 17 | **2** |
+| zerado na ANVISA | 15 | 29, dos quais **22 são entradas de 15/08** |
+
+Os 39 negativos foram zerados, e o `--totais` provou que ficaram certos:
+nenhum deles voltou como divergência entre `PROD_SALDO` e a soma dos lotes.
+Das 29 linhas "zerado na ANVISA", 22 são entradas do próprio dia 15/08 e o
+inventário do site é de 15/08 — entrada nova não podia estar numa foto mais
+velha; somem no próximo download.
+
+Sobraram **9 linhas de trabalho real**, de 4135 que apareciam no começo:
+
+- **7 lotes em 5 medicamentos** (DUAL 30MG, LAMOTRIGINA 50 TORRENT,
+  ALPRAZOLAM 2MG GEN, UNINALTREX 50, PONDERA XR) onde **três fontes
+  discordam de um jeito revelador**: `PROD_SALDO` = 0, inventário da ANVISA
+  = 0, e só a tabela `LOTES` diz que tem estoque. Duas fontes contra uma;
+- **2 lotes de escitalopram 10mg** cuja soma bate dos dois lados — 5 e 5 —
+  mas com 4 unidades atribuídas ao lote errado. Não precisa contar quantas
+  caixas há: precisa ler o lote impresso nelas.
+
+Três coisas que a investigação descobriu e que valem para a próxima vez:
+
+1. **o Digifarma guarda dois saldos** — `PRODUTOS.PROD_SALDO` e o de cada
+   lote em `LOTES`. Eles batem em 735 controlados e é o sistema que os
+   mantém em dia; a conferência com o SNGPC usa o segundo, a tela do balcão
+   usa o primeiro;
+2. **envio feito por outra máquina não avança o ponteiro daqui**, e o agente
+   passa a descontar duas vezes a mesma venda. A assinatura são vários lotes
+   batendo com a ANVISA sem precisar do movimento pendente;
+3. **lote negativo não aparece na tela do Digifarma** — foi por isso que o
+   app ganhou as duas únicas operações que escrevem no banco.
+
 ## Regra de ouro
 
 **O Digifarma é a verdade.** O app só LÊ o inventário, e o agente faz
