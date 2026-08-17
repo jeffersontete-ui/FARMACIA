@@ -266,6 +266,21 @@ CONSULTAS = {
     # depois, em Python, por PRODUTO_ID — veja ler_inventario_anvisa().
     "inventario_sngpc": "SELECT * FROM INVENTARIO_SNGPC",
 
+    # --- PRODUTOS.PROD_SALDO x soma dos lotes (--totais) ---
+    # O Digifarma guarda DOIS saldos: o total do produto, em
+    # PRODUTOS.PROD_SALDO, e o de cada lote, em LOTES. A tela do balcao le o
+    # primeiro; a comparacao com o SNGPC usa o segundo. Quando os dois
+    # discordam, um dos lados esta mentindo — e e preciso saber qual antes
+    # de escrever em qualquer um deles.
+    "totais_produto": """
+        SELECT P.PRODUTO_ID, P.PRODUTO, P.REGISTRO_MS, P.PROD_SALDO,
+               (SELECT SUM(L.{COLUNA}) FROM LOTES L
+                 WHERE L.PRODUTO_ID = P.PRODUTO_ID) AS SOMA_LOTES
+          FROM PRODUTOS P
+         WHERE ((P.PSICOTROPICO = 'S') OR (P.ANTIMICROBIANO = 'S'))
+           AND ((P.PROD_ATIVO = 'S') OR (P.PROD_ATIVO IS NULL))
+    """,
+
     # --- cadastro de um produto, pelo nome (--produto) ---
     # O CAST é o mesmo cuidado das outras: sem ele o fdb reclama que o
     # parâmetro é maior que a coluna e a busca morre antes de rodar.
@@ -1935,6 +1950,7 @@ RELATORIOS = {
     'produto': lambda config, alvo: texto_do_modo(modo_produto, config, alvo),
     'saldo': lambda config, alvo: texto_do_modo(modo_conferir_saldo, config, alvo),
     'colunas': lambda config, alvo: texto_do_modo(modo_colunas, config, alvo or 'LOTES'),
+    'totais': lambda config, alvo: texto_do_modo(modo_totais, config, alvo),
 }
 
 LIMITE_TEXTO = 120000    # o relatório inteiro cabe; o corte é rede de segurança
@@ -2757,6 +2773,73 @@ def modo_negativos(config, filtro=''):
         fechar(conexao)
 
 
+def modo_totais(config, filtro=''):
+    """PRODUTOS.PROD_SALDO comparado com a soma dos lotes daquele produto.
+
+    O Digifarma guarda dois saldos: o total do produto e o de cada lote. A
+    tela do balcao mostra o primeiro; a conferencia com o SNGPC usa o
+    segundo. Se os dois discordam, escrever num deles conserta metade e
+    estraga a outra — por isso esta medida vem ANTES de qualquer ajuste."""
+    conexao = conectar_firebird(config)
+    try:
+        info = detectar_coluna_saldo(conexao, config)
+        if info['modo'] != 'saldo':
+            print('Nesta instalação LOTES é tabela de movimento (%s): a soma'
+                  % info['coluna'])
+            print('das linhas não é o saldo do lote, e a comparação não vale.')
+            return False
+        sql = CONSULTAS['totais_produto'].replace('{COLUNA}', info['coluna'])
+        linhas = consultar(conexao, sql)
+    finally:
+        fechar(conexao)
+
+    if filtro:
+        alvo = normalizar_texto(filtro)
+        linhas = [l for l in linhas if alvo in normalizar_texto(l.get('PRODUTO'))]
+
+    batem, divergem, sem_lote = 0, [], 0
+    for l in linhas:
+        total = numero(l.get('PROD_SALDO'))
+        soma = l.get('SOMA_LOTES')
+        if soma is None:
+            # produto controlado sem nenhuma linha em LOTES: nao ha o que
+            # comparar, e isso por si so pode ser cadastro sem controle de
+            # lote — que o SNGPC exige
+            sem_lote += 1
+            continue
+        diferenca = round(total - numero(soma), 3)
+        if diferenca:
+            divergem.append((diferenca, l, total, numero(soma)))
+        else:
+            batem += 1
+
+    print('PROD_SALDO (total do produto) x SOMA DOS LOTES — %d controlado(s)'
+          % (batem + len(divergem) + sem_lote))
+    print('  %d batem' % batem)
+    print('  %d divergem' % len(divergem))
+    if sem_lote:
+        print('  %d sem nenhuma linha em LOTES' % sem_lote)
+    print('')
+
+    if divergem:
+        divergem.sort(key=lambda x: -abs(x[0]))
+        print('%-42s %10s %10s %8s' % ('MEDICAMENTO', 'PRODUTOS', 'LOTES', 'DIF.'))
+        for diferenca, l, total, soma in divergem[:60]:
+            print('%-42s %10g %10g %+8g'
+                  % (texto(l.get('PRODUTO'))[:42], total, soma, -diferenca))
+        if len(divergem) > 60:
+            print('... e mais %d' % (len(divergem) - 60))
+        print('')
+        print('A coluna DIF. é quanto os LOTES têm a mais que o total do produto.')
+        print('Enquanto isso não fechar, a tela do Digifarma e a conferência do')
+        print('SNGPC contam histórias diferentes — e nenhum ajuste deve ser feito')
+        print('em cima de um número que só metade do sistema enxerga.')
+    else:
+        print('Os dois saldos do Digifarma estão de acordo em todos os')
+        print('controlados. O total do produto é a soma dos lotes.')
+    return True
+
+
 def modo_produto(config, texto_busca):
     """Mostra o cadastro dos produtos que casam com um nome: código, registro
     M.S., código de barras e a marcação de controlado.
@@ -3310,6 +3393,8 @@ def principal():
                         help='gera a folha de conferência em HTML, para imprimir')
     parser.add_argument('--produto', metavar='TEXTO', nargs='?', const='',
                         help='mostra o cadastro: registro M.S., código de barras e a marcação')
+    parser.add_argument('--totais', metavar='TEXTO', nargs='?', const='',
+                        help='PRODUTOS.PROD_SALDO comparado com a soma dos lotes')
     parser.add_argument('--atualizar', action='store_true',
                         help='baixa a versão mais nova do agente do GitHub e se substitui')
     parser.add_argument('--config', metavar='CHAVE=VALOR',
@@ -3337,6 +3422,8 @@ def principal():
                     print('  %s' % nome)
                 raise SystemExit(1)
             raise SystemExit(0 if modo_colunas(config, args.colunas) else 1)
+        if args.totais is not None:
+            raise SystemExit(0 if modo_totais(config, args.totais) else 1)
         if args.config:
             raise SystemExit(0 if modo_config(args.config) else 1)
         if args.atualizar:
