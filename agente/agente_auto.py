@@ -1543,7 +1543,12 @@ def publicar(db, dados):
     # que o número errado é o risco do próximo envio daqui reenviar tudo.
     ja = dados.get('inventario', {}).get('jaNaAnvisa') or 0
     pendentes_vendas = (dados.get('resumoPendentes') or {}).get('vendas') or 0
-    if ja and pendentes_vendas:
+    # Um ou dois lotes batendo sem o pendente é coincidência esperada: basta
+    # a venda do dia sair de um lote que já estava igual dos dois lados.
+    # O sinal só é sinal quando são vários — quando a farmácia transmitiu
+    # por outra máquina, foram 35 de uma vez. Avisar com 1 é ensinar a
+    # ignorar o aviso.
+    if ja >= 3 and pendentes_vendas:
         registrar('ATENÇÃO: %d lote(s) já batem com a ANVISA SEM contar o movimento '
                   'pendente. O site já recebeu essas vendas e o ponteiro deste '
                   'Digifarma não avançou (envio feito por outra máquina?). As '
