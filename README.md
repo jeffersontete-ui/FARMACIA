@@ -605,6 +605,32 @@ Em qualquer dúvida — arquivo ilegível, valor que não vira JSON, erro de
 escrita — `mudou()` responde que **mudou**. Publicar à toa custa banda;
 deixar de publicar esconde venda da farmácia, que é bem pior.
 
+### Gerar o XML não é transmitir o XML
+
+Em 18/08/2026 a farmácia abriu o **Relatório Status de Transmissão** no site
+da ANVISA e comparou com a tela. O app dizia `Movimentos de 16/08 a 17/08`; o
+site não tinha recebido nada desse período — a última transmissão aceita
+cobria 15/08 a 16/08.
+
+O `Movimentos de` sai do **cabeçalho do XML que está na pasta**. Um XML
+gerado não é um XML transmitido, e o Digifarma não guarda o retorno da
+ANVISA. A tela estava afirmando um envio que podia não ter acontecido.
+
+Isso não é detalhe de texto. Se o ponteiro anda e a ANVISA não recebeu, o
+agente conta como transmitida uma venda que o site não tem, espera do
+inventário um saldo menor do que ele mostra, e **inventa divergência**. É o
+espelho exato do problema do envio feito por outra máquina — e explica as
+divergências terem subido de 31 para 39 no mesmo dia.
+
+O agente passou a comparar as duas datas e publicar `xmlAlemDoEnvio`. Quando
+o XML da pasta cobre período além do último envio registrado, o aviso vem
+**antes** dos números na aba Saldo, porque é ele que explica os números
+estarem errados. E o rótulo virou `Movimentos do último XML`, que é o que
+aquilo é.
+
+Vale a regra que este projeto já aprendeu duas vezes: **o app não afirma o
+que não sabe.** Primeiro foi o "receita ok", depois isto.
+
 ### A divergência responde "esse remédio saiu?"
 
 Diante de uma diferença, a primeira pergunta da farmácia é sempre a mesma —
