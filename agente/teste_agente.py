@@ -873,6 +873,34 @@ def principal():
     conferir('--receitas com texto no lugar dos dias não inventa 0 dias',
              not ag.modo_receitas({}, 'abc'))
 
+    # --- troca de lote na lista de prateleira -----------------------------
+    # O caso real: escitalopram 10mg, lote 2509242 com -4 e lote 2529244 com
+    # +4. Total 5 dos dois lados. Não falta nem sobra nada — são 4 caixas
+    # registradas no lote errado, e a conferência é LER o lote impresso, não
+    # contar quantidade. A lista mandava contar e não dizia isso.
+    # o par que se anula tem que ser anunciado
+    itens_troca = [
+        {'descricao': 'ESCITALOPRAM 10MG', 'lote': '2509242', 'ms': '1057306100222',
+         'codigo': '4471', 'saldoDigifarma': 0, 'saldoSngpc': 4, 'diferenca': -4},
+        {'descricao': 'ESCITALOPRAM 10MG', 'lote': '2529244', 'ms': '1057306100222',
+         'codigo': '4471', 'saldoDigifarma': 5, 'saldoSngpc': 1, 'diferenca': 4},
+        # este é sozinho no M.S.: não pode ser chamado de troca de lote
+        {'descricao': 'CEFALEXINA 500MG', 'lote': '5H8051', 'ms': '1023506630204',
+         'codigo': '991', 'saldoDigifarma': 4, 'saldoSngpc': 6, 'diferenca': -2},
+    ]
+    por_ms = {}
+    for it in itens_troca:
+        por_ms.setdefault(it['ms'], []).append(it)
+    anunciados = []
+    for it in itens_troca:
+        irmaos = por_ms.get(it['ms'], [])
+        if len(irmaos) > 1 and not round(sum(x['diferenca'] for x in irmaos), 3):
+            anunciados.append(it['lote'])
+    conferir('par que se anula é anunciado como troca de lote',
+             anunciados == ['2509242', '2529244'], anunciados)
+    conferir('lote sozinho no M.S. não vira troca de lote',
+             '5H8051' not in anunciados)
+
     # --- o critério de "receita lançada" ----------------------------------
     # O critério antigo era "existe linha em VENDAS_PSICOTROPICOS", e o
     # Digifarma cria a linha JUNTO com a venda: nas 46 vendas medidas em

@@ -3655,10 +3655,32 @@ def modo_tarefas(config):
     escrever('3. CONFERIR NA PRATELEIRA — %d lote(s) com contagem diferente' % len(contar))
     escrever('   Os dois lados conhecem o lote e discordam do número.')
     escrever('')
+    # Segunda linha com código e M.S. porque é com eles que se acha o
+    # produto no Digifarma e no site da ANVISA. A farmácia leu esta lista,
+    # escolheu um item e teve que perguntar o código — o relatório mandava
+    # conferir na prateleira sem dizer o que procurar.
+    #
+    # E quando dois lotes do MESMO medicamento aparecem com diferenças que
+    # se anulam, isso vai dito: não falta nem sobra nada, são caixas
+    # registradas no lote errado, e a conferência é ler o lote impresso —
+    # não contar quantidade.
+    por_ms_contar = {}
+    for i in contar:
+        por_ms_contar.setdefault(i['ms'], []).append(i)
+
     for i in contar:
         escrever('   %-42s lote %-14s Digifarma %-6g SNGPC %-6g dif %+g' % (
             i['descricao'][:42], i['lote'] or '(vazio)',
             i['saldoDigifarma'], i['saldoSngpc'], i['diferenca']))
+        irmaos = por_ms_contar.get(i['ms'], [])
+        soma = round(sum(x['diferenca'] for x in irmaos), 3)
+        recado = ''
+        if len(irmaos) > 1 and not soma:
+            outros = [x['lote'] or '(vazio)' for x in irmaos if x is not i]
+            recado = ' · TROCA DE LOTE com %s: a soma bate, confira o lote impresso' % (
+                ', '.join(outros))
+        escrever('   %-42s cód. %-10s M.S. %s%s' % (
+            '', i['codigo'] or '—', formatar_ms(i["ms"]) or '—', recado))
 
     escrever('')
     escrever('=' * 78)
