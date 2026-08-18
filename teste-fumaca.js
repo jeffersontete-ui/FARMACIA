@@ -200,6 +200,21 @@ if (exportado.divergenciasDeSaldo) {
   });
 }
 
+/* A versão que a tela mostra tem que ser a mesma da casca em cache. Se
+   divergirem, o carimbo mente exatamente sobre o que ele existe para
+   responder — e a pergunta "o celular já pegou a versão nova?" volta a não
+   ter resposta confiável. */
+conferir('a versão do app.js bate com a do sw.js', () => {
+  const js = fs.readFileSync(path.join(pasta, 'app.js'), 'utf8');
+  const sw = fs.readFileSync(path.join(pasta, 'sw.js'), 'utf8');
+  const noApp = /VERSAO_APP\s*=\s*'([^']+)'/.exec(js);
+  const noSw = /VERSAO\s*=\s*'([^']+)'/.exec(sw);
+  if (!noApp || !noSw) throw new Error('não achei as duas versões');
+  if (!noSw[1].endsWith('-' + noApp[1])) {
+    throw new Error(`app.js diz ${noApp[1]} e sw.js diz ${noSw[1]}`);
+  }
+});
+
 conferir('busca ignora acento e maiúscula', () => {
   const alvo = { nome: 'Diazepam Solução', ms: '1234', codigoBarras: '789', lote: 'A1', descricao: 'Diazepam Solução' };
   const campos = exportado.combina.length >= 3 ? ['descricao', 'ms', 'lote'] : null;

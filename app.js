@@ -15,6 +15,11 @@
 /* ============================================================
    1. CONFIGURAÇÃO
    ============================================================ */
+/* Tem que ser igual à VERSAO do sw.js — o teste de fumaça cobra as duas.
+   Se divergirem, a tela mente sobre qual casca está em cache, que é
+   justamente o que este carimbo existe para evitar. */
+const VERSAO_APP = 'v25';
+
 const CONFIG_FIREBASE = {
   apiKey: 'AIzaSyC3nXsBC2ARX8IOLITHUtovPn4DONEQe7g',
   authDomain: 'estoque-remedios-7b785.firebaseapp.com',
@@ -223,7 +228,12 @@ $('btn-operador').onclick = async () => {
 function entrarNoApp(nome) {
   estado.operador = nome;
   localStorage.setItem(CHAVE_OPERADOR, nome);
-  $('rotulo-operador').textContent = 'Conferindo: ' + nome;
+  // A versão vai junto do nome de propósito. Três vezes nesta semana a
+  // pergunta foi "o celular já pegou a versão nova?", e a resposta só dava
+  // para deduzir procurando uma frase que eu tinha mudado no texto. O
+  // service worker é cache-first: o app antigo continua rodando até a casca
+  // ser trocada, e sem carimbo ninguém sabe qual está na mão.
+  $('rotulo-operador').textContent = 'Conferindo: ' + nome + ' · ' + VERSAO_APP;
   $('tela-operador').hidden = true;
   $('app').hidden = false;
   pintar();

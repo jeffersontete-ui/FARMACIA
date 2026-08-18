@@ -1236,6 +1236,27 @@ acrescente o UID dele em `farmacia/autorizados`.
 - **`localStorage` só guarda o nome do operador** daquele aparelho.
 - **Nunca subir** `chave-firebase.json` nem os XMLs do SNGPC (dados de paciente).
 
+### O app carimba a própria versão
+
+Três vezes na mesma semana a pergunta foi: *"o celular já pegou a versão
+nova?"*. E a única forma de responder era procurar na tela uma frase que eu
+tinha mudado no texto — arqueologia, não engenharia.
+
+O service worker é **cache-first** de propósito: o app abre offline e continua
+funcionando no balcão sem sinal. O preço é que o aparelho serve a casca antiga
+até trocá-la, e quem olha a tela não tem como saber qual está na mão.
+
+Agora o cabeçalho mostra `Conferindo: jefferson · v25`. Uma olhada responde.
+
+A versão vive em `app.js` (`VERSAO_APP`) e em `sw.js` (`VERSAO`), e o
+`teste-fumaca.js` cobra que sejam a mesma. Sem isso o carimbo mentiria
+justamente sobre o que existe para responder: diria "v25" servindo a casca da
+v24. Verifiquei que o teste falha quando as duas divergem.
+
+Para forçar a troca no celular, quando ela não vier sozinha: abrir o endereço
+com `?v=` e um número novo no fim. A consulta não casa com nada no cache, então
+o navegador busca da rede.
+
 ## Testes
 
 **Os dois, sempre.** São suítes separadas porque são linguagens separadas, e
