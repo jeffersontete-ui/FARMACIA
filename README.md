@@ -708,6 +708,176 @@ O `teste_agente.py` passou a ler o **código-fonte** com `ast` e recusar
 chave repetida em qualquer dicionário do agente. Tem que ser no fonte: no
 dicionário já construído a duplicata não existe mais, não há o que testar.
 
+### "Tem receita" — a pergunta certa, enfim
+
+Em 18/08/2026 a farmácia avisou que o app dizia que **todas** as receitas das
+vendas do dia 17 tinham sido lançadas, e ela sabia que não tinha lançado.
+Estava certa, e o erro era mais fundo que o rótulo na tela.
+
+O agente nunca perguntou se a receita foi lançada. Perguntou se existe uma
+**linha** em `VENDAS_PSICOTROPICOS` para aquele item da venda. O Digifarma
+cria essa linha junto com a venda e recebe os dados da receita depois — nas
+46 vendas medidas, **nenhuma** estava sem linha. O teste nunca acusava nada,
+e o `0 vendas com problema` que saía em todo log era falso.
+
+Um teste que nunca acusa nada não é um teste tranquilizador. É um teste
+quebrado.
+
+#### Como a coluna certa foi encontrada
+
+O `--receitas` (botão **Receitas lançadas**) lê as vendas do período e
+mostra, uma a uma, **quais colunas estão preenchidas** — nunca o que está
+escrito nelas, porque a tabela guarda paciente, comprador e médico, e o
+relatório sobe para o Firebase. Zero conta como vazio, de propósito.
+
+Ele separa as colunas em três grupos, e a resposta está no grupo do meio: as
+que aparecem cheias em umas vendas e vazias em outras. Cruzando com o que a
+farmácia sabia — as duas últimas vendas do dia, 19:03 e 18:09, ainda não
+lançadas — o desenho apareceu limpo:
+
+| Coluna | Preenchida | Serve? |
+|---|---|---|
+| `PRESCRITOR` | 44 de 46 | **sim** — vazia exatamente nas duas |
+| `COMPRADOR`, `COMPRADOR_DOCUMENTO`, `RECEITUARIO_NUMERO`, `CONSELHO_NUMERO`, `PACIENTE_ID` | 44 de 46 | sim, mesmo padrão |
+| `PACIENTE`, `PACIENTE_IDADE` | 42 de 46 | **não** — faltam em 2 vendas que FORAM lançadas |
+| `PACIENTE_SEXO` | 44 de 46 | **não** — preenchida até nas duas não lançadas |
+| `RECEITUARIO_TIPO`, `USO_MEDICAMENTO` | 25 e 1 de 46 | não — campos opcionais |
+
+Ficou **`PRESCRITOR`** entre as seis equivalentes por um motivo prático: é
+certamente coluna de texto, então `TRIM()` e comparação com `''` são
+seguros. `RECEITUARIO_NUMERO` poderia ser numérica, e o mesmo teste
+quebraria.
+
+O quase-acerto vale registro: `PACIENTE` parecia servir e teria feito o app
+**acusar receita boa como faltante** em duas vendas de 46. Escolher pela
+plausibilidade do nome, sem olhar quem discorda, dá exatamente nisso.
+
+#### O critério mora num lugar só
+
+```python
+SQL_RECEITA_LANCADA = (
+    "(VP.VENDA_NOTA_ID IS NOT NULL AND COALESCE(TRIM(VP.PRESCRITOR), '') <> '')")
+```
+
+As consultas escrevem `{RECEITA}` e a substituição acontece no carregamento.
+Repetir a condição em quatro SELECTs foi como o critério errado sobreviveu
+tanto tempo: consertar um e esquecer os outros é fácil demais. O teste cobra
+as quatro pelo nome — e pegou, na primeira passada, a que eu tinha esquecido.
+
+Com o critério certo, o rótulo verde `receita ok` voltou ao app. Ele já
+esteve lá, saiu por não ter base, e agora tem.
+
+#### Uma coluna que nunca é preenchida
+
+A mesma medição mostrou `CONFERIDO`, `CONF_DATA` e `CONF_VENDEDOR_ID`
+**vazias nas 46 linhas** — a conferência de venda do Digifarma não é usada
+nesta farmácia. O `vendas_problema` fazia um `LEFT JOIN VENDEDORES` por
+`CONF_VENDEDOR_ID` e trazia uma coluna de vendedor sempre vazia. O join
+saiu.
+
+### Três datas para a mesma transmissão, e nenhuma comparável
+
+Em 18/08/2026 a farmácia abriu o **Relatório Status de Transmissão** no site
+da ANVISA e estranhou a tela: o app dizia `Movimentos de 16/08 a 17/08`, e o
+site não mostrava nada desse período — o último lote aceito aparecia como
+15/08 a 16/08.
+
+A suspeita era grave e plausível: XML gerado, ponteiro avançado, ANVISA sem
+receber. Se fosse isso, aquelas vendas ficariam num buraco — baixadas aqui,
+inexistentes lá, e nunca mais incluídas em envio nenhum.
+
+**Não era.** A farmácia respondeu: a última transmissão foi feita no dia 17
+cobrindo as vendas de 15 e 16, e a próxima cobre 17 a 18. Estava tudo em
+ordem. O que existe são **três convenções de data para a mesma transmissão**:
+
+| Onde | O que mostrava |
+|---|---|
+| Site da ANVISA | 15/08 a 16/08 |
+| Cabeçalho do XML | 16/08 a 17/08 |
+| `ULTIMO_ENVIO_SNGPC` | 15/08 |
+
+O que ficou, então:
+
+- o rótulo virou **`Movimentos do último XML`**, porque é isso que ele é — o
+  período escrito no arquivo da pasta, não prova de transmissão nem de
+  aceite;
+- a tela diz explicitamente que as datas do XML e as do site não seguem a
+  mesma contagem, e que quem responde pelo aceite é o site.
+
+E o que **não** ficou: um alarme comparando `movimentosAte` com
+`ULTIMO_ENVIO_SNGPC`, que cheguei a subir. Ele teria acendido nessa farmácia
+em dia, todo dia, numa tela dizendo "os números abaixo estão errados".
+
+Isso é pior que não avisar nada. Alarme que acende sempre ensina a ignorar
+alarme, e o dia em que houvesse um buraco de verdade seria só mais um dia com
+a tarja vermelha de sempre. Ficou um comentário no `agente_auto.py`, no ponto
+exato onde a tentação bate, explicando por que a comparação óbvia não vale.
+
+A regra, de novo, e agora contra mim mesmo: **o app não afirma o que não
+sabe** — nem quando o palpite parece bom.
+
+### Transmissão recusada deixa buraco, e ninguém avisa
+
+O mesmo Relatório Status de Transmissão que desmentiu a suspeita acima
+mostrou outra coisa, essa verdadeira: o lote de **12/08/2026 saiu com
+`Foi aceito? NÃO`**, e o motivo estava escrito ali:
+
+> MEDICAMENTO - ENTRADA: O medicamento de número de registro
+> (1.0753.0536.001-8) não foi encontrado na base de dados da ANVISA
+
+Duas coisas que isso ensina:
+
+1. **A recusa é do lote inteiro, não do item.** Um registro M.S. errado num
+   único medicamento derruba todos os movimentos daquela transmissão. O que
+   estava no lote não chegou à ANVISA — e o inventário do site vai refletir
+   essa falta até alguém reenviar o período.
+2. **Corrigir o cadastro não reenvia nada.** Conserta as transmissões
+   seguintes; a recusada continua recusada. Se o ponteiro do Digifarma
+   avançou quando o lote foi gerado, aqueles movimentos não entram em envio
+   nenhum sozinhos.
+
+O Digifarma **não guarda esse retorno** — só o do inventário, no
+`INVENTARIO_ACEITO`. Então não há como o agente descobrir uma recusa lendo o
+banco: quem sabe é o site. É por isso que a aba **Aceites** existe e é
+marcada à mão, e é por isso que "marcar o aceite" não é burocracia — é o
+único registro de que o lote chegou.
+
+Ao ver uma divergência antiga que não sai por nada, vale a pergunta: *o lote
+que trouxe essa entrada foi aceito?*
+
+### A divergência responde "esse remédio saiu?"
+
+Diante de uma diferença, a primeira pergunta da farmácia é sempre a mesma —
+e a tela calava sobre ela. A pessoa ia à prateleira contar um lote que podia
+simplesmente ter sido vendido.
+
+Cada divergência agora carrega as vendas daquele lote nos últimos 45 dias:
+quanto saiu, em quantas vendas, quando foi a última e o número dela. Aparece
+na linha, sem precisar abrir — `Vendeu 4` — e o detalhe traz a conta inteira.
+
+A soma sai pronta do banco (`vendas_recentes_por_lote`), uma linha por lote,
+com `GROUP BY`. Buscar venda a venda e somar no Python custaria caro e subiria
+centenas de linhas que ninguém lê. E só os itens **com motivo** recebem o
+cruzamento: quem bate não gera pergunta, e pendurar venda em 700 lotes certos
+engorda o `farmacia/inventario` à toa.
+
+Junto vai `semReceita`: quantas dessas vendas **não têm linha** em
+`VENDAS_PSICOTROPICOS`. Vale lembrar o limite dessa contagem, que está
+explicado acima — faltar a linha prova que a receita não foi lançada, existir
+não prova nada. Por isso o app só alerta no sentido que vale.
+
+### Chave repetida num dicionário
+
+Escrevendo a consulta acima, dei a ela um nome que **já existia** em
+`CONSULTAS`. O Python fica com a última e não reclama: a minha sumiu sem
+aviso. Se tivesse vindo depois, teria substituído a consulta que apura as
+baixas por lote — e o erro apareceria como saldo errado, semanas depois, sem
+nenhuma ligação visível com a causa.
+
+O `teste_agente.py` passou a ler o **código-fonte** com `ast` e recusar
+chave repetida em qualquer dicionário do agente. Tem que ser no fonte: no
+dicionário já construído a duplicata não existe mais, não há o que testar.
+
 ### "Tem receita" é uma pergunta que ainda não sabemos fazer
 
 Em 18/08/2026 a farmácia avisou que o app dizia que **todas** as receitas
