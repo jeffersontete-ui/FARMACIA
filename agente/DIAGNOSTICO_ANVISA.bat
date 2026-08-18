@@ -68,6 +68,14 @@ for %%A in ("%ANVISA%") do (
   echo  Programa: %%~fA >> "%RELATORIO%"
   echo  Tamanho: %%~zA bytes  Data: %%~tA >> "%RELATORIO%"
 )
+
+REM  A lista da pasta vai so para o relatorio, nao para a tela: e
+REM  nela que se ve se o driver do navegador esta junto do
+REM  programa, com que nome, e se sobrou algo de uma atualizacao
+REM  pela metade.
+echo. >> "%RELATORIO%"
+echo  Arquivos da pasta %PASTA%: >> "%RELATORIO%"
+dir /b "%PASTA%" >> "%RELATORIO%" 2>nul
 echo.
 
 REM ---------- 2. ja tem um rodando? --------------------------
@@ -158,8 +166,25 @@ if exist "%PASTA%\chromedriver.exe" (
     echo    chromedriver: %%V >> "%RELATORIO%"
   )
 ) else (
-  echo        nao achei chromedriver.exe na pasta do Anvisa
+  echo        NAO ACHEI chromedriver.exe na pasta do Anvisa
   echo    chromedriver.exe nao esta em %PASTA% >> "%RELATORIO%"
+)
+
+REM  Faltar o driver na pasta do programa nao quer dizer que ele
+REM  nao exista: pode estar num subdiretorio, com outro nome, ou
+REM  numa pasta de trabalho do proprio Anvisa.exe. Procurar antes
+REM  de concluir evita mandar baixar o que ja esta ai.
+echo. >> "%RELATORIO%"
+echo  Drivers encontrados no disco: >> "%RELATORIO%"
+set "ACHOUDRIVER="
+for /f "delims=" %%D in ('dir /s /b "C:\Digifarma\*chromedriver*.exe" "%LOCALAPPDATA%\*chromedriver*.exe" 2^>nul') do (
+  set "ACHOUDRIVER=S"
+  echo        driver: %%D
+  echo    %%D >> "%RELATORIO%"
+)
+if not defined ACHOUDRIVER (
+  echo        nenhum chromedriver em lugar nenhum do Digifarma
+  echo    nenhum chromedriver encontrado >> "%RELATORIO%"
 )
 echo.
 echo        Se os dois primeiros numeros nao baterem - por
