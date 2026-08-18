@@ -1237,6 +1237,22 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
         # "quem transmitiu?" quando o ponteiro daqui não avança
         'terminalSinc': texto(ponteiros.get('ID_TERMINAL_SINC')),
         'sincronizadoEm': texto_hora(ponteiros.get('DATA_HORA_SINC')),
+        # XML gerado com movimento MAIS NOVO que o último envio registrado.
+        #
+        # Gerar o XML e transmiti-lo são coisas diferentes, e o Digifarma
+        # não guarda o retorno da ANVISA. Quando o arquivo da pasta cobre
+        # um período que o envio registrado não alcança, existe um lote de
+        # movimento que pode nunca ter chegado ao site — foi o que a
+        # farmácia pegou em 18/08/2026, comparando a tela com o Relatório
+        # Status de Transmissão.
+        #
+        # Isso não é detalhe de tela: se o ponteiro anda e a ANVISA não
+        # recebeu, o agente passa a tratar como transmitida uma venda que o
+        # site não tem, espera do inventário um saldo menor do que ele
+        # mostra, e inventa divergência. É o espelho do problema do envio
+        # feito por outra máquina.
+        'xmlAlemDoEnvio': bool(ultimo_envio and periodo_ate
+                               and periodo_ate > ultimo_envio),
     }
 
     if dados_xml:
