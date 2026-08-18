@@ -127,12 +127,15 @@ schtasks /Create /TN "AgenteSNGPC" /SC HOURLY /RL HIGHEST /RU SYSTEM /F ^
   /TR "\"%PYEXE%\" \"%~dp0agente_auto.py\" --auto" >nul
 if errorlevel 1 ( echo       Nao consegui criar a tarefa AgenteSNGPC. & pause & exit /b 1 )
 
-schtasks /Create /TN "AgenteSNGPC_Fila" /SC MINUTE /MO 5 /RL HIGHEST /RU SYSTEM /F ^
+REM  De minuto em minuto, e nao de 5 em 5: a espera do botao do app
+REM  era a lentidao que a farmacia sentia. A rodada e barata - le a
+REM  fila e so escreve no Firebase o ramo que mudou.
+schtasks /Create /TN "AgenteSNGPC_Fila" /SC MINUTE /MO 1 /RL HIGHEST /RU SYSTEM /F ^
   /TR "\"%PYEXE%\" \"%~dp0agente_auto.py\" --fila" >nul
 if errorlevel 1 ( echo       Nao consegui criar a tarefa AgenteSNGPC_Fila. & pause & exit /b 1 )
 
 echo       AgenteSNGPC        - de hora em hora  (sincronizacao completa)
-echo       AgenteSNGPC_Fila   - a cada 5 minutos (botoes do app)
+echo       AgenteSNGPC_Fila   - a cada minuto    (botoes do app)
 
 echo.
 echo ============================================================

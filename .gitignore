@@ -14,6 +14,14 @@ enviados/
 tarefas_saldo_*.txt
 agente_config.json
 
+# o resto do que o agente escreve rodando. Saldo, lote e medicamento da
+# farmácia não são código, e a folha de conferência é documento dela.
+negativos_*.txt
+comparacao_*.html
+diagnostico_anvisa.txt
+ultimo_publicado.json
+agente_auto_antes_de_*.py
+
 # lixo de sistema
 .DS_Store
 Thumbs.db
