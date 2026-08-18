@@ -645,7 +645,15 @@ function pintarEnvio() {
       + (e.ponteiroForcado ? ' (posto à mão no agente_config.json — o ponteiro do '
         + 'Digifarma ficou atrás, por envio feito em outra máquina)' : '')],
     ['Última entrada transmitida', e.ULT_ENTRADA_CAB_NOTA_ID ?? '—'],
-    ['XML arquivado', e.arquivoXml || '—']
+    ['XML arquivado', e.arquivoXml || '—'],
+    // veio da tabela SNGPC do Digifarma, não de marcação à mão
+    ['Inventário aceito pela ANVISA', e.inventarioAceito === undefined ? '—'
+      : (e.inventarioAceito ? 'sim' : 'NÃO')
+        + (e.inventarioEnviadoEm ? ' · enviado em ' + dataBR(e.inventarioEnviadoEm) : '')],
+    ['Período transmitido', e.periodoTransmitido || '—'],
+    ['Última sincronização', e.sincronizadoEm
+      ? dataHora(e.sincronizadoEm) + (e.terminalSinc ? ' · terminal ' + e.terminalSinc : '')
+      : '—']
   ];
   linhas.forEach(([k, v]) => {
     const dt = criar('dt'); dt.textContent = k;
