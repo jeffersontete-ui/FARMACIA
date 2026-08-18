@@ -285,10 +285,29 @@ o arquivo sumir em cinco segundos, é o antivírus, e aí a mensagem diz para
 criar a exceção na pasta em vez de deixar a farmácia repetir o processo
 amanhã. O driver antigo, quando existe, é guardado antes de ser trocado.
 
-Uma ressalva honesta: o proxy do ambiente onde este código foi escrito bloqueia
-o site do chromedriver, então **as URLs não puderam ser testadas daqui**. É por
-isso que o script tenta várias fontes e relata qual funcionou, em vez de
-confiar numa só.
+Uma ressalva de quando isto foi escrito: o proxy do ambiente bloqueia o site
+do chromedriver, então as URLs não puderam ser testadas de lá. Foi justamente
+por isso que o script tenta várias fontes e relata qual funcionou.
+
+**Rodou no servidor em 18/08/2026 e deu certo na primeira**, o que já responde
+o que não dava para saber:
+
+```
+Chrome 151.0.7922.138
+candidata 151.0.7922.138  (mesma versao do Chrome)
+Baixado: .../chrome-for-testing-public/151.0.7922.138/win64/chromedriver-win64.zip
+Responde: ChromeDriver 151.0.7922.138
+```
+
+Ou seja: **existe chromedriver na versão exata do Chrome**, o endereço
+`chrome-for-testing-public/<versão>/win64/chromedriver-win64.zip` está de pé, e
+a primeira candidata basta. Da próxima vez que faltar driver, é esse o caminho.
+
+Detalhe que essa primeira execução revelou: uma fonte que devolvia uma versão
+**já listada** ficava calada, e a tela dava a impressão de que ela não tinha
+respondido — quando estava confirmando. Agora ela diz `confirma`. Ler "duas
+fontes falharam" onde na verdade concordaram custaria uma investigação inútil
+justamente no dia em que alguma coisa desse errado de verdade.
 
 Para o servidor voltar sozinho depois de queda de energia (o
 `AGENDAR_ANVISA.bat` repete estas instruções no fim):
