@@ -96,6 +96,19 @@ RESPOSTAS = {
          'PRODUTO': 'ALPRAZOLAM 1MG', 'REGISTRO_MS': '1444400010023',
          'NUM_LOTE': 'B77Z', 'QUANTIDADE': 1},
     ],
+    # quanto saiu de cada lote, somado no banco, para explicar a divergência.
+    # De propósito com o M.S. pontuado e o lote em minúsculas: é assim que
+    # vem do cadastro, e o cruzamento tem que normalizar dos dois lados.
+    'vendas_recentes_por_lote': [
+        {'REGISTRO_MS': '1.0235.0663.020-4', 'NUM_LOTE': '5f9779',
+         'QUANTIDADE': 3, 'LINHAS': 2, 'SEM_RECEITA': 1,
+         'ULTIMA': datetime.datetime(2026, 8, 17, 16, 5, 0), 'ULTIMA_VENDA': 8830},
+        # este lote bate com a ANVISA: não é divergência, e por isso não pode
+        # receber cruzamento nenhum
+        {'REGISTRO_MS': '1.0573.0661.005-0', 'NUM_LOTE': '2604608',
+         'QUANTIDADE': 1, 'LINHAS': 1, 'SEM_RECEITA': 0,
+         'ULTIMA': datetime.datetime(2026, 8, 16, 10, 0, 0), 'ULTIMA_VENDA': 8825},
+    ],
     # venda que ainda vai subir e está sem receita: corrigir antes do envio
     'vendas_sem_receita_pendentes': [
         {'VENDA': 8830, 'QUANDO': datetime.datetime(2026, 8, 13, 14, 32, 5),
@@ -357,6 +370,22 @@ def principal():
              diferencas.get(('1023506630204', '5F9779')) == -3.0, diferencas)
     conferir('lote que bate não vira divergência',
              diferencas.get(('1057306610050', '2604608')) == 0.0, diferencas)
+
+    # A divergência tem que responder "esse remédio saiu?", senão a farmácia
+    # vai à prateleira contar um lote que pode ter sido simplesmente vendido.
+    por_chave_teste = {(i['ms'], i['lote']): i for i in dados['itens']}
+    alpra = por_chave_teste.get(('1023506630204', '5F9779'), {})
+    conferir('a divergência traz as vendas daquele lote',
+             (alpra.get('vendas') or {}).get('quantidade') == 3.0, alpra.get('vendas'))
+    conferir('M.S. pontuado e lote em minúsculas cruzam mesmo assim',
+             (alpra.get('vendas') or {}).get('linhas') == 2, alpra.get('vendas'))
+    conferir('a venda sem receita é contada na divergência',
+             (alpra.get('vendas') or {}).get('semReceita') == 1, alpra.get('vendas'))
+    conferir('a última venda vem com data e número',
+             (alpra.get('vendas') or {}).get('ultimaVenda') == 8830, alpra.get('vendas'))
+    conferir('lote que bate não recebe cruzamento de vendas',
+             'vendas' not in por_chave_teste.get(('1057306610050', '2604608'), {}),
+             por_chave_teste.get(('1057306610050', '2604608')))
 
     # o mesmo M.S. + lote em dois cadastros tem que virar UMA linha somada;
     # antes, a primeira levava todo o saldo do SNGPC e a segunda ficava com
@@ -843,6 +872,58 @@ def principal():
              saida[:200])
     conferir('--receitas com texto no lugar dos dias não inventa 0 dias',
              not ag.modo_receitas({}, 'abc'))
+
+    # --- só publica o que mudou -------------------------------------------
+    # A fila passou a rodar de minuto em minuto para o botão do app responder
+    # rápido. Sem isto, seriam 1440 reescritas por dia da mesma lista.
+    guardado_ultimo = ag.ARQUIVO_ULTIMO
+    ag.ARQUIVO_ULTIMO = os.path.join(pasta, 'ultimo_publicado.json')
+    try:
+        lista = [{'venda': 8830, 'quantidade': 2}]
+        conferir('a primeira publicação sempre acontece',
+                 ag.mudou('vendasRecentes', lista))
+        conferir('o mesmo conteúdo não é reescrito',
+                 not ag.mudou('vendasRecentes', lista))
+        conferir('conteúdo igual escrito de outra ordem também não é reescrito',
+                 not ag.mudou('vendasRecentes', [{'quantidade': 2, 'venda': 8830}]))
+        conferir('uma venda nova publica de novo',
+                 ag.mudou('vendasRecentes', lista + [{'venda': 8831, 'quantidade': 1}]))
+        conferir('cada ramo tem a sua marca, um não cala o outro',
+                 ag.mudou('diagnostico', lista))
+        # Errar para o lado de publicar: perder venda da tela é pior que
+        # gastar banda.
+        with open(ag.ARQUIVO_ULTIMO, 'w', encoding='utf-8') as f:
+            f.write('{ isto nao e json')
+        conferir('marca ilegível publica de novo em vez de calar',
+                 ag.mudou('vendasRecentes', lista))
+        conferir('valor que não vira JSON publica de novo',
+                 ag.mudou('vendasRecentes', {'quando': datetime.datetime(2026, 8, 18)}))
+    finally:
+        ag.ARQUIVO_ULTIMO = guardado_ultimo
+
+    # --- chave repetida no CONSULTAS --------------------------------------
+    # O Python fica com a ÚLTIMA e não reclama. Escrevi uma consulta nova com
+    # um nome que já existia e a minha sumiu sem aviso; se tivesse vindo
+    # depois, teria substituído a que apura o saldo — e o erro apareceria
+    # como saldo errado, semanas depois, sem ligação com a causa. Só dá para
+    # ver isto lendo o CÓDIGO, porque no dicionário pronto a duplicata já
+    # não existe.
+    import ast as _ast
+    fonte = _ast.parse(open(os.path.abspath(ag.__file__), encoding='utf-8').read())
+    repetidas = {}
+    for no in _ast.walk(fonte):
+        if not isinstance(no, _ast.Dict):
+            continue
+        vistas = {}
+        for chave in no.keys:
+            if isinstance(chave, _ast.Constant) and isinstance(chave.value, str):
+                vistas.setdefault(chave.value, []).append(chave.lineno)
+        for nome, linhas_da_chave in vistas.items():
+            if len(linhas_da_chave) > 1:
+                repetidas[nome] = linhas_da_chave
+    conferir('nenhum dicionário do agente tem chave repetida',
+             not repetidas,
+             '; '.join('%s nas linhas %s' % (n, l) for n, l in repetidas.items()))
 
     # --- publicar as regras do Firebase sozinho --------------------------
     # O agente passou a publicar as regras junto com a atualização, o que

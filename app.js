@@ -273,7 +273,7 @@ async function pedirAoAgente(acao, rotulo) {
     pedidoPor: estado.operador,
     estado: 'pendente'
   });
-  avisar(rotulo + ' pedido. O agente atende em até 5 minutos.');
+  avisar(rotulo + ' pedido. O agente atende em cerca de um minuto.');
 }
 
 $('btn-sincronizar').onclick = () => pedirAoAgente('sincronizar_vendas', 'Sincronizar vendas');
@@ -303,7 +303,7 @@ async function pedirRelatorio(acao, texto) {
     estado: 'pendente'
   });
   estado.ultimoPedido = acao;
-  avisar((ROTULO_PEDIDO[acao] || acao) + ' pedido. O agente atende em até 5 minutos.');
+  avisar((ROTULO_PEDIDO[acao] || acao) + ' pedido. O agente atende em cerca de um minuto.');
 }
 
 document.querySelectorAll('[data-pedir]').forEach((b) => {
@@ -334,7 +334,7 @@ $('btn-ponteiro').onclick = async () => {
     acao: 'config', chave: 'transmitido_ate_venda', valor,
     pedidoEm: agora(), pedidoPor: estado.operador, estado: 'pendente'
   });
-  avisar('Ajuste pedido. O agente atende em até 5 minutos.');
+  avisar('Ajuste pedido. O agente atende em cerca de um minuto.');
 };
 
 /* Os dois únicos botões do projeto que escrevem no Digifarma. A confirmação
@@ -351,7 +351,7 @@ $('btn-zerar-negativos').onclick = async () => {
     pedidoEm: agora(), pedidoPor: estado.operador, estado: 'pendente'
   });
   estado.ultimoPedido = 'zerar_negativos';
-  avisar('Pedido enviado. O agente atende em até 5 minutos.');
+  avisar('Pedido enviado. O agente atende em cerca de um minuto.');
 };
 
 $('btn-ajustar-lote').onclick = async () => {
@@ -371,7 +371,7 @@ $('btn-ajustar-lote').onclick = async () => {
     pedidoEm: agora(), pedidoPor: estado.operador, estado: 'pendente'
   });
   estado.ultimoPedido = 'ajustar_lote';
-  avisar('Pedido enviado. O agente atende em até 5 minutos.');
+  avisar('Pedido enviado. O agente atende em cerca de um minuto.');
 };
 
 $('btn-atualizar-agente').onclick = async () => {
@@ -387,7 +387,7 @@ function pintarServidor() {
   const barra = $('servidor-fila');
   if (c && c.estado === 'pendente') {
     barra.textContent = `“${ROTULO_PEDIDO[c.acao] || c.acao}” na fila desde `
-      + `${dataHora(c.pedidoEm)} — o agente roda de 5 em 5 minutos.`;
+      + `${dataHora(c.pedidoEm)} — o agente roda a cada minuto.`;
     barra.hidden = false;
   } else if (c && c.estado === 'erro') {
     barra.textContent = `O agente não conseguiu: ${c.mensagem || 'sem detalhe'}`;
@@ -468,7 +468,7 @@ function pintarComando() {
   if (c.estado === 'erro') {
     barra.textContent = `O agente não conseguiu atender “${c.acao}”: ${c.mensagem || 'sem detalhe'}.`;
   } else {
-    barra.textContent = `Pedido “${c.acao}” na fila desde ${dataHora(c.pedidoEm)} — o agente roda de 5 em 5 minutos.`;
+    barra.textContent = `Pedido “${c.acao}” na fila desde ${dataHora(c.pedidoEm)} — o agente roda a cada minuto.`;
   }
   barra.hidden = false;
 }
@@ -597,7 +597,7 @@ function baseDoSaldo() {
 }
 
 /* O diagnóstico existe para responder de longe "por que ainda há
-   divergência". Sobe de 5 em 5 minutos junto com as vendas. */
+   divergência". Sobe a cada minuto junto com as vendas. */
 function pintarDiagnostico() {
   const dl = $('dados-diagnostico');
   dl.innerHTML = '';
@@ -951,6 +951,37 @@ function pintarSaldo() {
       detalhe.appendChild(dl);
     }
 
+    // A primeira pergunta diante de uma divergência é "esse saiu?". Sem a
+    // resposta aqui, a conferência começa indo à prateleira procurar um
+    // lote que pode simplesmente ter sido vendido.
+    const v = i.vendas;
+    if (v && v.linhas) {
+      const titulo = criar('p', 'linha-titulo');
+      titulo.style.margin = '14px 0 6px';
+      titulo.textContent = 'Vendas deste lote';
+      detalhe.appendChild(titulo);
+      detalhe.appendChild(definicoes([
+        ['Saiu', Number(v.quantidade || 0) + ' em ' + v.linhas + ' venda(s)'],
+        ['Últimos', (v.dias || 45) + ' dias'],
+        ['Última venda', v.ultima
+          ? dataHora(v.ultima) + (v.ultimaVenda ? ' · nº ' + v.ultimaVenda : '')
+          : undefined],
+        // Só o lado negativo do teste é confiável: o Digifarma cria a linha
+        // da receita junto com a venda e preenche depois, então "tem linha"
+        // não prova que a receita foi lançada. Faltar a linha, sim, prova.
+        ['Sem receita no Digifarma', v.semReceita ? v.semReceita + ' venda(s)' : undefined]
+      ]));
+      const nota = criar('p', 'nota-info');
+      nota.textContent = v.semReceita
+        ? 'Há venda deste lote sem receita escriturada no Digifarma. Lance a receita '
+          + 'antes do próximo envio — depois de transmitido o conserto é bem mais caro. '
+          + 'O contrário não vale: não aparecer aqui não garante que as outras receitas '
+          + 'estejam completas.'
+        : 'Este lote saiu em venda. Confira se a diferença não é justamente o que foi '
+          + 'vendido e ainda não subiu ao SNGPC, antes de contar na prateleira.';
+      detalhe.appendChild(nota);
+    }
+
     alvo.appendChild(linha({
       chave: 'saldo:' + (i.codigo || n) + ':' + (i.lote || ''),
       titulo: i.descricao || i.codigo || '(sem descrição)',
@@ -958,7 +989,11 @@ function pintarSaldo() {
         i.ms && 'M.S. ' + i.ms,
         i.ean && 'EAN ' + i.ean,
         i.lote && 'Lote ' + i.lote,
-        i.validade && 'Val. ' + i.validade
+        i.validade && 'Val. ' + i.validade,
+        // sem abrir a linha: saiu ou não saiu, e se ficou receita para trás.
+        // É o que decide entre ir à prateleira e ir ao Digifarma.
+        v && v.linhas && 'Vendeu ' + Number(v.quantidade || 0),
+        v && v.semReceita && v.semReceita + ' sem receita'
       ],
       // Dentro de um grupo, repetir o rótulo na tarja é desperdiçar a única
       // faixa que a linha tem. Ali vai a comparação, que é o que se quer ver
@@ -1088,7 +1123,7 @@ function pintarVendas() {
   });
 }
 
-/* Acompanhamento das vendas: sobe pela tarefa de 5 em 5 minutos, então a
+/* Acompanhamento das vendas: sobe pela tarefa de cada minuto, então a
    tela vive sozinha — o Firebase empurra a atualização sem ninguém recarregar. */
 function pintarSemReceita() {
   const itens = lista('vendasSemReceita');
@@ -1126,7 +1161,7 @@ function pintarVendasRecentes() {
   const carimbo = estado.inventario?.vendasRecentesEm;
   $('vendas-recentes-carimbo').textContent = carimbo
     ? 'Atualizado em ' + dataHora(carimbo)
-    : 'O agente ainda não publicou as vendas. A tarefa de 5 minutos faz isso sozinha.';
+    : 'O agente ainda não publicou as vendas. A tarefa de cada minuto faz isso sozinha.';
 
   const todas = lista('vendasRecentes');
   const itens = todas.filter((v) => combina(

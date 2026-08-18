@@ -100,11 +100,11 @@ do Digifarma e não havia como corrigi-los nem estando lá.
 | Situação | carimbo do último sincronismo, **diagnóstico**, dados do último envio, botões que pedem ao agente |
 | Saldo | divergências entre o saldo do Digifarma e o inventário SNGPC vigente, com M.S., código de barras, lote e o detalhe de cada uma — cada uma classificada pelo **tipo** (veja abaixo) |
 | XML | o que saiu no banco cruzado com o que subiu no XML, por registro M.S. + lote — e, quando não há divergência, **se a conferência aconteceu** |
-| Vendas | controlado vendido sem receita escriturada ou sem lote — a causa clássica de recusa — e o **acompanhamento das últimas vendas**, com número, hora, lote e quantidade, atualizado de 5 em 5 minutos |
+| Vendas | controlado vendido sem receita escriturada ou sem lote — a causa clássica de recusa — e o **acompanhamento das últimas vendas**, com número, hora, lote e quantidade, atualizado a cada minuto |
 | Aceites | marcar à mão o aceite ou a recusa de cada envio, com nome e horário |
 
 Os dois botões da aba Situação escrevem em `farmacia/comando`. O agente
-atende em até 5 minutos e marca o pedido como concluído — o app mostra o
+atende em cerca de um minuto e marca o pedido como concluído — o app mostra o
 estado da fila.
 
 ## Comandar o servidor pelo celular
@@ -112,7 +112,7 @@ estado da fila.
 A farmácia não fica no servidor o dia todo, e quase toda a investigação deste
 projeto foi feita por linha de comando. Por isso os comandos foram para o app,
 na aba **Servidor**: o celular escreve o pedido em `farmacia/comando`, a tarefa
-de 5 em 5 minutos executa **o mesmo modo do terminal**, e a saída volta em
+a cada minuto executa **o mesmo modo do terminal**, e a saída volta em
 `farmacia/relatorios/<acao>` — o texto que apareceria no servidor, sem uma
 segunda versão para manter.
 
@@ -207,7 +207,7 @@ completa** e só então cria as tarefas. Se o teste falhar, nada é agendado.
 | Tarefa | Quando | O que faz |
 |---|---|---|
 | `AgenteSNGPC` | de hora em hora | `--auto`, sincronização completa |
-| `AgenteSNGPC_Fila` | a cada 5 minutos | `--fila`, atende os botões do app **e publica as últimas vendas** |
+| `AgenteSNGPC_Fila` | a cada minuto | `--fila`, atende os botões do app **e publica as últimas vendas** |
 | `AnvisaSNGPC_Login` | 1x por dia, em horário de expediente | abre o `Anvisa.exe` para alguém fazer o login no site do SNGPC |
 
 A terceira é criada pelo `AGENDAR_ANVISA.bat`, à parte, porque **não roda
@@ -511,9 +511,9 @@ totais somando os lotes daquele registro M.S. — e o app os mostra como
 mais de um lote, que é exatamente quando o número do lote não bate com a
 tela.
 
-### Acompanhamento das vendas, de 5 em 5 minutos
+### Acompanhamento das vendas, de minuto em minuto
 
-A tarefa `AgenteSNGPC_Fila` já rodava a cada 5 minutos para atender os
+A tarefa `AgenteSNGPC_Fila` roda a cada minuto para atender os
 botões do app. Ela passa a publicar também as vendas de controlado dos
 últimos 7 dias em `farmacia/inventario/vendasRecentes` — **uma linha por
 lote vendido**, com número da venda, hora, produto, lote e quantidade. A
@@ -529,6 +529,59 @@ Vendas.
 Escrever num filho de `farmacia/inventario` é de propósito: a regra do banco
 já libera esse caminho para o agente, então não é preciso republicar regras.
 E a sincronização completa, que é cara, continua de hora em hora.
+
+#### De 5 minutos para 1, e por que isso não custou nada
+
+A lentidão que a farmácia sentia era a espera do botão: apertava no celular
+e o agente podia demorar cinco minutos para responder. A fila passou a rodar
+**a cada minuto**.
+
+Rodar 5 vezes mais não custa 5 vezes mais porque a rodada passou a **só
+escrever o ramo que mudou**. `mudou()` guarda uma impressão digital de cada
+ramo em `ultimo_publicado.json` e compara antes de gravar; numa farmácia, a
+maior parte dos minutos do dia não tem venda de controlado nenhuma, então
+quase toda rodada não escreve nada. Sem isso seriam 1440 reescritas por dia
+da mesma lista, e o app repintando a tela à toa.
+
+O carimbo da hora acompanha a mesma regra: se nada mudou, ele também não
+muda. "Atualizado agora" sobre dado velho é pior que carimbo antigo.
+
+Em qualquer dúvida — arquivo ilegível, valor que não vira JSON, erro de
+escrita — `mudou()` responde que **mudou**. Publicar à toa custa banda;
+deixar de publicar esconde venda da farmácia, que é bem pior.
+
+### A divergência responde "esse remédio saiu?"
+
+Diante de uma diferença, a primeira pergunta da farmácia é sempre a mesma —
+e a tela calava sobre ela. A pessoa ia à prateleira contar um lote que podia
+simplesmente ter sido vendido.
+
+Cada divergência agora carrega as vendas daquele lote nos últimos 45 dias:
+quanto saiu, em quantas vendas, quando foi a última e o número dela. Aparece
+na linha, sem precisar abrir — `Vendeu 4` — e o detalhe traz a conta inteira.
+
+A soma sai pronta do banco (`vendas_recentes_por_lote`), uma linha por lote,
+com `GROUP BY`. Buscar venda a venda e somar no Python custaria caro e subiria
+centenas de linhas que ninguém lê. E só os itens **com motivo** recebem o
+cruzamento: quem bate não gera pergunta, e pendurar venda em 700 lotes certos
+engorda o `farmacia/inventario` à toa.
+
+Junto vai `semReceita`: quantas dessas vendas **não têm linha** em
+`VENDAS_PSICOTROPICOS`. Vale lembrar o limite dessa contagem, que está
+explicado acima — faltar a linha prova que a receita não foi lançada, existir
+não prova nada. Por isso o app só alerta no sentido que vale.
+
+### Chave repetida num dicionário
+
+Escrevendo a consulta acima, dei a ela um nome que **já existia** em
+`CONSULTAS`. O Python fica com a última e não reclama: a minha sumiu sem
+aviso. Se tivesse vindo depois, teria substituído a consulta que apura as
+baixas por lote — e o erro apareceria como saldo errado, semanas depois, sem
+nenhuma ligação visível com a causa.
+
+O `teste_agente.py` passou a ler o **código-fonte** com `ast` e recusar
+chave repetida em qualquer dicionário do agente. Tem que ser no fonte: no
+dicionário já construído a duplicata não existe mais, não há o que testar.
 
 ### "Tem receita" é uma pergunta que ainda não sabemos fazer
 
@@ -599,7 +652,7 @@ rodando `--saldo`, `--resumo`, `--inventario`. Quem cuida da farmácia nem
 sempre está lá, e o mais comum é justamente querer entender um número
 olhando o celular.
 
-Por isso a tarefa de 5 minutos publica um `diagnostico` em
+Por isso a tarefa de cada minuto publica um `diagnostico` em
 `farmacia/inventario`, que o app mostra na aba Situação:
 
 - quanto está **esperando transmissão**, por tipo, e os ponteiros de venda e

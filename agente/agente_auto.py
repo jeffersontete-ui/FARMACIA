@@ -240,6 +240,36 @@ CONSULTAS = {
          ORDER BY C.VENDA_NOTA_ID
     """,
 
+    # --- vendas somadas por lote, para explicar cada divergência ---
+    # A pergunta que a farmácia faz na frente de uma divergência é sempre a
+    # mesma: "esse remédio saiu?". Ir buscar venda a venda e somar no Python
+    # custa caro e sobe um monte de linha que ninguém lê — então a soma sai
+    # pronta do banco, uma linha por lote. SEM_RECEITA conta as vendas em
+    # que NÃO existe linha em VENDAS_PSICOTROPICOS: é o único lado desse
+    # teste em que dá para confiar (veja o --receitas).
+    "vendas_recentes_por_lote": """
+        SELECT P.REGISTRO_MS AS REGISTRO_MS,
+               IVL.NUM_LOTE AS NUM_LOTE,
+               SUM(IVL.QUANTIDADE) AS QUANTIDADE,
+               COUNT(*) AS LINHAS,
+               MAX(C.VENDA_DATA_HORA) AS ULTIMA,
+               MAX(C.VENDA_NOTA_ID) AS ULTIMA_VENDA,
+               SUM(CASE WHEN VP.VENDA_NOTA_ID IS NULL THEN 1 ELSE 0 END) AS SEM_RECEITA
+          FROM CAB_VENDAS C
+          JOIN ITEM_VENDAS I ON (I.VENDA_NOTA_ID = C.VENDA_NOTA_ID)
+                            AND ((I.CANCELADO = 'N') OR (I.CANCELADO IS NULL))
+          JOIN PRODUTOS P ON (P.PRODUTO_ID = I.PRODUTO_ID)
+          JOIN ITEM_VENDAS_LOTES IVL ON (IVL.VENDA_NOTA_ID = I.VENDA_NOTA_ID)
+                                    AND (IVL.ITEM_VENDA_ID = I.ITEM_VENDA_ID)
+                                    AND (IVL.PRODUTO_ID = I.PRODUTO_ID)
+          LEFT JOIN VENDAS_PSICOTROPICOS VP ON (VP.VENDA_NOTA_ID = I.VENDA_NOTA_ID)
+                                           AND (VP.ITEM_VENDA_ID = I.ITEM_VENDA_ID)
+         WHERE CAST(C.VENDA_DATA_HORA AS DATE) >= ?
+           AND (C.VENDA_RECEBIDO + C.SUBSIDIO + COALESCE(C.SUBSIDIO_ASSEFAZ, 0)) > 0
+           AND ((P.PSICOTROPICO = 'S') OR (P.ANTIMICROBIANO = 'S'))
+         GROUP BY P.REGISTRO_MS, IVL.NUM_LOTE
+    """,
+
     # --- diagnóstico: o que VENDAS_PSICOTROPICOS tem preenchido ---
     # A farmácia flagrou que "existe linha em VENDAS_PSICOTROPICOS" não é o
     # mesmo que "a receita foi lançada": o Digifarma parece criar a linha
@@ -1067,6 +1097,48 @@ def vendas_recentes(conexao, dias=DIAS_VENDAS_RECENTES):
     } for l in linhas]
 
 
+# quanto tempo para trás a divergência olha as vendas. 45 dias cobre o
+# inventário mais velho que a farmácia já teve na tela e ainda cabe numa
+# consulta agregada; venda mais antiga que isso não explica divergência de
+# hoje, só empurra número para a tela.
+DIAS_VENDAS_DIVERGENCIA = 45
+
+
+def vendas_recentes_por_lote(conexao, dias=DIAS_VENDAS_DIVERGENCIA):
+    """Quanto saiu de cada lote, somado no banco.
+
+    Serve à pergunta que a farmácia faz na frente de cada divergência:
+    "esse remédio saiu?". Sem isso a tela mostra a diferença e cala sobre a
+    causa mais comum dela — e a pessoa vai conferir na prateleira um lote
+    que simplesmente foi vendido.
+
+    Devolve {(ms, LOTE): {...}} com a chave já normalizada do mesmo jeito
+    que a comparação (só dígitos do M.S., lote em maiúsculas), senão o
+    cruzamento erra justamente nos cadastros de grafia diferente."""
+    corte = (datetime.date.today() - datetime.timedelta(days=dias)).isoformat()
+    por_lote = {}
+    for l in consultar(conexao, CONSULTAS['vendas_recentes_por_lote'], (corte,)):
+        chave = (so_digitos(l.get('REGISTRO_MS')), texto(l.get('NUM_LOTE')).upper())
+        if not chave[0] and not chave[1]:
+            continue
+        # o mesmo M.S. + lote pode vir de cadastros repetidos: soma tudo,
+        # como a comparação de saldo já faz
+        alvo = por_lote.setdefault(chave, {
+            'quantidade': 0.0, 'linhas': 0, 'semReceita': 0,
+            'ultima': '', 'ultimaVenda': None, 'dias': dias,
+        })
+        alvo['quantidade'] += numero(l.get('QUANTIDADE'))
+        alvo['linhas'] += int(numero(l.get('LINHAS')))
+        alvo['semReceita'] += int(numero(l.get('SEM_RECEITA')))
+        quando = texto_hora(l.get('ULTIMA'))
+        if quando > alvo['ultima']:
+            alvo['ultima'] = quando
+            alvo['ultimaVenda'] = l.get('ULTIMA_VENDA')
+    for alvo in por_lote.values():
+        alvo['quantidade'] = round(alvo['quantidade'], 3)
+    return por_lote
+
+
 def vendas_sem_receita_pendentes(conexao, config=None):
     """Vendas de controlado que ainda vão subir e estão sem receita
     escriturada. É a lista para corrigir ANTES do próximo envio — depois de
@@ -1355,6 +1427,23 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
             item['movimentoDesdeEnvio'] = pendente
             item['esperadoSngpc'] = esperado
         itens.append(item)
+    # As vendas de cada lote que diverge. É a primeira pergunta da farmácia
+    # diante de uma diferença — "esse saiu?" — e sem a resposta ela vai
+    # conferir na prateleira um lote que simplesmente foi vendido.
+    #
+    # Só nos itens COM motivo: quem bate não gera pergunta, e pendurar
+    # venda em 700 lotes certos engorda o farmacia/inventario à toa.
+    try:
+        saidas = vendas_recentes_por_lote(conexao)
+        for i in itens:
+            if not i.get('motivo'):
+                continue
+            venda = saidas.get((i['ms'], texto(i.get('lote')).upper()))
+            if venda and venda['linhas']:
+                i['vendas'] = venda
+    except Exception as e:
+        registrar('Falha ao cruzar as divergências com as vendas: %s' % e)
+
     # de que lista é cada item — psicotrópico ou antimicrobiano. Vai junto
     # com o item para o app e para a folha de conferência não precisarem
     # voltar ao banco só para separar as duas listas.
@@ -1661,18 +1750,71 @@ def publicar_vendas_recentes(config, db):
             diagnostico = None
     finally:
         fechar(conexao)
-    agora_iso = datetime.datetime.now().isoformat(timespec='seconds')
-    db.reference('farmacia/inventario/vendasRecentes').set(linhas)
-    db.reference('farmacia/inventario/vendasRecentesEm').set(agora_iso)
-    if sem_receita is not None:
-        db.reference('farmacia/inventario/vendasSemReceita').set(sem_receita)
-    # o diagnóstico sobe junto: é o que permite ver de fora do servidor por
-    # que ainda há divergência, sem precisar estar na máquina
-    if diagnostico is not None:
-        db.reference('farmacia/inventario/diagnostico').set(diagnostico)
-    registrar('Vendas recentes publicadas: %d linha(s); %s sem receita para o próximo envio.'
-              % (len(linhas), len(sem_receita) if sem_receita is not None else '?'))
+
+    # Só escreve o que mudou. A fila roda de minuto em minuto para o botão do
+    # app responder rápido, e numa farmácia a maior parte desses minutos não
+    # tem venda nenhuma de controlado — reescrever a mesma lista 1440 vezes
+    # por dia gasta banda do servidor e faz o app repintar a tela à toa.
+    # O carimbo da hora acompanha: se nada mudou, ele também não muda, e
+    # "atualizado agora" para de mentir sobre dado velho.
+    escritos = []
+    for caminho, valor in (('vendasRecentes', linhas),
+                           ('vendasSemReceita', sem_receita),
+                           ('diagnostico', diagnostico)):
+        if valor is None:      # a consulta falhou: não apaga o que está lá
+            continue
+        if not mudou(caminho, valor):
+            continue
+        db.reference('farmacia/inventario/%s' % caminho).set(valor)
+        escritos.append(caminho)
+
+    if escritos:
+        db.reference('farmacia/inventario/vendasRecentesEm').set(
+            datetime.datetime.now().isoformat(timespec='seconds'))
+        registrar('Publicado: %s (%d venda(s); %s sem receita para o próximo envio).'
+                  % (', '.join(escritos), len(linhas),
+                     len(sem_receita) if sem_receita is not None else '?'))
     return linhas
+
+
+ARQUIVO_ULTIMO = os.path.join(PASTA, 'ultimo_publicado.json')
+
+
+def mudou(caminho, valor):
+    """Diz se este ramo mudou desde a última publicação, e já anota o novo.
+
+    Guarda impressão digital, não o conteúdo: o arquivo fica pequeno e não
+    vira uma segunda cópia dos dados no disco, com a chance de divergir da
+    primeira. Em qualquer dúvida — arquivo ilegível, hash que não bate,
+    erro de escrita — responde que MUDOU. Publicar à toa custa banda;
+    deixar de publicar esconde venda da farmácia, que é bem pior."""
+    import hashlib
+    try:
+        digital = hashlib.sha256(
+            json.dumps(valor, sort_keys=True, default=str).encode('utf-8')).hexdigest()
+    except Exception:
+        return True
+
+    try:
+        with open(ARQUIVO_ULTIMO, encoding='utf-8') as f:
+            anotado = json.load(f)
+        if not isinstance(anotado, dict):
+            anotado = {}
+    except Exception:
+        anotado = {}
+
+    if anotado.get(caminho) == digital:
+        return False
+
+    anotado[caminho] = digital
+    try:
+        with open(ARQUIVO_ULTIMO, 'w', encoding='utf-8') as f:
+            json.dump(anotado, f)
+    except Exception as e:
+        # sem conseguir anotar, a próxima rodada publica de novo — que é o
+        # lado seguro de errar
+        registrar('Não consegui anotar o que já foi publicado: %s' % e)
+    return True
 
 
 URL_AGENTE = ('https://raw.githubusercontent.com/jeffersontete-ui/FARMACIA'
