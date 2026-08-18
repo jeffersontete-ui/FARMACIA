@@ -10,6 +10,7 @@ validar uma alteração no agente_auto.py antes de levar ao servidor.
 """
 
 import datetime
+import json
 import os
 import shutil
 import sys
@@ -842,6 +843,52 @@ def principal():
              saida[:200])
     conferir('--receitas com texto no lugar dos dias não inventa 0 dias',
              not ag.modo_receitas({}, 'abc'))
+
+    # --- publicar as regras do Firebase sozinho --------------------------
+    # O agente passou a publicar as regras junto com a atualização, o que
+    # tira o passo manual mas põe a tranca do banco na mão de um download.
+    # A conferência é o que separa uma coisa da outra.
+    arquivo_regras = os.path.join(os.path.dirname(os.path.abspath(ag.__file__)),
+                                  'regras-firebase.json')
+    with open(arquivo_regras, encoding='utf-8') as f:
+        regras_reais = json.load(f)
+
+    conferir('as regras do próprio repositório passam na conferência',
+             ag.conferir_regras(regras_reais) is regras_reais)
+
+    def recusa(rotulo, regras, pedaco):
+        try:
+            ag.conferir_regras(regras)
+        except RuntimeError as e:
+            conferir(rotulo, pedaco in str(e), str(e))
+        else:
+            conferir(rotulo, False, 'passou e não devia')
+
+    recusa('arquivo sem "rules" não é publicado', {'farmacia': {}}, 'não são as regras')
+    recusa('raiz aberta não é publicada',
+           {'rules': {'.read': True, '.write': False}}, 'começar fechada')
+
+    sem_no = json.loads(json.dumps(regras_reais))
+    del sem_no['rules']['farmacia']['agentes']
+    recusa('regras de outro projeto não são publicadas', sem_no, 'agentes')
+
+    aberta = json.loads(json.dumps(regras_reais))
+    aberta['rules']['farmacia']['inventario']['.read'] = True
+    recusa('um ".read": true escondido no meio barra a publicação',
+           aberta, 'farmacia/inventario')
+
+    aberta_texto = json.loads(json.dumps(regras_reais))
+    aberta_texto['rules']['farmacia']['relatorios']['.write'] = 'true'
+    recusa('"true" como texto também é regra aberta',
+           aberta_texto, 'farmacia/relatorios')
+
+    conferir('toda ação que o app pede está liberada nas regras',
+             all(("=== '%s'" % acao) in
+                 regras_reais['rules']['farmacia']['comando']['acao']['.validate']
+                 for acao in ag.RELATORIOS),
+             ', '.join(a for a in ag.RELATORIOS
+                       if ("=== '%s'" % a) not in
+                       regras_reais['rules']['farmacia']['comando']['acao']['.validate']))
 
     shutil.rmtree(pasta, ignore_errors=True)
     print('\n%s\n' % ('%d falha(s)' % len(falhas) if falhas else 'Tudo passou.'))

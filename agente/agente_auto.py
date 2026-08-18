@@ -1747,13 +1747,163 @@ def atualizar_agente(config):
     except Exception as e:
         registrar('Não consegui limpar os backups antigos: %s' % e)
 
+    # As regras do banco andam junto com o agente: função nova quase sempre
+    # quer uma ação nova liberada, e enquanto o JSON não é copiado à mão para
+    # o console o botão novo é recusado sem dizer por quê. Vai aqui de
+    # propósito, e não no --auto: atualizar é o momento em que o servidor se
+    # alinha com o repositório. Falhar aqui não desfaz a atualização.
+    recado_regras = ''
+    try:
+        recado_regras = ' ' + publicar_regras(config)
+    except Exception as e:
+        recado_regras = ' Não consegui publicar as regras do Firebase: %s' % e
+        registrar(recado_regras.strip())
+
     depois = versao_do_agente()
     if depois.get('hash') == antes.get('hash'):
-        return 'O agente já estava na versão mais nova (%s).' % antes.get('hash')
+        return ('O agente já estava na versão mais nova (%s).%s'
+                % (antes.get('hash'), recado_regras))
     return ('Agente atualizado: %s -> %s (%d bytes). Backup em %s. A próxima '
-            'execução já roda a versão nova.'
+            'execução já roda a versão nova.%s'
             % (antes.get('hash'), depois.get('hash'), depois.get('bytes'),
-               os.path.basename(backup)))
+               os.path.basename(backup), recado_regras))
+
+
+URL_REGRAS = ('https://raw.githubusercontent.com/jeffersontete-ui/FARMACIA'
+              '/main/agente/regras-firebase.json')
+
+# Sem estes nós o arquivo baixado não é as regras deste projeto, e publicar
+# seria trocar a tranca da porta por um arquivo qualquer.
+NOS_OBRIGATORIOS = ('inventario', 'comando', 'relatorios', 'autorizados', 'agentes')
+
+
+def conferir_regras(regras):
+    """Recusa o que não pode ser publicado.
+
+    Publicar regra é mexer na tranca do banco. O agente já baixa e executa o
+    próprio código do mesmo repositório, então a confiança é a mesma — mas
+    uma regra frouxa não quebra nada na hora, só abre o banco calada, e
+    ninguém percebe. Por isso a conferência é explícita."""
+    if not isinstance(regras, dict) or not isinstance(regras.get('rules'), dict):
+        raise RuntimeError('o arquivo baixado não tem "rules" — não são as regras')
+
+    raiz = regras['rules']
+    if raiz.get('.read') is not False or raiz.get('.write') is not False:
+        raise RuntimeError('a raiz precisa começar fechada (".read": false, ".write": false)')
+
+    farmacia = raiz.get('farmacia')
+    if not isinstance(farmacia, dict):
+        raise RuntimeError('não achei o nó "farmacia" nas regras')
+    faltando = [n for n in NOS_OBRIGATORIOS if n not in farmacia]
+    if faltando:
+        raise RuntimeError('as regras não têm %s — não são as deste projeto'
+                           % ', '.join(faltando))
+
+    # Um ".read": true perdido no meio libera a subárvore inteira para
+    # qualquer pessoa logada. É o erro que passa despercebido numa revisão.
+    def varrer(no, caminho):
+        if not isinstance(no, dict):
+            return
+        for chave, valor in no.items():
+            if chave in ('.read', '.write') and valor in (True, 'true'):
+                raise RuntimeError('regra aberta em %s: %s liberado para todos'
+                                   % (caminho or 'raiz', chave))
+            varrer(valor, '%s/%s' % (caminho, chave) if caminho else chave)
+
+    varrer(raiz, '')
+    return regras
+
+
+def token_de_administrador(config):
+    """Um token OAuth da chave de serviço, com escopo para mexer no banco.
+
+    O firebase-admin fala com os DADOS do banco; as REGRAS ficam noutra
+    porta, que só aceita token. A chave de serviço que já está no servidor
+    serve para as duas coisas — o que muda é o escopo pedido."""
+    try:
+        from google.oauth2 import service_account
+        from google.auth.transport.requests import Request
+    except ImportError:
+        raise RuntimeError('falta google-auth ou requests, que vêm com o '
+                           'firebase-admin. Rode: pip install google-auth requests')
+
+    if not os.path.exists(config['chave_firebase']):
+        raise RuntimeError('não achei a chave %s' % config['chave_firebase'])
+
+    credencial = service_account.Credentials.from_service_account_file(
+        config['chave_firebase'],
+        scopes=['https://www.googleapis.com/auth/firebase.database',
+                'https://www.googleapis.com/auth/userinfo.email'])
+    credencial.refresh(Request())
+    return credencial.token
+
+
+def chamar_regras(config, token, corpo=None):
+    """GET ou PUT em /.settings/rules.json. Devolve o texto da resposta."""
+    import urllib.error
+    import urllib.request
+    url = str(config['url_banco']).rstrip('/') + '/.settings/rules.json'
+    pedido = urllib.request.Request(
+        url,
+        data=None if corpo is None else corpo.encode('utf-8'),
+        method='GET' if corpo is None else 'PUT',
+        headers={'Authorization': 'Bearer ' + token,
+                 'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(pedido, timeout=60) as resposta:
+            return resposta.read().decode('utf-8')
+    except urllib.error.HTTPError as e:
+        detalhe = ''
+        try:
+            detalhe = e.read().decode('utf-8', 'replace')[:300]
+        except Exception:
+            pass
+        if e.code in (401, 403):
+            raise RuntimeError(
+                'o Firebase recusou (%s). A chave de serviço precisa do papel '
+                '"Firebase Realtime Database Admin" no console do Google Cloud '
+                '> IAM. Detalhe: %s' % (e.code, detalhe))
+        raise RuntimeError('o Firebase recusou (%s): %s' % (e.code, detalhe))
+
+
+def publicar_regras(config, origem=None):
+    """Baixa as regras do GitHub e publica no Firebase, se mudaram.
+
+    A farmácia vinha copiando o JSON à mão para o console a cada função nova
+    do app — e enquanto não copiava, o botão novo era recusado sem explicar
+    por quê. O servidor já tem a chave de administrador; não havia motivo
+    para o passo manual existir."""
+    import urllib.request
+    url = origem or config.get('url_regras') or URL_REGRAS
+    with urllib.request.urlopen(url, timeout=60) as resposta:
+        baixado = resposta.read().decode('utf-8')
+
+    novas = conferir_regras(json.loads(baixado))
+
+    token = token_de_administrador(config)
+    try:
+        atuais = json.loads(chamar_regras(config, token))
+    except Exception as e:
+        # não saber o que está publicado não impede publicar; só tira a
+        # chance de dizer "já estavam iguais"
+        registrar('Não consegui ler as regras publicadas: %s' % e)
+        atuais = None
+
+    if atuais == novas:
+        return 'As regras do Firebase já estavam iguais às do GitHub.'
+
+    chamar_regras(config, token, json.dumps(novas, ensure_ascii=False, indent=2))
+    return 'Regras do Firebase publicadas a partir do GitHub.'
+
+
+def modo_regras(config):
+    """Publica as regras à mão, do servidor."""
+    try:
+        print(publicar_regras(config))
+        return True
+    except Exception as e:
+        print('Não consegui publicar as regras: %s' % e)
+        return False
 
 
 def linhas_do_lote_para_ajuste(conexao, info, ms, lote):
@@ -3639,6 +3789,8 @@ def principal():
                         help='que colunas de VENDAS_PSICOTROPICOS estão preenchidas em cada venda')
     parser.add_argument('--atualizar', action='store_true',
                         help='baixa a versão mais nova do agente do GitHub e se substitui')
+    parser.add_argument('--regras', action='store_true',
+                        help='publica as regras do Firebase a partir do GitHub')
     parser.add_argument('--config', metavar='CHAVE=VALOR',
                         help='muda uma chave do agente_config.json sem editar JSON à mão')
     args = parser.parse_args()
@@ -3673,6 +3825,8 @@ def principal():
         if args.atualizar:
             print(atualizar_agente(config))
             raise SystemExit(0)
+        if args.regras:
+            raise SystemExit(0 if modo_regras(config) else 1)
         if args.produto is not None:
             raise SystemExit(0 if modo_produto(config, args.produto) else 1)
         if args.comparacao is not None:
