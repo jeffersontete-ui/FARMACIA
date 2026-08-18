@@ -1120,6 +1120,18 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
         'arquivoXml': os.path.basename(caminho_xml) if caminho_xml else None,
         'envioPorApi': texto(ponteiros.get('ENVIO_API')).upper() in ('S', 'T', '1', 'TRUE'),
         'ponteiroForcado': ponteiro_forcado,
+        # O aceite do INVENTÁRIO o Digifarma guarda — é o INVENTARIO_ACEITO.
+        # O de cada envio de movimentação, não: para esse a aba Aceites
+        # continua sendo marcada à mão. São coisas diferentes e o app
+        # precisa dizer qual é qual.
+        'inventarioAceito': texto(ponteiros.get('INVENTARIO_ACEITO')).upper()
+                            in ('S', 'T', '1', 'TRUE'),
+        'inventarioEnviadoEm': texto(ponteiros.get('ULTIMO_ENVIO_INVENTARIO'))[:10] or None,
+        'periodoTransmitido': texto(ponteiros.get('ULTIMO_PERIODO_TRANSMITIDO')),
+        # qual máquina rodou a última sincronização: é o que responde
+        # "quem transmitiu?" quando o ponteiro daqui não avança
+        'terminalSinc': texto(ponteiros.get('ID_TERMINAL_SINC')),
+        'sincronizadoEm': texto_hora(ponteiros.get('DATA_HORA_SINC')),
     }
 
     if dados_xml:
@@ -3176,6 +3188,18 @@ def classificar_inventario_anvisa(conexao):
                 temProdutoId=bool(campo_produto))
 
 
+# O que a tabela SNGPC pode publicar. Fora daqui ficam EMAIL, SENHA,
+# CPF_RESPONSAVEL_SNGPC, os HASH e o LINK_API: credencial e dado pessoal
+# não sobem para o Firebase nem para a tela de ninguém.
+COLUNAS_SNGPC_PUBLICAS = {
+    'ULTIMO_ENVIO_SNGPC', 'ULTIMO_ENVIO_INVENTARIO', 'ULTIMO_PERIODO_TRANSMITIDO',
+    'ULT_ENTRADA_CAB_NOTA_ID', 'ULT_SAIDA_VENDA_NOTA_ID', 'ULT_SAIDA_PERDA_ID',
+    'ULT_SAIDA_TRANSFERENCIA_ID', 'DATA_HORA_INICIO_SINC', 'DATA_HORA_SINC',
+    'ID_TERMINAL_SINC', 'DIAS_EXECUCAO_INVENT_SINC', 'ULTIMA_DT_INVENTARIO_SINC',
+    'INVENTARIO_ACEITO', 'ENVIO_API', 'XML_MANIPULACAO', 'EXIBE_MSG_MOVIMENTACAO',
+}
+
+
 def snapshot_diagnostico(conexao):
     """Os números que respondem "por que ainda há divergência", num formato
     que cabe na tela do celular. Sobe junto com as vendas, de 5 em 5
@@ -3213,12 +3237,13 @@ def snapshot_diagnostico(conexao):
         'ultimoEnvio': texto(ponteiros.get('ULTIMO_ENVIO_SNGPC'))[:10] or None,
         'pendentes': pendentes,
         'inventarioSngpc': inventario,
-        # A tabela SNGPC inteira, como está. É aqui que um campo de retorno
-        # ou aceite da ANVISA apareceria, se o Digifarma guardasse algum —
-        # e olhar é mais barato que supor. A consulta já lia S.*; o que
-        # faltava era mostrar.
+        # Da tabela SNGPC, só o que serve para diagnóstico — por LISTA DE
+        # PERMISSÃO, não por bloqueio. Ela guarda EMAIL e SENHA do SNGPC e o
+        # CPF do responsável; publicar "tudo menos o que eu lembrar de tirar"
+        # é como uma credencial vaza. Coluna nova só aparece aqui depois de
+        # alguém olhar para ela e decidir.
         'tabelaSngpc': {texto(k): texto(v)[:60] for k, v in ponteiros.items()
-                        if v is not None},
+                        if v is not None and texto(k).upper() in COLUNAS_SNGPC_PUBLICAS},
     }
 
 
