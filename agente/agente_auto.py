@@ -88,6 +88,37 @@ CONFIG_PADRAO = {
 #
 # INVENTARIO_SNGPC é a tabela que o Anvisa.exe apaga e regrava com o
 # inventário lido do site da ANVISA. É o lado "ANVISA" da comparação.
+# ============================================================
+# O QUE É "A RECEITA FOI LANÇADA"
+# ============================================================
+# Por muito tempo o projeto testou "existe linha em VENDAS_PSICOTROPICOS".
+# A farmácia derrubou isso em 18/08/2026: o app dizia que todas as receitas
+# do dia estavam lançadas, e ela sabia que não tinha lançado. O Digifarma
+# cria a linha JUNTO COM A VENDA e recebe os dados da receita depois — nas
+# 46 vendas medidas, nenhuma estava sem linha. O teste nunca acusava nada,
+# e o "0 vendas com problema" de todo log era falso.
+#
+# O --receitas mediu coluna por coluna, e o desenho apareceu limpo. Nas duas
+# vendas que a farmácia ainda não tinha lançado (as duas últimas do dia,
+# 19:03 e 18:09) estavam vazias exatamente seis colunas:
+#
+#   PRESCRITOR, COMPRADOR, COMPRADOR_DOCUMENTO,
+#   RECEITUARIO_NUMERO, CONSELHO_NUMERO, PACIENTE_ID
+#
+# As seis servem igual. Ficou PRESCRITOR por um motivo prático: é
+# certamente coluna de texto, então TRIM() e comparação com '' são seguros.
+# RECEITUARIO_NUMERO poderia ser numérica, e aí o mesmo teste quebraria.
+#
+# O que NÃO serve, e por pouco:
+#   PACIENTE e PACIENTE_IDADE  vazias em 4 de 46 — duas delas em vendas
+#                              que a farmácia LANÇOU. Acusariam receita
+#                              boa como faltante;
+#   PACIENTE_SEXO              preenchida até nas duas não lançadas;
+#   RECEITUARIO_TIPO,          esparsas: 25 e 1 de 46. São campos
+#   USO_MEDICAMENTO            opcionais, não marca de lançamento.
+SQL_RECEITA_LANCADA = (
+    "(VP.VENDA_NOTA_ID IS NOT NULL AND COALESCE(TRIM(VP.PRESCRITOR), '') <> '')")
+
 CONSULTAS = {
 
     # ponteiros do último envio + CNPJ da farmácia + flag de envio por API
@@ -199,7 +230,7 @@ CONSULTAS = {
                C.VENDA_DATA_HORA AS QUANDO,
                P.PRODUTO, P.REGISTRO_MS,
                IVL.NUM_LOTE, IVL.QUANTIDADE,
-               VP.VENDA_NOTA_ID AS RECEITA
+               CASE WHEN {RECEITA} THEN 1 ELSE 0 END AS RECEITA
           FROM CAB_VENDAS C
           JOIN ITEM_VENDAS I ON (I.VENDA_NOTA_ID = C.VENDA_NOTA_ID)
                             AND ((I.CANCELADO = 'N') OR (I.CANCELADO IS NULL))
@@ -236,7 +267,7 @@ CONSULTAS = {
          WHERE C.VENDA_NOTA_ID > ?
            AND (C.VENDA_RECEBIDO + C.SUBSIDIO + COALESCE(C.SUBSIDIO_ASSEFAZ, 0)) > 0
            AND ((P.PSICOTROPICO = 'S') OR (P.ANTIMICROBIANO = 'S'))
-           AND VP.VENDA_NOTA_ID IS NULL
+           AND NOT ({RECEITA})
          ORDER BY C.VENDA_NOTA_ID
     """,
 
@@ -254,7 +285,7 @@ CONSULTAS = {
                COUNT(*) AS LINHAS,
                MAX(C.VENDA_DATA_HORA) AS ULTIMA,
                MAX(C.VENDA_NOTA_ID) AS ULTIMA_VENDA,
-               SUM(CASE WHEN VP.VENDA_NOTA_ID IS NULL THEN 1 ELSE 0 END) AS SEM_RECEITA
+               SUM(CASE WHEN {RECEITA} THEN 0 ELSE 1 END) AS SEM_RECEITA
           FROM CAB_VENDAS C
           JOIN ITEM_VENDAS I ON (I.VENDA_NOTA_ID = C.VENDA_NOTA_ID)
                             AND ((I.CANCELADO = 'N') OR (I.CANCELADO IS NULL))
@@ -302,8 +333,7 @@ CONSULTAS = {
                P.PRODUTO, P.REGISTRO_MS,
                I.ITEMVEND_QUANT AS QUANTIDADE,
                IVL.NUM_LOTE,
-               VP.VENDA_NOTA_ID AS RECEITA,
-               V.VENDEDOR
+               CASE WHEN {RECEITA} THEN 1 ELSE 0 END AS RECEITA
           FROM CAB_VENDAS C
           JOIN ITEM_VENDAS I ON (I.VENDA_NOTA_ID = C.VENDA_NOTA_ID)
                             AND ((I.CANCELADO = 'N') OR (I.CANCELADO IS NULL))
@@ -313,11 +343,10 @@ CONSULTAS = {
           LEFT JOIN ITEM_VENDAS_LOTES IVL ON (IVL.VENDA_NOTA_ID = I.VENDA_NOTA_ID)
                                          AND (IVL.ITEM_VENDA_ID = I.ITEM_VENDA_ID)
                                          AND (IVL.PRODUTO_ID = I.PRODUTO_ID)
-          LEFT JOIN VENDEDORES V ON (V.VENDEDOR_ID = VP.CONF_VENDEDOR_ID)
          WHERE CAST(C.VENDA_DATA_HORA AS DATE) >= ?
            AND (C.VENDA_RECEBIDO + C.SUBSIDIO + COALESCE(C.SUBSIDIO_ASSEFAZ, 0)) > 0
            AND ((P.PSICOTROPICO = 'S') OR (P.ANTIMICROBIANO = 'S'))
-           AND (VP.VENDA_NOTA_ID IS NULL
+           AND (NOT ({RECEITA})
                 OR IVL.NUM_LOTE IS NULL OR IVL.NUM_LOTE = ''
                 OR P.REGISTRO_MS IS NULL OR P.REGISTRO_MS = '')
          ORDER BY C.VENDA_NOTA_ID
@@ -488,6 +517,14 @@ CONSULTAS = {
 # por perda — o vencido que sai do estoque, por exemplo. Reconstruir isso
 # a partir das compras dá números inventados: o lote 3G4313 tem 63
 # comprados, 3 vendidos e LOTE_QUANTIDADE = 0.
+# O critério de receita entra nas consultas por aqui, num lugar só. Escrever
+# a mesma condição em três SELECTs foi exatamente como o critério errado
+# sobreviveu tanto tempo: consertar um e esquecer os outros dois é fácil
+# demais quando o texto está repetido.
+for _nome, _sql in list(CONSULTAS.items()):
+    if '{RECEITA}' in _sql:
+        CONSULTAS[_nome] = _sql.replace('{RECEITA}', SQL_RECEITA_LANCADA)
+
 COLUNAS_SALDO = ('LOTE_QUANTIDADE', 'QUANTIDADE_LOTE', 'SALDO', 'SALDO_LOTE',
                  'SALDO_ATUAL', 'ESTOQUE', 'ESTOQUE_ATUAL', 'QUANTIDADE_ATUAL',
                  'QTD_ATUAL', 'QUANTIDADE_ESTOQUE', 'QUANTIDADE_ATU', 'QTD_SALDO')

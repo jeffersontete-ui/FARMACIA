@@ -164,10 +164,12 @@
         <div id="lista-vendas-recentes" class="pilha"></div>
         <p class="nota">Atualizado pela tarefa que roda a cada minuto no servidor.
         Uma linha por lote: a mesma venda aparece duas vezes quando sai de dois lotes.
-        <strong>SEM RECEITA</strong> marca a venda que não tem nenhum lançamento de
-        receita no Digifarma. A ausência dessa marca <strong>não</strong> garante que a
-        receita esteja completa: o Digifarma cria o lançamento junto com a venda e recebe
-        os dados depois, então só a falta da linha é prova.</p>
+        <strong>SEM RECEITA</strong> marca a venda cuja receita ainda não foi lançada
+        no Digifarma, e <strong>receita ok</strong> marca a que já foi. O teste é o campo
+        do <em>prescritor</em> estar preenchido — não a mera existência do registro, que
+        o Digifarma cria junto com a venda e por isso não prova nada. O critério foi
+        medido pelo botão <em>Receitas lançadas</em>, contra vendas que a farmácia
+        confirmou uma a uma.</p>
       </div>
     </section>
 

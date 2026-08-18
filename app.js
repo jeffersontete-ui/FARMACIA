@@ -1202,18 +1202,15 @@ function pintarVendasRecentes() {
     direita.style.display = 'flex';
     direita.style.gap = '10px';
     direita.style.alignItems = 'center';
-    // Só o NEGATIVO é confiável. O que o agente sabe é se existe linha em
-    // VENDAS_PSICOTROPICOS: não existir prova que a receita não foi
-    // lançada, mas existir NÃO prova que foi — o Digifarma parece criar a
-    // linha na venda e receber os dados da receita depois. A farmácia
-    // pegou isso: o app dizia "receita ok" em venda que ela sabia não ter
-    // lançado. Enquanto o critério certo não é conhecido, some o rótulo
-    // verde e fica só o alerta.
-    if (v.receita === false) {
-      const receita = criar('span', 'estado estado-recusado');
-      receita.textContent = 'SEM RECEITA';
-      direita.appendChild(receita);
-    }
+    /* O rótulo verde já esteve aqui, saiu, e voltou — mas só agora com base
+       para existir. Antes o agente testava se havia LINHA em
+       VENDAS_PSICOTROPICOS, e o Digifarma cria a linha junto com a venda:
+       dizia "receita ok" em venda que a farmácia sabia não ter lançado.
+       Agora o teste é o PRESCRITOR preenchido, medido pelo --receitas contra
+       vendas que a farmácia confirmou uma a uma. Os dois lados valem. */
+    const receita = criar('span', v.receita ? 'estado estado-aceito' : 'estado estado-recusado');
+    receita.textContent = v.receita ? 'receita ok' : 'SEM RECEITA';
+    direita.appendChild(receita);
     const qtd = criar('span', 'estado estado-aceito');
     qtd.textContent = Number(v.quantidade || 0) + ' un';
     const hora = criar('span', 'sublinha');

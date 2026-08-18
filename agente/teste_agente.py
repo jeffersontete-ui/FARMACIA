@@ -873,6 +873,44 @@ def principal():
     conferir('--receitas com texto no lugar dos dias não inventa 0 dias',
              not ag.modo_receitas({}, 'abc'))
 
+    # --- o critério de "receita lançada" ----------------------------------
+    # O critério antigo era "existe linha em VENDAS_PSICOTROPICOS", e o
+    # Digifarma cria a linha JUNTO com a venda: nas 46 vendas medidas em
+    # 18/08/2026, nenhuma estava sem linha. O teste nunca acusava nada.
+    #
+    # O --receitas mediu coluna por coluna. Nas duas vendas que a farmácia
+    # ainda não tinha lançado, PRESCRITOR estava vazio; nas 44 lançadas,
+    # preenchido. É esse o teste agora, e ele tem que estar nas TRÊS
+    # consultas — escrever a condição três vezes foi como o critério errado
+    # sobreviveu tanto tempo.
+    # A quarta da lista é a que cruza divergência com venda, e foi
+    # justamente a que eu esqueci na primeira passada — o teste pegou.
+    for nome_consulta in ('vendas_recentes', 'vendas_problema',
+                          'vendas_sem_receita_pendentes',
+                          'vendas_recentes_por_lote'):
+        sql_consulta = ag.CONSULTAS[nome_consulta]
+        conferir('%s testa o PRESCRITOR, não a existência da linha' % nome_consulta,
+                 'PRESCRITOR' in sql_consulta and '{RECEITA}' not in sql_consulta,
+                 sql_consulta[:80])
+
+    conferir('nenhuma consulta ficou com o critério antigo',
+             not any('VP.VENDA_NOTA_ID IS NULL' in q for q in ag.CONSULTAS.values()))
+
+    # PACIENTE parecia servir e não serve: estava vazio em 4 de 46, e duas
+    # dessas eram vendas que a farmácia LANÇOU. Escolher essa coluna faria o
+    # app acusar receita boa como faltante.
+    conferir('o critério não usa PACIENTE, que acusaria receita boa',
+             'VP.PACIENTE' not in ag.SQL_RECEITA_LANCADA, ag.SQL_RECEITA_LANCADA)
+    # PACIENTE_SEXO vinha preenchido ATÉ nas duas não lançadas
+    conferir('o critério não usa PACIENTE_SEXO, que não distingue nada',
+             'PACIENTE_SEXO' not in ag.SQL_RECEITA_LANCADA)
+    # linha ausente tem que continuar contando como sem receita
+    conferir('linha ausente continua sendo "sem receita"',
+             'VP.VENDA_NOTA_ID IS NOT NULL' in ag.SQL_RECEITA_LANCADA)
+    # TRIM porque campo com espaços não é campo preenchido
+    conferir('espaço em branco não conta como receita lançada',
+             'TRIM(' in ag.SQL_RECEITA_LANCADA)
+
     # --- só publica o que mudou -------------------------------------------
     # A fila passou a rodar de minuto em minuto para o botão do app responder
     # rápido. Sem isto, seriam 1440 reescritas por dia da mesma lista.
