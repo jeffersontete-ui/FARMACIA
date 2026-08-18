@@ -1068,7 +1068,21 @@ acrescente o UID dele em `farmacia/autorizados`.
 
 ## Testes
 
+**Os dois, sempre.** São suítes separadas porque são linguagens separadas, e
+rodar só uma é como conferir metade da farmácia:
+
 ```
-node teste-fumaca.js .        app: sintaxe, ids, manifest, service worker
-python agente/teste_agente.py agente: XML, cruzamento, saldos, arquivamento
+python agente/teste_agente.py   agente: XML, cruzamento, saldos, arquivamento
+node teste-fumaca.js .          app: sintaxe, ids, manifest, service worker
 ```
+
+Isso não é conselho de manual. Em 18/08/2026 uma varredura do projeto inteiro
+achou o `teste-fumaca.js` **falhando** — e falhando havia tempo, porque só a
+suíte do agente vinha sendo rodada. O caso era o inverso do que parece: o
+**teste** estava velho, não o código. Ele ainda cobrava a regra antiga de
+"pendência de cadastro" (pelo motivo do item), e o código já usava a regra
+nova (pelo M.S. em falta) — mudada por causa da amoxicilina da Cimed, que
+passou meses sem escrituração justamente por causa disso.
+
+Um teste que ninguém roda não protege nada; e um teste velho que ninguém roda
+mente sobre o código quando alguém finalmente o executa.

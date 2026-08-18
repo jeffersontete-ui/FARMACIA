@@ -1667,6 +1667,18 @@ def recado_de_permissao(config):
 
 def publicar(db, dados):
     db.reference('farmacia/inventario').set(dados)
+    # O .set() acima troca o nó INTEIRO. Se alguma consulta falhou ao montar
+    # os dados, o ramo dela nem entra no dicionário — e some do Firebase.
+    #
+    # Antes isso se curava sozinho: a fila regravava as vendas a cada
+    # rodada, desse jeito ou daquele. Depois que ela passou a só escrever o
+    # que mudou, não cura mais: a marca diz "igual ao que já publiquei", o
+    # banco não tem nada, e o ramo fica sumido até uma venda nova acontecer.
+    #
+    # Esquecer as marcas devolve a cura: a próxima rodada da fila republica
+    # tudo. Custa uma escrita por hora — o preço certo por não deixar a
+    # farmácia sem a lista de vendas na tela.
+    esquecer_publicado()
     inventario = dados.get('inventario', {})
     registrar('Publicado: %d itens, %d divergências de XML, %d vendas com problema.' % (
         len(dados.get('itens', [])),
@@ -1795,6 +1807,17 @@ def publicar_vendas_recentes(config, db):
 
 
 ARQUIVO_ULTIMO = os.path.join(PASTA, 'ultimo_publicado.json')
+
+
+def esquecer_publicado():
+    """Apaga as marcas do que já foi publicado, para a próxima rodada da
+    fila reescrever tudo. Chamado depois de qualquer escrita que troque o
+    nó inteiro: aí o agente não sabe mais o que ficou lá."""
+    try:
+        if os.path.exists(ARQUIVO_ULTIMO):
+            os.remove(ARQUIVO_ULTIMO)
+    except Exception as e:
+        registrar('Não consegui esquecer o que já foi publicado: %s' % e)
 
 
 def mudou(caminho, valor):
@@ -3138,14 +3161,6 @@ de conferir a prateleira.</p>
     print('\nGravado em %s' % caminho)
     print('Abra o arquivo (clique duas vezes) e imprima com Ctrl+P.')
     return True
-
-
-ROTULO_IMPRESSO = {
-    'so_na_anvisa': 'O SNGPC tem e o Digifarma não',
-    'quantidade': 'Contagem diferente dos dois lados',
-    'anvisa_zerada_lote': 'Lote zerado na ANVISA',
-    'anvisa_zerada_produto': 'Zerado na ANVISA',
-}
 
 
 def modo_negativos(config, filtro=''):
