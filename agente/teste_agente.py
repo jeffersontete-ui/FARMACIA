@@ -894,6 +894,15 @@ def principal():
         # gastar banda.
         with open(ag.ARQUIVO_ULTIMO, 'w', encoding='utf-8') as f:
             f.write('{ isto nao e json')
+        # O buraco que o "só publica o que mudou" abriu: publicar() troca o
+        # nó INTEIRO, e um ramo que faltou nos dados some do Firebase. Se as
+        # marcas continuassem valendo, a fila diria "igual ao que publiquei"
+        # e o ramo ficaria sumido até uma venda nova acontecer.
+        conferir('esquecer as marcas faz a fila republicar tudo',
+                 (ag.esquecer_publicado() or ag.mudou('vendasRecentes', lista)) is True)
+        conferir('esquecer não quebra quando não há marca nenhuma',
+                 (ag.esquecer_publicado() or True) is True)
+
         conferir('marca ilegível publica de novo em vez de calar',
                  ag.mudou('vendasRecentes', lista))
         conferir('valor que não vira JSON publica de novo',

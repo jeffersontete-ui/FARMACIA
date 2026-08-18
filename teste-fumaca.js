@@ -180,12 +180,23 @@ if (exportado.fimDaValidade) {
 if (exportado.divergenciasDeSaldo) {
   conferir('produto sem M.S. fica fora da contagem de divergências', () => {
     const itens = [
-      { diferenca: 3, motivo: 'quantidade' },
-      { diferenca: 4, motivo: 'sem_ms' },
-      { diferenca: 0, motivo: undefined }
+      { ms: '1234567890123', diferenca: 3, motivo: 'quantidade' },
+      { ms: '', diferenca: 4, motivo: 'sem_ms' },
+      { ms: '9999999999999', diferenca: 0, motivo: undefined }
     ];
     igual(exportado.divergenciasDeSaldo(itens).length, 1, 'divergências de estoque');
     igual(exportado.pendenciasDeCadastro(itens).length, 1, 'pendências de cadastro');
+  });
+
+  /* O caso que fez a pendência de cadastro passar a olhar o M.S. em vez do
+     motivo: cada item tem UM motivo só, e 'negativo' ganha de 'sem_ms' na
+     classificação. Sem isto, um controlado sem registro e com saldo
+     negativo saía rotulado de negativo e sumia da lista de cadastro — foi
+     assim que a amoxicilina da Cimed passou meses sem ser escriturada. */
+  conferir('sem M.S. E negativo aparece nas duas listas', () => {
+    const itens = [{ ms: '', diferenca: -3, motivo: 'negativo' }];
+    igual(exportado.divergenciasDeSaldo(itens).length, 1, 'lista de saldo');
+    igual(exportado.pendenciasDeCadastro(itens).length, 1, 'lista de cadastro');
   });
 }
 
