@@ -233,6 +233,27 @@ em `farmacia/inventario/anvisa`. Quando passa de um dia, o app mostra o
 aviso pedindo o login. É a diferença entre o inventário estar velho sem
 ninguém perceber e o app cobrar.
 
+#### Quando o `Anvisa.exe` não abre
+
+Em 18/08/2026 ele simplesmente não ligava. "Não liga" é sintoma de quatro
+causas diferentes, e todas deixam rastro — só que num lugar diferente cada
+uma. `DIAGNOSTICO_ANVISA.bat` (dois cliques, sem administrador) olha as
+quatro em ordem:
+
+1. **já tem uma cópia travada rodando**, invisível, e a segunda não abre —
+   é a mais comum, e o `.bat` oferece fechar;
+2. **sobrou um `chromedriver.exe`** pendurado da execução anterior;
+3. **o Chrome se atualizou e o `chromedriver` ficou para trás.** Ele é
+   automação de navegador: se os dois primeiros números da versão não
+   baterem, o programa abre e fecha na hora, sem dizer nada;
+4. **a janela abre, mostra o erro e fecha** antes de dar tempo de ler — por
+   isso o `.bat` roda o `Anvisa.exe` de dentro da própria janela e guarda a
+   saída e o código de término.
+
+Tudo vai para `agente/diagnostico_anvisa.txt`, que pode ser fotografado e
+mandado sem cuidado: só versões de programa e mensagens de erro, nada de
+senha nem de paciente.
+
 Para o servidor voltar sozinho depois de queda de energia (o
 `AGENDAR_ANVISA.bat` repete estas instruções no fim):
 
