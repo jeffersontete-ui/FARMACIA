@@ -873,6 +873,62 @@ def principal():
     conferir('--receitas com texto no lugar dos dias não inventa 0 dias',
              not ag.modo_receitas({}, 'abc'))
 
+    # --- zerar lote que a ANVISA ainda tem --------------------------------
+    # Zerar o saldo aqui é correção INTERNA: não vira movimento e não sobe ao
+    # SNGPC. Se a ANVISA ainda tem estoque naquele lote, zerar não resolve —
+    # só troca o sinal da divergência e deixa o site acreditando que a
+    # farmácia guarda um controlado que ela não tem. O conserto é PERDA.
+    #
+    # O caso real: DERMOBAN com 2 no lote "26 111" aqui e 2 no "26111" lá.
+    # Mesmo lote, grafias diferentes.
+    guardado_consultar = ag.consultar
+    ag.consultar = lambda conexao, sql, p=(): [
+        {'REGISTRO_MS': '1.0715.0145.001-1', 'NUM_LOTE': '26111',
+         'QUANTIDADE': 2, 'MEDICAMENTO': 'DERMOBAN', 'DATA_ATUALIZACAO': '2026-08-18'},
+        {'REGISTRO_MS': '1.0573.0475.004-1', 'NUM_LOTE': '2416132',
+         'QUANTIDADE': 0, 'MEDICAMENTO': 'DUAL', 'DATA_ATUALIZACAO': '2026-08-18'},
+    ]
+    try:
+        recusou = ''
+        try:
+            ag.conferir_zeragem_contra_anvisa(None, '1071501450011', '26 111')
+        except RuntimeError as e:
+            recusou = str(e)
+        conferir('zerar lote que a ANVISA tem é recusado, mesmo com grafia diferente',
+                 'PERDA' in recusou, recusou or 'passou e não devia')
+
+        # o DUAL: ANVISA zerada, zerar aqui é exatamente o certo
+        passou = True
+        try:
+            ag.conferir_zeragem_contra_anvisa(None, '1057304750041', '2416132')
+        except RuntimeError as e:
+            passou = False
+        conferir('zerar lote que a ANVISA também tem zerado é liberado', passou)
+
+        # M.S. que nem aparece no inventário: nada a comparar, libera
+        solto = True
+        try:
+            ag.conferir_zeragem_contra_anvisa(None, '9999999999999', 'XYZ')
+        except RuntimeError:
+            solto = False
+        conferir('M.S. fora do inventário da ANVISA não trava a correção', solto)
+    finally:
+        ag.consultar = guardado_consultar
+
+    # inventário ilegível não pode travar a correção: o aviso é rede a mais
+    def consultar_quebrado(conexao, sql, p=()):
+        raise RuntimeError('banco fora do ar')
+    ag.consultar = consultar_quebrado
+    try:
+        sobreviveu = True
+        try:
+            ag.conferir_zeragem_contra_anvisa(None, '1057304750041', '2416132')
+        except RuntimeError:
+            sobreviveu = False
+        conferir('falha ao ler o inventário não trava a correção', sobreviveu)
+    finally:
+        ag.consultar = guardado_consultar
+
     # --- troca de lote na lista de prateleira -----------------------------
     # O caso real: escitalopram 10mg, lote 2509242 com -4 e lote 2529244 com
     # +4. Total 5 dos dois lados. Não falta nem sobra nada — são 4 caixas

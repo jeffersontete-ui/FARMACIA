@@ -2234,6 +2234,72 @@ def zerar_negativos(config, db, pedido):
         fechar(conexao)
 
 
+def saldo_anvisa_do_ms(conexao, ms):
+    """O que o inventário da ANVISA tem daquele registro M.S., lote a lote.
+
+    Devolve {LOTE: quantidade}, com o lote em maiúsculas e sem espaços — a
+    mesma normalização frouxa da comparação, porque é justamente a grafia do
+    lote que costuma diferir entre os dois lados."""
+    linhas = consultar(conexao, CONSULTAS['inventario_sngpc'])
+    if not linhas:
+        return {}
+    campos = list(linhas[0])
+    c_ms = escolher_campo(campos, CAMPOS_INVENTARIO['ms'])
+    c_lote = escolher_campo(campos, CAMPOS_INVENTARIO['lote'])
+    c_qtd = escolher_campo(campos, CAMPOS_INVENTARIO['quantidade'])
+    if not (c_ms and c_lote and c_qtd):
+        return {}
+    por_lote = {}
+    for linha in linhas:
+        if so_digitos(linha.get(c_ms)) != so_digitos(ms):
+            continue
+        chave = texto(linha.get(c_lote)).upper().replace(' ', '')
+        por_lote[chave] = por_lote.get(chave, 0.0) + numero(linha.get(c_qtd))
+    return por_lote
+
+
+def conferir_zeragem_contra_anvisa(conexao, ms, lote):
+    """Recusa zerar um lote que a ANVISA ainda tem.
+
+    Zerar o saldo aqui é correção INTERNA: não vira movimento e não sobe ao
+    SNGPC. Se a ANVISA ainda tem estoque naquele lote, zerar não resolve a
+    divergência — só troca de sinal, e deixa o site acreditando que a
+    farmácia guarda um controlado que ela não tem. O conserto certo é uma
+    PERDA escriturada, que é transmitida.
+
+    O caso que ensinou isto: DERMOBAN com 2 unidades no lote "26 111" aqui e
+    2 no lote "26111" lá. Mesmo lote, grafias diferentes. Zerar o daqui
+    deixaria a ANVISA com 2 e a prateleira com nada.
+
+    Por isso a conferência olha o lote pela chave frouxa E os irmãos do mesmo
+    M.S.: quando a grafia difere, é no irmão que o estoque aparece."""
+    try:
+        na_anvisa = saldo_anvisa_do_ms(conexao, ms)
+    except Exception as e:
+        # não conseguir ler o inventário não pode travar a correção; o
+        # aviso é uma rede a mais, não a única
+        registrar('Não consegui conferir a zeragem contra a ANVISA: %s' % e)
+        return
+
+    chave = texto(lote).upper().replace(' ', '')
+    if na_anvisa.get(chave):
+        raise RuntimeError(
+            'a ANVISA ainda tem %g no lote %s. Zerar aqui não resolve: o '
+            'ajuste é interno e não sobe ao SNGPC, então o site continuaria '
+            'com esse saldo. Se a prateleira está vazia, o certo é lançar '
+            'PERDA no Digifarma, que é transmitida.'
+            % (na_anvisa[chave], lote))
+
+    irmaos = {l: q for l, q in na_anvisa.items() if q}
+    if irmaos:
+        registrar(
+            'Zerando o lote %s do M.S. %s, mas a ANVISA tem saldo em: %s. '
+            'Se for o mesmo lote escrito de outro jeito, zerar aqui não '
+            'resolve — veja se não é caso de perda.'
+            % (lote, formatar_ms(ms),
+               ', '.join('%s=%g' % (l, q) for l, q in sorted(irmaos.items()))))
+
+
 def ajustar_lote(config, db, pedido):
     """Põe o saldo de UM lote no valor contado na prateleira.
 
@@ -2252,6 +2318,8 @@ def ajustar_lote(config, db, pedido):
     try:
         info = detectar_coluna_saldo(conexao, config)
         conferir_permissao_de_ajuste(config, info)
+        if not contado:
+            conferir_zeragem_contra_anvisa(conexao, ms, lote)
         linhas = linhas_do_lote_para_ajuste(conexao, info, ms, lote)
         if not linhas:
             raise RuntimeError('lote %s não encontrado em LOTES' % lote)

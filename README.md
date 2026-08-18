@@ -1284,6 +1284,38 @@ confira o lote impresso`. Sem o aviso, o relatório manda fazer a conferência
 que não responde nada — e a pessoa volta da prateleira com o mesmo número e
 nenhuma conclusão.
 
+### Zerar não é o conserto quando a ANVISA ainda tem
+
+Em 18/08/2026 a farmácia conferiu a prateleira, achou vazia, e zerou três
+lotes de DUAL. Certo: a ANVISA também estava zerada, e os dois lados ficaram
+em 0.
+
+O item seguinte da lista parecia igual e não era:
+
+```
+DERMOBAN   lote "26 111"   Digifarma 2   SNGPC 0      (com espaço)
+DERMOBAN   lote "26111"    Digifarma 0   SNGPC 2      (sem espaço)
+```
+
+**Mesmo lote, escrito de dois jeitos.** A ANVISA tem as 2 unidades, só que
+sob a outra grafia. Zerar o lado de cá não resolveria nada: o ajuste é
+**interno** — não vira movimento e não sobe ao SNGPC — então o site
+continuaria acreditando que a farmácia guarda 2 unidades de um controlado
+que ela não tem. A divergência mudaria de sinal, não desapareceria.
+
+Quando a prateleira está vazia e a ANVISA tem saldo, o conserto é **perda
+escriturada** no Digifarma, que é transmitida.
+
+O agente passou a recusar essa zeragem, com a mensagem dizendo o porquê. A
+conferência normaliza o lote da mesma forma frouxa que a comparação
+(maiúsculas, sem espaços), senão ela erraria exatamente no caso que existe
+para pegar. E quando o M.S. tem saldo na ANVISA em **outro** lote, a
+zeragem passa mas fica registrada no log — pode ser grafia diferente, pode
+ser lote irmão legítimo, e só quem está na farmácia sabe.
+
+Falhar ao ler o inventário **não** trava a correção: este aviso é rede a
+mais, não a única.
+
 ## Testes
 
 **Os dois, sempre.** São suítes separadas porque são linguagens separadas, e
