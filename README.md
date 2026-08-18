@@ -646,6 +646,35 @@ exato onde a tentação bate, explicando por que a comparação óbvia não vale
 A regra, de novo, e agora contra mim mesmo: **o app não afirma o que não
 sabe** — nem quando o palpite parece bom.
 
+### Transmissão recusada deixa buraco, e ninguém avisa
+
+O mesmo Relatório Status de Transmissão que desmentiu a suspeita acima
+mostrou outra coisa, essa verdadeira: o lote de **12/08/2026 saiu com
+`Foi aceito? NÃO`**, e o motivo estava escrito ali:
+
+> MEDICAMENTO - ENTRADA: O medicamento de número de registro
+> (1.0753.0536.001-8) não foi encontrado na base de dados da ANVISA
+
+Duas coisas que isso ensina:
+
+1. **A recusa é do lote inteiro, não do item.** Um registro M.S. errado num
+   único medicamento derruba todos os movimentos daquela transmissão. O que
+   estava no lote não chegou à ANVISA — e o inventário do site vai refletir
+   essa falta até alguém reenviar o período.
+2. **Corrigir o cadastro não reenvia nada.** Conserta as transmissões
+   seguintes; a recusada continua recusada. Se o ponteiro do Digifarma
+   avançou quando o lote foi gerado, aqueles movimentos não entram em envio
+   nenhum sozinhos.
+
+O Digifarma **não guarda esse retorno** — só o do inventário, no
+`INVENTARIO_ACEITO`. Então não há como o agente descobrir uma recusa lendo o
+banco: quem sabe é o site. É por isso que a aba **Aceites** existe e é
+marcada à mão, e é por isso que "marcar o aceite" não é burocracia — é o
+único registro de que o lote chegou.
+
+Ao ver uma divergência antiga que não sai por nada, vale a pergunta: *o lote
+que trouxe essa entrada foi aceito?*
+
 ### A divergência responde "esse remédio saiu?"
 
 Diante de uma diferença, a primeira pergunta da farmácia é sempre a mesma —
