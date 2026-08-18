@@ -88,24 +88,32 @@ for %%P in (Anvisa.exe chromedriver.exe) do (
 )
 echo.
 
-if defined TRAVADO (
-  echo  ------------------------------------------------------------
-  echo   E ISTO. Tem uma copia travada rodando invisivel, e por
-  echo   isso a nova nao abre. Fechar a travada resolve.
-  echo  ------------------------------------------------------------
-  echo.
-  set "MATAR="
-  set /p MATAR=Fechar as copias travadas agora? (S/N):
-  if /I "!MATAR!"=="S" (
-    taskkill /F /IM Anvisa.exe >nul 2>&1
-    taskkill /F /IM chromedriver.exe >nul 2>&1
-    echo        fechadas.
-    echo  Copias travadas fechadas pelo diagnostico. >> "%RELATORIO%"
-  ) else (
-    echo        deixei como estava.
-  )
-  echo.
-)
+REM  Daqui ate :SEM_TRAVA nao ha um unico bloco entre parenteses,
+REM  e e de proposito. A primeira versao perguntava
+REM  "...agora? (S/N):" dentro de um if - e o cmd conta os
+REM  parenteses do TEXTO como se fossem do bloco. O diagnostico
+REM  morria calado bem aqui, justo antes da parte que interessa.
+REM  Com desvio e rotulo nao ha bloco para quebrar.
+if not defined TRAVADO goto :SEM_TRAVA
+echo  ------------------------------------------------------------
+echo   E ISTO. Tem uma copia travada rodando invisivel, e por
+echo   isso a nova nao abre. Fechar a travada resolve.
+echo  ------------------------------------------------------------
+echo.
+set "MATAR="
+set /p MATAR=Fechar as copias travadas agora [S/N]:
+if /I "%MATAR%"=="S" goto :FECHAR_TRAVADAS
+echo        deixei como estava.
+goto :SEM_TRAVA
+
+:FECHAR_TRAVADAS
+taskkill /F /IM Anvisa.exe >nul 2>&1
+taskkill /F /IM chromedriver.exe >nul 2>&1
+echo        fechadas.
+echo  Copias travadas fechadas pelo diagnostico. >> "%RELATORIO%"
+
+:SEM_TRAVA
+echo.
 
 REM ---------- 3. o que o log dele diz? -----------------------
 echo  [3/6] Lendo o log do proprio Anvisa.exe...
@@ -154,8 +162,8 @@ if exist "%PASTA%\chromedriver.exe" (
   echo    chromedriver.exe nao esta em %PASTA% >> "%RELATORIO%"
 )
 echo.
-echo        Se os dois primeiros numeros nao baterem (ex: Chrome
-echo        139 e chromedriver 127), e essa a causa.
+echo        Se os dois primeiros numeros nao baterem - por
+echo        exemplo Chrome 139 e chromedriver 127 - e essa a causa.
 echo.
 
 REM ---------- 5. tem internet e o site responde? --------------
