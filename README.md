@@ -124,7 +124,8 @@ segunda versão para manter.
 | Resumo / Inventário SNGPC | `--resumo` / `--inventario` |
 | Ver cadastro | `--produto TEXTO` |
 | Sincronizar tudo | `--auto` |
-| Atualizar o agente | baixa o `agente_auto.py` do GitHub e se substitui |
+| Receitas lançadas | `--receitas` |
+| Atualizar o agente | baixa o `agente_auto.py` **e as regras do Firebase** do GitHub |
 
 E dois ajustes: `transmitido_ate_venda` (o remendo do ponteiro) e a coluna de
 saldo. Só essas chaves — nada que aponte para banco, arquivo ou credencial.
@@ -252,6 +253,8 @@ python agente_auto.py --schema        confere as tabelas da base
 python agente_auto.py --colunas LOTES lista as colunas de uma tabela
 python agente_auto.py --saldo TEXTO   mostra como o saldo de um lote foi apurado
 python agente_auto.py --receitas 7    que colunas de receita estão preenchidas
+python agente_auto.py --regras        publica as regras do Firebase, do GitHub
+python agente_auto.py --regras        publica as regras do Firebase, do GitHub
 python agente_auto.py --teste         testa Firebird e Firebase
 python teste_agente.py                roda tudo com banco simulado
 ```
@@ -799,6 +802,48 @@ O `uid_agente` do `agente_config.json` precisa bater com a chave criada em
 `farmacia/agentes`. O agente autentica com esse UID via
 `databaseAuthVariableOverride`, então as regras valem para ele também — a
 chave de serviço não vira passe livre.
+
+### Depois da primeira vez, o agente publica as regras sozinho
+
+Toda função nova do app quase sempre pede uma ação nova liberada em
+`comando/acao`. Enquanto o JSON não era copiado à mão para o console, o
+botão novo era **recusado sem dizer por quê** — e o passo manual sempre
+acontecia num momento ruim, com a farmácia no balcão.
+
+O servidor já tem a chave de administrador. Então **`--atualizar` (o botão
+"Atualizar o agente") passou a publicar as regras junto**: baixa
+`regras-firebase.json` do mesmo repositório, confere, compara com o que está
+publicado e só grava se mudou.
+
+```
+python agente_auto.py --regras     publica as regras à mão, sem atualizar o agente
+```
+
+As regras ficam noutra porta que não a dos dados: `PUT` em
+`/.settings/rules.json`, com um token OAuth tirado da mesma chave de serviço
+nos escopos `firebase.database` e `userinfo.email`. Se o Firebase responder
+401 ou 403, falta à conta de serviço o papel **Firebase Realtime Database
+Admin** no Google Cloud > IAM.
+
+Publicar regra é mexer na tranca do banco, então o arquivo baixado passa por
+`conferir_regras()` antes:
+
+- precisa ter `rules`, e a raiz precisa estar fechada (`.read` e `.write`
+  em `false`);
+- precisa ter os nós deste projeto (`inventario`, `comando`, `relatorios`,
+  `autorizados`, `agentes`) — arquivo de outro projeto não entra;
+- **nenhum `.read`/`.write` pode ser `true`** em lugar nenhum da árvore,
+  nem como texto. Regra frouxa não quebra nada na hora: abre o banco
+  calada, e é o erro que passa numa revisão apressada.
+
+Se a conferência recusar, as regras que estão valendo continuam valendo e a
+atualização do agente segue normalmente — o recado vai para o log e para a
+tela do app.
+
+Isto não é confiança nova: o agente já baixava e executava o **próprio
+código** da mesma URL, o que é estritamente mais poderoso do que trocar as
+regras. O que muda é que agora as duas coisas andam juntas, e a farmácia
+parou de ser o passo manual entre elas.
 
 ## Quem entra
 
