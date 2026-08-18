@@ -1257,6 +1257,33 @@ Para forçar a troca no celular, quando ela não vier sozinha: abrir o endereço
 com `?v=` e um número novo no fim. A consulta não casa com nada no cache, então
 o navegador busca da rede.
 
+### A lista de prateleira diz o que procurar
+
+A farmácia leu o `--tarefas`, escolheu um item e teve que perguntar qual era
+o código. A seção "CONFERIR NA PRATELEIRA" mandava conferir sem dizer **o
+que** procurar: só descrição e lote, sem código nem registro M.S. — que é
+justamente o que se digita no Digifarma e no site da ANVISA.
+
+Cada linha ganhou uma segunda com `cód.` e `M.S.`.
+
+E ganhou uma coisa que a lista escondia. Quando dois lotes do **mesmo
+medicamento** aparecem com diferenças que se anulam, não falta nem sobra
+nada:
+
+```
+ESCITALOPRAM 10MG   lote 2509242   Digifarma 0   SNGPC 4   dif -4
+ESCITALOPRAM 10MG   lote 2529244   Digifarma 5   SNGPC 1   dif +4
+```
+
+Cinco de um lado, cinco do outro. São **4 caixas registradas no lote
+errado** — e a conferência certa é *ler o lote impresso na caixa*, não
+contar quantidade. Contar não resolve: o total já está certo.
+
+A lista agora diz isso na cara: `TROCA DE LOTE com 2529244: a soma bate,
+confira o lote impresso`. Sem o aviso, o relatório manda fazer a conferência
+que não responde nada — e a pessoa volta da prateleira com o mesmo número e
+nenhuma conclusão.
+
 ## Testes
 
 **Os dois, sempre.** São suítes separadas porque são linguagens separadas, e
