@@ -254,6 +254,42 @@ Tudo vai para `agente/diagnostico_anvisa.txt`, que pode ser fotografado e
 mandado sem cuidado: só versões de programa e mensagens de erro, nada de
 senha nem de paciente.
 
+#### O que era, no fim: o driver tinha sumido
+
+O diagnóstico fechou o caso em 18/08/2026:
+
+| O que apareceu | O que quer dizer |
+|---|---|
+| `Anvisa.exe` terminou com **código 0** | não deu pau — abriu e saiu na hora, calado |
+| **nenhum `anvisa.log`** | não chegou nem a começar o trabalho |
+| Chrome **151.0.7922.138** | navegador instalado e atualizado |
+| **nenhum chromedriver** em todo o `C:\Digifarma` | é isto |
+
+Não era driver desatualizado: **o arquivo não estava mais lá**. A suspeita
+mais provável é antivírus — `chromedriver.exe` é falso-positivo clássico.
+
+`INSTALAR_CHROMEDRIVER.bat` resolve com dois cliques. O trabalho está no
+`instalar_chromedriver.ps1` ao lado: em PowerShell dá para ler JSON e
+descompactar zip sem malabarismo, e o `.bat` só chama, liberando a política
+de execução **apenas para aquela execução** — não mexe na configuração da
+máquina.
+
+Ele não adivinha a versão. Lê o Chrome instalado e pergunta ao Google qual
+driver corresponde, tentando as fontes em ordem — a versão exata, o último
+patch daquele build, o último do marco, o canal estável — e **diz qual
+respondeu**, para a próxima vez ser direta. O Google já mudou esses endereços
+mais de uma vez; depender de um só é depender de sorte.
+
+Depois de copiar, ele **espera e confere de novo**. Copiar não é instalar: se
+o arquivo sumir em cinco segundos, é o antivírus, e aí a mensagem diz para
+criar a exceção na pasta em vez de deixar a farmácia repetir o processo
+amanhã. O driver antigo, quando existe, é guardado antes de ser trocado.
+
+Uma ressalva honesta: o proxy do ambiente onde este código foi escrito bloqueia
+o site do chromedriver, então **as URLs não puderam ser testadas daqui**. É por
+isso que o script tenta várias fontes e relata qual funcionou, em vez de
+confiar numa só.
+
 Para o servidor voltar sozinho depois de queda de energia (o
 `AGENDAR_ANVISA.bat` repete estas instruções no fim):
 
