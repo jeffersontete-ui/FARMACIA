@@ -63,10 +63,17 @@ Write-Host ''
 # no fim o script diz qual respondeu.
 $versoes = New-Object System.Collections.Generic.List[string]
 function Junte($v, $de) {
-  if ($v -and -not $versoes.Contains("$v")) {
-    $versoes.Add("$v")
-    Diga "candidata $v  ($de)"
+  if (-not $v) { return }
+  # Fonte que repete uma versao ja listada esta CONFIRMANDO, nao
+  # falhando. Calar aqui fazia a tela parecer que a fonte nao tinha
+  # respondido - foi o que aconteceu na primeira instalacao de
+  # verdade, e a leitura errada custaria uma investigacao inutil.
+  if ($versoes.Contains("$v")) {
+    Diga "confirma $v  ($de)"
+    return
   }
+  $versoes.Add("$v")
+  Diga "candidata $v  ($de)"
 }
 
 Diga 'Perguntando ao Google qual driver corresponde...'
