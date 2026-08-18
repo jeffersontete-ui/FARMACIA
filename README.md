@@ -605,31 +605,46 @@ Em qualquer dúvida — arquivo ilegível, valor que não vira JSON, erro de
 escrita — `mudou()` responde que **mudou**. Publicar à toa custa banda;
 deixar de publicar esconde venda da farmácia, que é bem pior.
 
-### Gerar o XML não é transmitir o XML
+### Três datas para a mesma transmissão, e nenhuma comparável
 
 Em 18/08/2026 a farmácia abriu o **Relatório Status de Transmissão** no site
-da ANVISA e comparou com a tela. O app dizia `Movimentos de 16/08 a 17/08`; o
-site não tinha recebido nada desse período — a última transmissão aceita
-cobria 15/08 a 16/08.
+da ANVISA e estranhou a tela: o app dizia `Movimentos de 16/08 a 17/08`, e o
+site não mostrava nada desse período — o último lote aceito aparecia como
+15/08 a 16/08.
 
-O `Movimentos de` sai do **cabeçalho do XML que está na pasta**. Um XML
-gerado não é um XML transmitido, e o Digifarma não guarda o retorno da
-ANVISA. A tela estava afirmando um envio que podia não ter acontecido.
+A suspeita era grave e plausível: XML gerado, ponteiro avançado, ANVISA sem
+receber. Se fosse isso, aquelas vendas ficariam num buraco — baixadas aqui,
+inexistentes lá, e nunca mais incluídas em envio nenhum.
 
-Isso não é detalhe de texto. Se o ponteiro anda e a ANVISA não recebeu, o
-agente conta como transmitida uma venda que o site não tem, espera do
-inventário um saldo menor do que ele mostra, e **inventa divergência**. É o
-espelho exato do problema do envio feito por outra máquina — e explica as
-divergências terem subido de 31 para 39 no mesmo dia.
+**Não era.** A farmácia respondeu: a última transmissão foi feita no dia 17
+cobrindo as vendas de 15 e 16, e a próxima cobre 17 a 18. Estava tudo em
+ordem. O que existe são **três convenções de data para a mesma transmissão**:
 
-O agente passou a comparar as duas datas e publicar `xmlAlemDoEnvio`. Quando
-o XML da pasta cobre período além do último envio registrado, o aviso vem
-**antes** dos números na aba Saldo, porque é ele que explica os números
-estarem errados. E o rótulo virou `Movimentos do último XML`, que é o que
-aquilo é.
+| Onde | O que mostrava |
+|---|---|
+| Site da ANVISA | 15/08 a 16/08 |
+| Cabeçalho do XML | 16/08 a 17/08 |
+| `ULTIMO_ENVIO_SNGPC` | 15/08 |
 
-Vale a regra que este projeto já aprendeu duas vezes: **o app não afirma o
-que não sabe.** Primeiro foi o "receita ok", depois isto.
+O que ficou, então:
+
+- o rótulo virou **`Movimentos do último XML`**, porque é isso que ele é — o
+  período escrito no arquivo da pasta, não prova de transmissão nem de
+  aceite;
+- a tela diz explicitamente que as datas do XML e as do site não seguem a
+  mesma contagem, e que quem responde pelo aceite é o site.
+
+E o que **não** ficou: um alarme comparando `movimentosAte` com
+`ULTIMO_ENVIO_SNGPC`, que cheguei a subir. Ele teria acendido nessa farmácia
+em dia, todo dia, numa tela dizendo "os números abaixo estão errados".
+
+Isso é pior que não avisar nada. Alarme que acende sempre ensina a ignorar
+alarme, e o dia em que houvesse um buraco de verdade seria só mais um dia com
+a tarja vermelha de sempre. Ficou um comentário no `agente_auto.py`, no ponto
+exato onde a tentação bate, explicando por que a comparação óbvia não vale.
+
+A regra, de novo, e agora contra mim mesmo: **o app não afirma o que não
+sabe** — nem quando o palpite parece bom.
 
 ### A divergência responde "esse remédio saiu?"
 

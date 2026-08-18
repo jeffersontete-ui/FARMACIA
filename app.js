@@ -643,10 +643,7 @@ function pintarEnvio() {
     // farmácia leu "movimentos de 16 a 17/08" e não achou envio nenhum
     // desse período no site da ANVISA.
     ['Movimentos do último XML', e.movimentosDe
-      ? dataBR(e.movimentosDe) + ' a ' + dataBR(e.movimentosAte)
-        + (e.xmlAlemDoEnvio ? ' — ALÉM do último envio registrado; pode não ter '
-          + 'sido transmitido, confira no site da ANVISA' : '')
-      : '—'],
+      ? dataBR(e.movimentosDe) + ' a ' + dataBR(e.movimentosAte) : '—'],
     ['Envio por API', e.envioPorApi ? 'ligado no Digifarma' : 'desligado (envio manual)'],
     // o remendo do transmitido_ate_venda tem que aparecer aqui: quem lê
     // "última venda transmitida" no celular precisa saber que esse número
@@ -778,23 +775,6 @@ function pintarAlertaSaldo() {
     barra.textContent = 'O inventário da ANVISA está vazio, então todo lote do Digifarma '
       + 'aparece aqui como sobra. Rode o Anvisa.exe no servidor e faça o login no site do '
       + 'SNGPC antes de conferir estes números.';
-    barra.hidden = false;
-    return;
-  }
-
-  // XML gerado além do último envio registrado. Gerar e transmitir são
-  // coisas diferentes, e o Digifarma não guarda o retorno da ANVISA — o
-  // app não pode afirmar que foi. Quando o arquivo da pasta cobre um
-  // período que o envio não alcança, o aviso vem ANTES dos números,
-  // porque é ele que explica os números estarem errados.
-  const env = estado.inventario?.envio || {};
-  if (env.xmlAlemDoEnvio) {
-    barra.textContent = 'O último XML cobre movimentos até '
-      + dataBR(env.movimentosAte) + ', mas o último envio registrado é de '
-      + dataBR(env.data) + '. Esse lote pode ter sido gerado e não transmitido — '
-      + 'confira no site da ANVISA, em Relatório Status de Transmissão. Se não '
-      + 'estiver lá, os números abaixo estão errados: o agente conta como '
-      + 'transmitida uma venda que o site não recebeu.';
     barra.hidden = false;
     return;
   }

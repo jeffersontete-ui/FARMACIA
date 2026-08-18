@@ -873,55 +873,6 @@ def principal():
     conferir('--receitas com texto no lugar dos dias não inventa 0 dias',
              not ag.modo_receitas({}, 'abc'))
 
-    # --- XML gerado além do último envio ----------------------------------
-    # A farmácia comparou a tela com o Relatorio Status de Transmissao do
-    # site e viu: o app falava em movimentos de 16 a 17/08, e a ANVISA não
-    # tinha recebido nada desse período. Gerar o XML e transmiti-lo são
-    # coisas diferentes, e o Digifarma não guarda o retorno.
-    #
-    # Não é detalhe de tela: se o ponteiro anda e a ANVISA não recebeu, o
-    # agente conta como transmitida uma venda que o site não tem e inventa
-    # divergência.
-    def envio_com(ponteiro):
-        guardado = ag.consultar
-        por_sql_envio = dict(por_sql)
-        por_sql_envio[ag.CONSULTAS['ponteiros']] = [ponteiro]
-
-        def consultar_local(conexao, sql, parametros=()):
-            if 'RDB$RELATION_FIELDS' in sql:
-                return [{'CAMPO': c} for c in CAMPOS_LOTES_SALDO]
-            if sql in por_sql_envio:
-                return por_sql_envio[sql]
-            if 'FROM LOTES' in sql:
-                return RESPOSTAS['saldo_digifarma']
-            raise AssertionError('consulta não simulada')
-
-        ag.consultar = consultar_local
-        try:
-            return ag.montar_inventario(conexao=None, config=config)['envio']
-        finally:
-            ag.consultar = guardado
-
-    # o XML do exemplo fecha em 04/08. Envio registrado ANTES disso quer
-    # dizer que existe um lote gerado que o site pode não ter recebido.
-    atrasado = envio_com(dict(RESPOSTAS['ponteiros'][0],
-                              ULTIMO_ENVIO_SNGPC=datetime.date(2026, 8, 2)))
-    conferir('XML mais novo que o último envio vira aviso',
-             atrasado.get('xmlAlemDoEnvio') is True,
-             '%s vs envio %s' % (atrasado.get('movimentosAte'), atrasado.get('data')))
-
-    em_dia = envio_com(dict(RESPOSTAS['ponteiros'][0],
-                            ULTIMO_ENVIO_SNGPC=datetime.date(2026, 8, 20)))
-    conferir('envio mais novo que o XML não acende aviso nenhum',
-             em_dia.get('xmlAlemDoEnvio') is False,
-             '%s vs envio %s' % (em_dia.get('movimentosAte'), em_dia.get('data')))
-
-    mesmo_dia = envio_com(dict(RESPOSTAS['ponteiros'][0],
-                               ULTIMO_ENVIO_SNGPC=datetime.date(2026, 8, 4)))
-    conferir('envio no mesmo dia do XML também não acende',
-             mesmo_dia.get('xmlAlemDoEnvio') is False,
-             '%s vs envio %s' % (mesmo_dia.get('movimentosAte'), mesmo_dia.get('data')))
-
     # --- só publica o que mudou -------------------------------------------
     # A fila passou a rodar de minuto em minuto para o botão do app responder
     # rápido. Sem isto, seriam 1440 reescritas por dia da mesma lista.
