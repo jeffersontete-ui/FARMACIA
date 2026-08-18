@@ -251,6 +251,7 @@ python agente_auto.py 31/07/2026      inventário daquela data
 python agente_auto.py --schema        confere as tabelas da base
 python agente_auto.py --colunas LOTES lista as colunas de uma tabela
 python agente_auto.py --saldo TEXTO   mostra como o saldo de um lote foi apurado
+python agente_auto.py --receitas 7    que colunas de receita estão preenchidas
 python agente_auto.py --teste         testa Firebird e Firebase
 python teste_agente.py                roda tudo com banco simulado
 ```
@@ -504,6 +505,50 @@ Vendas.
 Escrever num filho de `farmacia/inventario` é de propósito: a regra do banco
 já libera esse caminho para o agente, então não é preciso republicar regras.
 E a sincronização completa, que é cara, continua de hora em hora.
+
+### "Tem receita" é uma pergunta que ainda não sabemos fazer
+
+Em 18/08/2026 a farmácia avisou que o app dizia que **todas** as receitas
+das vendas do dia 17 tinham sido lançadas, e ela sabia que não tinha
+lançado. Estava certa, e o erro é mais fundo que o rótulo na tela.
+
+O agente nunca perguntou se a receita foi lançada. Ele perguntou se existe
+uma linha em `VENDAS_PSICOTROPICOS` para aquele item da venda:
+
+```sql
+LEFT JOIN VENDAS_PSICOTROPICOS VP ON (VP.VENDA_NOTA_ID = I.VENDA_NOTA_ID)
+                                 AND (VP.ITEM_VENDA_ID = I.ITEM_VENDA_ID)
+```
+
+O Digifarma aparentemente cria essa linha junto com a venda e só recebe os
+dados da receita depois. Então **faltar a linha prova que a receita não foi
+lançada; existir não prova nada**. O critério só funciona num sentido.
+
+Esse mesmo `VP.VENDA_NOTA_ID IS NULL` está em `vendas_problema` e em
+`vendas_sem_receita_pendentes` — o que explica o `0 vendas com problema` que
+saía em todo log e que ninguém questionou. Um teste que nunca acusa nada não
+é um teste tranquilizador, é um teste quebrado.
+
+O que foi feito por enquanto:
+
+- o rótulo verde `receita ok` **saiu do app**. Ficou só o alerta vermelho
+  `SEM RECEITA`, que é o lado confiável, e a tela avisa que a ausência da
+  marca não garante nada;
+- entrou o `--receitas [dias]` (botão **Receitas lançadas**), que mostra,
+  venda por venda, **quais colunas de `VENDAS_PSICOTROPICOS` estão
+  preenchidas** — e agrupa as colunas em "sempre", "nunca" e "às vezes". A
+  coluna candidata é uma das "às vezes", e a farmácia sabe quais vendas ela
+  lançou: cruzar as duas coisas dá o critério certo.
+
+O relatório **não imprime valor nenhum**, só `tem`/`não tem`. A tabela
+guarda paciente, comprador e médico, e o relatório sobe para o Firebase —
+mesma lição do `EMAIL`/`SENHA` que vazaram no diagnóstico do `SNGPC`. Zero
+conta como não preenchido: `CONF_VENDEDOR_ID = 0` é campo em branco, e é
+justamente essa diferença que se procura.
+
+Enquanto a coluna certa não é conhecida, as consultas continuam com o
+critério frouxo. Preferi tirar a afirmação errada da tela agora e corrigir a
+consulta quando houver evidência, em vez de trocar um palpite por outro.
 
 ### A tarja como identidade
 

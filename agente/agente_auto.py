@@ -29,6 +29,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import shutil
 import sys
 import traceback
@@ -237,6 +238,31 @@ CONSULTAS = {
            AND ((P.PSICOTROPICO = 'S') OR (P.ANTIMICROBIANO = 'S'))
            AND VP.VENDA_NOTA_ID IS NULL
          ORDER BY C.VENDA_NOTA_ID
+    """,
+
+    # --- diagnóstico: o que VENDAS_PSICOTROPICOS tem preenchido ---
+    # A farmácia flagrou que "existe linha em VENDAS_PSICOTROPICOS" não é o
+    # mesmo que "a receita foi lançada": o Digifarma parece criar a linha
+    # junto com a venda e receber os dados da receita depois. Esta consulta
+    # existe para achar QUAL coluna separa uma coisa da outra — as colunas
+    # entram por {COLUNAS}, apelidadas C1..Cn (nome de campo do Firebird
+    # estoura o limite de 31 caracteres se for prefixado).
+    "receitas_diagnostico": """
+        SELECT FIRST 400
+               C.VENDA_NOTA_ID AS VENDA,
+               C.VENDA_DATA_HORA AS QUANDO,
+               P.PRODUTO,
+               {COLUNAS}
+          FROM CAB_VENDAS C
+          JOIN ITEM_VENDAS I ON (I.VENDA_NOTA_ID = C.VENDA_NOTA_ID)
+                            AND ((I.CANCELADO = 'N') OR (I.CANCELADO IS NULL))
+          JOIN PRODUTOS P ON (P.PRODUTO_ID = I.PRODUTO_ID)
+          LEFT JOIN VENDAS_PSICOTROPICOS VP ON (VP.VENDA_NOTA_ID = I.VENDA_NOTA_ID)
+                                           AND (VP.ITEM_VENDA_ID = I.ITEM_VENDA_ID)
+         WHERE CAST(C.VENDA_DATA_HORA AS DATE) >= ?
+           AND (C.VENDA_RECEBIDO + C.SUBSIDIO + COALESCE(C.SUBSIDIO_ASSEFAZ, 0)) > 0
+           AND ((P.PSICOTROPICO = 'S') OR (P.ANTIMICROBIANO = 'S'))
+         ORDER BY C.VENDA_NOTA_ID DESC
     """,
 
     # --- venda de controlado sem receita escriturada ou sem lote ---
@@ -1995,6 +2021,7 @@ RELATORIOS = {
     'saldo': lambda config, alvo: texto_do_modo(modo_conferir_saldo, config, alvo),
     'colunas': lambda config, alvo: texto_do_modo(modo_colunas, config, alvo or 'LOTES'),
     'totais': lambda config, alvo: texto_do_modo(modo_totais, config, alvo),
+    'receitas': lambda config, alvo: texto_do_modo(modo_receitas, config, alvo),
 }
 
 LIMITE_TEXTO = 120000    # o relatório inteiro cabe; o corte é rede de segurança
@@ -2140,6 +2167,140 @@ def modo_schema(config):
         else:
             print('\nTodas as tabelas esperadas existem.')
         return not faltando
+    finally:
+        fechar(conexao)
+
+
+NOME_DE_CAMPO = re.compile(r'^[A-Z][A-Z0-9_$]*$')
+
+# O que conta como "vazio" neste diagnóstico. Zero entra na lista de
+# propósito: CONF_VENDEDOR_ID = 0 ou um sinalizador em 0 é campo não
+# preenchido, e é justamente a diferença que se está procurando.
+VAZIOS = ('', '0', '0.0', '0.00', 'NONE', 'NULL')
+
+
+def preenchido(valor):
+    if valor is None:
+        return False
+    return str(valor).strip().upper() not in VAZIOS
+
+
+def modo_receitas(config, filtro):
+    """Mostra, venda por venda, QUE COLUNAS de VENDAS_PSICOTROPICOS estão
+    preenchidas — nunca o que está escrito nelas.
+
+    Existe por causa de um erro que a farmácia pegou: o app dizia que todas
+    as receitas do dia tinham sido lançadas, e não tinham. O agente testava
+    "existe linha em VENDAS_PSICOTROPICOS", e o Digifarma cria essa linha
+    junto com a venda — a linha nasce vazia e recebe os dados da receita
+    depois. Existir não prova nada; faltar é que prova.
+
+    Para consertar o critério é preciso saber qual coluna se preenche só
+    quando a receita é lançada. Esta é a ferramenta que responde isso: a
+    coluna candidata é a que aparece preenchida em UMAS vendas e vazia em
+    outras, e a farmácia sabe quais foram as que ela lançou.
+
+    A tabela guarda paciente, comprador e médico. Por isso o relatório sai
+    em 'tem'/'não tem' e nenhum valor é impresso — ele vai para o Firebase,
+    e dado de paciente não sobe."""
+    try:
+        dias = int(str(filtro).strip()) if str(filtro).strip() else 3
+    except ValueError:
+        print('--receitas recebe o número de dias, e veio "%s".' % filtro)
+        return False
+    dias = max(1, min(dias, 60))
+
+    conexao = conectar_firebird(config)
+    try:
+        campos = [c for c in colunas_da_tabela(conexao, 'VENDAS_PSICOTROPICOS')
+                  if NOME_DE_CAMPO.match(c)]
+        if not campos:
+            print('Não achei a tabela VENDAS_PSICOTROPICOS.')
+            return False
+
+        # apelidos C1..Cn: nome de campo prefixado estoura os 31 caracteres
+        # de identificador do Firebird, e aí a consulta inteira morre
+        apelidos = ['C%d' % (i + 1) for i in range(len(campos))]
+        sql = CONSULTAS['receitas_diagnostico'].replace(
+            '{COLUNAS}',
+            ', '.join('VP.%s AS %s' % (c, a) for c, a in zip(campos, apelidos)))
+
+        corte = (datetime.date.today() - datetime.timedelta(days=dias)).isoformat()
+        linhas = consultar(conexao, sql, (corte,))
+        if not linhas:
+            print('Nenhuma venda de controlado nos últimos %d dias.' % dias)
+            return False
+
+        print('VENDAS_PSICOTROPICOS — o que está preenchido, últimos %d dias' % dias)
+        print('%d linhas (uma por item de venda de controlado)\n' % len(linhas))
+        print('Nenhum valor é impresso: a tabela tem paciente, comprador e')
+        print('médico, e este relatório sobe para o Firebase. Zero e vazio')
+        print('contam como não preenchido.\n')
+
+        apelido_de = dict(zip(campos, apelidos))
+        contagem = dict.fromkeys(campos, 0)
+        sem_linha = 0
+        for linha in linhas:
+            # LEFT JOIN sem par devolve NULL em todas as colunas: é assim
+            # que se distingue "não tem linha" de "tem linha vazia"
+            if all(linha.get(a) is None for a in apelidos):
+                sem_linha += 1
+                continue
+            for campo in campos:
+                if preenchido(linha.get(apelido_de[campo])):
+                    contagem[campo] += 1
+
+        com_linha = len(linhas) - sem_linha
+        print('SEM NENHUMA LINHA em VENDAS_PSICOTROPICOS: %d de %d' % (sem_linha, len(linhas)))
+        print('(essas a receita com certeza não foi lançada)\n')
+
+        variaveis = [c for c in campos if 0 < contagem[c] < com_linha]
+        sempre = [c for c in campos if com_linha and contagem[c] == com_linha]
+        nunca = [c for c in campos if contagem[c] == 0]
+
+        print('== CANDIDATAS: preenchidas em umas vendas e vazias em outras ==')
+        print('(é entre estas que está o "a receita foi lançada")')
+        if variaveis:
+            for c in variaveis:
+                print('  %-32s %4d de %d' % (c, contagem[c], com_linha))
+        else:
+            print('  nenhuma — todas as linhas existentes estão iguais')
+        print('')
+
+        print('sempre preenchidas (%d): %s' % (len(sempre), ', '.join(sempre) or '-'))
+        print('nunca preenchidas  (%d): %s' % (len(nunca), ', '.join(nunca) or '-'))
+        print('')
+
+        if not variaveis:
+            print('Sem coluna candidata não dá para melhorar o critério com')
+            print('esta amostra. Rode de novo com mais dias: --receitas 15')
+            return True
+
+        print('== VENDA POR VENDA ==')
+        for i, c in enumerate(variaveis):
+            print('  coluna %d = %s' % (i + 1, c))
+        print('')
+        print('  venda    quando       produto                        colunas')
+        for linha in linhas:
+            vazia = all(linha.get(a) is None for a in apelidos)
+            marcas = 'sem linha' if vazia else ''.join(
+                'X' if preenchido(linha.get(apelido_de[c])) else '.'
+                for c in variaveis)
+            quando = linha.get('QUANDO')
+            # dia e hora bastam, e cabem na coluna: o ISO inteiro empurra o
+            # resto da linha e a leitura na tela do celular se perde
+            curto = (quando.strftime('%d/%m %H:%M')
+                     if isinstance(quando, datetime.datetime)
+                     else texto_hora(quando)[:11])
+            print('  %-8s %-12s %-30s %s' % (
+                texto(linha.get('VENDA')), curto,
+                texto(linha.get('PRODUTO'))[:30], marcas))
+
+        print('')
+        print('Confira contra o que a farmácia sabe: pegue uma venda que VOCÊ')
+        print('lançou e uma que não lançou, e veja qual coluna muda entre as')
+        print('duas. Essa é a que o agente tem que testar.')
+        return True
     finally:
         fechar(conexao)
 
@@ -3474,6 +3635,8 @@ def principal():
                         help='mostra o cadastro: registro M.S., código de barras e a marcação')
     parser.add_argument('--totais', metavar='TEXTO', nargs='?', const='',
                         help='PRODUTOS.PROD_SALDO comparado com a soma dos lotes')
+    parser.add_argument('--receitas', metavar='DIAS', nargs='?', const='',
+                        help='que colunas de VENDAS_PSICOTROPICOS estão preenchidas em cada venda')
     parser.add_argument('--atualizar', action='store_true',
                         help='baixa a versão mais nova do agente do GitHub e se substitui')
     parser.add_argument('--config', metavar='CHAVE=VALOR',
@@ -3503,6 +3666,8 @@ def principal():
             raise SystemExit(0 if modo_colunas(config, args.colunas) else 1)
         if args.totais is not None:
             raise SystemExit(0 if modo_totais(config, args.totais) else 1)
+        if args.receitas is not None:
+            raise SystemExit(0 if modo_receitas(config, args.receitas) else 1)
         if args.config:
             raise SystemExit(0 if modo_config(args.config) else 1)
         if args.atualizar:

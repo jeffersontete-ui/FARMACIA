@@ -290,6 +290,7 @@ const ROTULO_PEDIDO = {
   atualizar_envio: 'Atualizar envio', atualizar_agente: 'Atualizar o agente',
   config: 'Ajuste do agente', colunas: 'Colunas da tabela',
   totais: 'Total do produto x soma dos lotes',
+  receitas: 'Receitas lançadas',
   zerar_negativos: 'Zerar lotes negativos', ajustar_lote: 'Gravar contagem no lote'
 };
 

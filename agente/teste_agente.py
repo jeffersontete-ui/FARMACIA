@@ -789,6 +789,60 @@ def principal():
     conferir('registro M.S. sai da coluna certa',
              ag.escolher_campo(campos_inv, ag.CAMPOS_INVENTARIO['ms']) == 'REGISTRO_MS')
 
+    # --- o diagnóstico das receitas -------------------------------------
+    # Nasceu de um erro real: o app dizia que todas as receitas do dia
+    # tinham sido lançadas porque testava só "existe linha em
+    # VENDAS_PSICOTROPICOS". O que precisa valer aqui é (a) zero e vazio
+    # contam como não preenchido, e (b) nenhum VALOR aparece no relatório —
+    # a tabela tem paciente e médico, e o texto sobe para o Firebase.
+    conferir('campo vazio, nulo ou zero não conta como preenchido',
+             not any(ag.preenchido(v) for v in (None, '', '   ', 0, '0', '0.00')))
+    conferir('campo com conteúdo conta como preenchido',
+             all(ag.preenchido(v) for v in ('MARIA', 3, '2026-08-17', 'B')))
+
+    campos_vp = ['VENDA_NOTA_ID', 'ITEM_VENDA_ID', 'NOME_PACIENTE',
+                 'CRM_MEDICO', 'CONF_VENDEDOR_ID']
+    cheia = {'VENDA_NOTA_ID': 46135, 'ITEM_VENDA_ID': 1,
+             'NOME_PACIENTE': 'MARIA DAS DORES', 'CRM_MEDICO': 'CRM 12345',
+             'CONF_VENDEDOR_ID': 3}
+    # a linha que o Digifarma cria junto com a venda e ainda não recebeu a receita
+    crua = {'VENDA_NOTA_ID': 46136, 'ITEM_VENDA_ID': 1, 'NOME_PACIENTE': '',
+            'CRM_MEDICO': None, 'CONF_VENDEDOR_ID': 0}
+
+    def linha_vp(venda, produto, vp):
+        linha = {'VENDA': venda, 'PRODUTO': produto,
+                 'QUANDO': datetime.datetime(2026, 8, 17, 14, 30)}
+        for i, campo in enumerate(campos_vp):
+            linha['C%d' % (i + 1)] = None if vp is None else vp.get(campo)
+        return linha
+
+    guardados = (ag.conectar_firebird, ag.fechar, ag.colunas_da_tabela, ag.consultar)
+    ag.conectar_firebird = lambda config: None
+    ag.fechar = lambda conexao: None
+    ag.colunas_da_tabela = lambda conexao, tabela: campos_vp
+    ag.consultar = lambda conexao, sql, p=(): [
+        linha_vp(46135, 'CLONAZEPAM 2MG', cheia),
+        linha_vp(46136, 'FENOBARBITAL 100MG', crua),
+        linha_vp(46137, 'AMOXICILINA 500MG', None),
+    ]
+    try:
+        saida = ag.texto_do_modo(ag.modo_receitas, {}, '')
+    finally:
+        (ag.conectar_firebird, ag.fechar, ag.colunas_da_tabela, ag.consultar) = guardados
+
+    conferir('o LEFT JOIN sem par vira "sem linha", não "linha vazia"',
+             'SEM NENHUMA LINHA em VENDAS_PSICOTROPICOS: 1 de 3' in saida
+             and 'sem linha' in saida)
+    conferir('a coluna que varia é apontada como candidata',
+             'NOME_PACIENTE' in saida.split('== CANDIDATAS')[1].split('sempre preenchidas')[0])
+    conferir('a coluna igual em todas as linhas não é candidata',
+             'VENDA_NOTA_ID' not in saida.split('== CANDIDATAS')[1].split('sempre preenchidas')[0])
+    conferir('o relatório não imprime dado de paciente nem de médico',
+             'MARIA' not in saida and '12345' not in saida,
+             saida[:200])
+    conferir('--receitas com texto no lugar dos dias não inventa 0 dias',
+             not ag.modo_receitas({}, 'abc'))
+
     shutil.rmtree(pasta, ignore_errors=True)
     print('\n%s\n' % ('%d falha(s)' % len(falhas) if falhas else 'Tudo passou.'))
     return 1 if falhas else 0
