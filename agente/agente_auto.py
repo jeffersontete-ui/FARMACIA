@@ -2362,6 +2362,31 @@ def aplicar_config(config, pedido):
     mudam como o agente LÊ. O valor antigo volta na resposta: mexer na
     configuração de longe só é aceitável se ficar registrado o que era."""
     chave = texto(pedido.get('chave'))
+
+    # DESLIGAR a escrita é a única exceção, e ela é segura por ser de mão
+    # única: o app pode fechar a porta, nunca abri-la. Ligar continua sendo
+    # ato local, no servidor, porque é a direção perigosa.
+    #
+    # A assimetria não é preciosismo. A escrita foi ligada num dia em que a
+    # farmácia estava no servidor, e ficou ligada porque no dia seguinte não
+    # estava mais — com os botões que gravam no Digifarma vivos num celular
+    # que fica no balcão. Uma trava que não dá para desarmar de longe acaba
+    # ficando armada.
+    if chave == 'permitir_ajuste_estoque':
+        if texto(pedido.get('valor')).lower() not in ('false', 'nao', 'não', 'n', '0', 'off'):
+            raise RuntimeError(
+                'o app só DESLIGA a escrita no Digifarma. Ligar é no '
+                'servidor: python agente_auto.py --config '
+                'permitir_ajuste_estoque=true')
+        atual_cfg = carregar_config()
+        antes_val = bool(atual_cfg.get(chave, False))
+        atual_cfg[chave] = False
+        with open(ARQUIVO_CONFIG, 'w', encoding='utf-8') as f:
+            json.dump(atual_cfg, f, indent=2, ensure_ascii=False)
+        config[chave] = False
+        return ('Escrita no Digifarma DESLIGADA (estava %s). Para ligar de '
+                'novo é no servidor.' % ('ligada' if antes_val else 'desligada'))
+
     if chave not in CONFIG_REMOTO:
         raise RuntimeError('chave "%s" não pode ser mudada pelo app' % chave)
 

@@ -873,6 +873,36 @@ def principal():
     conferir('--receitas com texto no lugar dos dias não inventa 0 dias',
              not ag.modo_receitas({}, 'abc'))
 
+    # --- desligar a escrita pelo app --------------------------------------
+    # De mão única de propósito: o app fecha a porta, nunca abre. A escrita
+    # ficou ligada por dias porque foi liberada num dia em que havia alguém
+    # no servidor e no dia seguinte não havia mais — trava que não dá para
+    # desarmar de longe acaba ficando armada.
+    guardado_cfg = ag.ARQUIVO_CONFIG
+    ag.ARQUIVO_CONFIG = os.path.join(pasta, 'agente_config.json')
+    try:
+        with open(ag.ARQUIVO_CONFIG, 'w', encoding='utf-8') as f:
+            json.dump({'permitir_ajuste_estoque': True}, f)
+        cfg_vivo = {'permitir_ajuste_estoque': True}
+        recado_cfg = ag.aplicar_config(
+            cfg_vivo, {'chave': 'permitir_ajuste_estoque', 'valor': 'false'})
+        conferir('o app desliga a escrita', 'DESLIGADA' in recado_cfg, recado_cfg)
+        with open(ag.ARQUIVO_CONFIG, encoding='utf-8') as f:
+            conferir('e o arquivo no servidor fica desligado de verdade',
+                     json.load(f).get('permitir_ajuste_estoque') is False)
+        conferir('a config em memória também', cfg_vivo['permitir_ajuste_estoque'] is False)
+
+        for tentativa in ('true', 'sim', '1', 'S'):
+            barrou = False
+            try:
+                ag.aplicar_config({}, {'chave': 'permitir_ajuste_estoque',
+                                       'valor': tentativa})
+            except RuntimeError as e:
+                barrou = 'servidor' in str(e)
+            conferir('o app NÃO liga a escrita com "%s"' % tentativa, barrou)
+    finally:
+        ag.ARQUIVO_CONFIG = guardado_cfg
+
     # --- zerar lote que a ANVISA ainda tem --------------------------------
     # Zerar o saldo aqui é correção INTERNA: não vira movimento e não sobe ao
     # SNGPC. Se a ANVISA ainda tem estoque naquele lote, zerar não resolve —

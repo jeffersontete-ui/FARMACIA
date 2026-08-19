@@ -18,7 +18,7 @@
 /* Tem que ser igual à VERSAO do sw.js — o teste de fumaça cobra as duas.
    Se divergirem, a tela mente sobre qual casca está em cache, que é
    justamente o que este carimbo existe para evitar. */
-const VERSAO_APP = 'v25';
+const VERSAO_APP = 'v26';
 
 const CONFIG_FIREBASE = {
   apiKey: 'AIzaSyC3nXsBC2ARX8IOLITHUtovPn4DONEQe7g',
@@ -349,6 +349,19 @@ $('btn-ponteiro').onclick = async () => {
 
 /* Os dois únicos botões do projeto que escrevem no Digifarma. A confirmação
    diz o que vai mudar e o que NÃO pode ser feito depois — transmitir. */
+$('btn-desligar-escrita').onclick = async () => {
+  const ok = await confirmar('Desligar a escrita',
+    'Os botões que gravam no Digifarma param de funcionar. Para ligar de novo '
+    + 'é preciso estar no servidor. Confirma?', 'Desligar');
+  if (!ok) return;
+  await db.ref('farmacia/comando').set({
+    acao: 'config', chave: 'permitir_ajuste_estoque', valor: 'false',
+    pedidoEm: agora(), pedidoPor: estado.operador, estado: 'pendente'
+  });
+  estado.ultimoPedido = 'config';
+  avisar('Pedido enviado. O agente atende em cerca de um minuto.');
+};
+
 $('btn-zerar-negativos').onclick = async () => {
   const ok = await confirmar('Zerar os lotes negativos',
     'O agente vai pôr em zero, no Digifarma, todo lote com saldo negativo. '

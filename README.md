@@ -1358,6 +1358,38 @@ se esquece.
 O backup da chave anterior fica na pasta com carimbo de data. É uma chave
 válida até o momento da revogação: guardar fora do servidor ou apagar.
 
+### O que dá e o que não dá para fazer de longe
+
+A pergunta veio direta — *"teria como fazer sem acessar o servidor?"* — e a
+resposta honesta é item por item.
+
+**Já era remoto:** atualizar o agente e as regras, sincronizar, todos os
+relatórios, os ajustes de leitura, e as duas operações que escrevem no
+Digifarma.
+
+**Passou a ser:** *desligar* a escrita. De mão única — o app fecha a porta,
+nunca abre. Ligar continua sendo ato local, porque é a direção perigosa.
+
+A assimetria resolve um problema que aconteceu: a escrita foi liberada num
+dia em que havia alguém no servidor, e no dia seguinte não havia mais. Ficou
+ligada, com os botões que gravam vivos num celular que fica no balcão. **Uma
+trava que não dá para desarmar de longe acaba ficando armada.**
+
+**Não dá, e não vai dar:**
+
+*A troca da chave do Firebase.* O arquivo novo precisa chegar ao disco do
+servidor, e todo caminho remoto para isso é pior que o problema: ou o agente
+busca a chave de algum lugar — e esse lugar vira o novo vazamento —, ou a
+chave ganha permissão de criar chaves, e aí uma chave vazada se renova
+sozinha para sempre. Continua sendo `TROCAR_CHAVE_FIREBASE.bat`, no servidor.
+
+*O login do `Anvisa.exe`.* Ele é automação de navegador e para na tela de
+login do site do SNGPC — por desenho da ANVISA, não do Digifarma. Precisa de
+alguém na máquina.
+
+*Transmitir o envio e lançar perda.* São telas do Digifarma. O projeto lê o
+banco dele; operar o sistema é outra coisa.
+
 ## Testes
 
 **Os dois, sempre.** São suítes separadas porque são linguagens separadas, e
