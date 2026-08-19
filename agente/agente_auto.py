@@ -2352,6 +2352,148 @@ def modo_anvisa(config):
         return False
 
 
+NOME_PENDENTE = {
+    'saidas': 'VENDAS',
+    'entradas': 'ENTRADAS (notas de compra)',
+    'perdas': 'PERDAS',
+    'transferencias': 'TRANSFERÊNCIAS',
+}
+
+
+def modo_pendentes(config):
+    """O que exatamente vai no próximo envio ao SNGPC.
+
+    A tela dizia "21 movimentos" e parava aí. Saber o número não ajuda a
+    decidir nada: a pergunta da farmácia é *quais*, para conferir se o
+    período bate com o que ela pretende transmitir e para achar o que está
+    faltando quando a ANVISA acusa saldo diferente.
+
+    Sai por tipo e por dia, porque é assim que o envio é recortado — e o
+    total por dia é o que se compara com a tela do Digifarma."""
+    conexao = conectar_firebird(config)
+    try:
+        dados = montar_inventario(conexao, config)
+    finally:
+        fechar(conexao)
+
+    envio = dados.get('envio', {})
+    pendentes = dados.get('pendentes', {})
+    total = sum(len(v) for v in pendentes.values())
+
+    print('MOVIMENTO AGUARDANDO TRANSMISSÃO — %s'
+          % datetime.datetime.now().strftime('%d/%m/%Y %H:%M'))
+    print('=' * 78)
+    print('Contado pelos ponteiros da tabela SNGPC, não por data:')
+    print('  última venda transmitida ... %s' % (envio.get('ULT_SAIDA_VENDA_NOTA_ID') or '?'))
+    print('  última entrada transmitida . %s' % (envio.get('ULT_ENTRADA_CAB_NOTA_ID') or '?'))
+    print('  último envio registrado .... %s' % br(envio.get('data')))
+    print('')
+
+    if not total:
+        print('NADA PENDENTE. Tudo o que o Digifarma marcou como transmitido já subiu.')
+        print('')
+        print('Se a ANVISA ainda mostra saldo diferente, o problema não é falta')
+        print('de transmissão — é o que já foi transmitido não ter sido aceito,')
+        print('e isso se confere no Relatório Status de Transmissão do site.')
+        return True
+
+    print('%d movimento(s) no total.' % total)
+    print('')
+
+    for tipo in ('saidas', 'entradas', 'perdas', 'transferencias'):
+        linhas_tipo = pendentes.get(tipo) or []
+        if not linhas_tipo:
+            continue
+        print('-' * 78)
+        print('%s — %d' % (NOME_PENDENTE.get(tipo, tipo.upper()), len(linhas_tipo)))
+        print('-' * 78)
+
+        por_dia = {}
+        for l in linhas_tipo:
+            por_dia.setdefault(texto(l.get('data'))[:10], []).append(l)
+
+        for dia in sorted(por_dia):
+            do_dia = por_dia[dia]
+            soma = round(sum(numero(l.get('quantidade')) for l in do_dia), 3)
+            print('')
+            print('  %s — %d movimento(s), %g unidade(s)' % (br(dia) or '(sem data)',
+                                                            len(do_dia), soma))
+            for l in sorted(do_dia, key=lambda x: (texto(x.get('hora')),
+                                                   numero(x.get('id')))):
+                print('    %-6s %-5s %-38s lote %-14s %g'
+                      % (texto(l.get('id')), texto(l.get('hora')),
+                         texto(l.get('descricao'))[:38],
+                         texto(l.get('lote')) or '(vazio)',
+                         numero(l.get('quantidade'))))
+        print('')
+
+    print('=' * 78)
+    print('Esta lista só lê. Quem transmite é o Digifarma.')
+    return True
+
+
+def modo_login_sngpc(config):
+    """Diz se o Digifarma já tem as credenciais do site do SNGPC guardadas.
+
+    A farmácia perguntou se o login no site não podia ser feito pelo
+    programa. A resposta útil não é automatizar o site por fora — é
+    descobrir se o próprio Digifarma já sabe entrar e só não está usando.
+    A tabela SNGPC tem colunas de e-mail e senha; se estiverem vazias, é
+    por isso que o Anvisa.exe para esperando alguém digitar.
+
+    NUNCA imprime o valor. Diz preenchido ou vazio, que é o que decide o
+    próximo passo — e é a mesma lição do dia em que o diagnóstico publicou
+    EMAIL e SENHA no Firebase sem ninguém notar."""
+    conexao = conectar_firebird(config)
+    try:
+        campos = colunas_da_tabela(conexao, 'SNGPC')
+        interesse = [c for c in campos
+                     if any(p in c for p in ('EMAIL', 'SENHA', 'USUARIO', 'LOGIN',
+                                             'CPF_RESPONSAVEL'))]
+        if not interesse:
+            print('A tabela SNGPC não tem coluna de e-mail nem de senha nesta')
+            print('instalação. Então o Digifarma não guarda o login do site.')
+            return True
+
+        linhas = consultar(conexao, 'SELECT FIRST 1 %s FROM SNGPC'
+                           % ', '.join(interesse))
+        linha = linhas[0] if linhas else {}
+
+        print('LOGIN DO SITE DO SNGPC, guardado no Digifarma')
+        print('=' * 78)
+        print('Nenhum valor é impresso — só se está preenchido.')
+        print('')
+        vazios = []
+        for c in interesse:
+            cheio = preenchido(linha.get(c))
+            print('  %-28s %s' % (c, 'preenchido' if cheio else 'VAZIO'))
+            if not cheio:
+                vazios.append(c)
+        print('')
+
+        if vazios:
+            print('Há campo em branco. É a explicação mais simples para o')
+            print('Anvisa.exe parar no login: ele não tem o que digitar.')
+            print('')
+            print('Preencha na configuração do SNGPC dentro do Digifarma — não')
+            print('por aqui. O agente não escreve credencial em lugar nenhum, e')
+            print('digitar direto na tabela pularia a validação dele.')
+            print('')
+            print('Depois disso, rode o Anvisa.exe e veja se ele passa sozinho.')
+        else:
+            print('Está tudo preenchido. Então o Anvisa.exe tem as credenciais')
+            print('e mesmo assim para — o que aponta para o site exigir algo que')
+            print('não se automatiza, como um código de imagem, ou para o')
+            print('programa do Digifarma não usar o que está guardado.')
+            print('')
+            print('Nesse caso o login continua sendo de uma pessoa. Vale abrir')
+            print('chamado no Digifarma perguntando por que o Anvisa.exe não usa')
+            print('as credenciais que a própria tabela dele guarda.')
+        return True
+    finally:
+        fechar(conexao)
+
+
 def modo_regras(config):
     """Publica as regras à mão, do servidor."""
     try:
@@ -2721,6 +2863,8 @@ RELATORIOS = {
     'colunas': lambda config, alvo: texto_do_modo(modo_colunas, config, alvo or 'LOTES'),
     'totais': lambda config, alvo: texto_do_modo(modo_totais, config, alvo),
     'receitas': lambda config, alvo: texto_do_modo(modo_receitas, config, alvo),
+    'pendentes': lambda config, alvo: texto_do_modo(modo_pendentes, config),
+    'login_sngpc': lambda config, alvo: texto_do_modo(modo_login_sngpc, config),
 }
 
 LIMITE_TEXTO = 120000    # o relatório inteiro cabe; o corte é rede de segurança
@@ -4359,6 +4503,10 @@ def principal():
                         help='publica as regras do Firebase a partir do GitHub')
     parser.add_argument('--anvisa', action='store_true',
                         help='abre o Anvisa.exe na tela de quem está no servidor')
+    parser.add_argument('--pendentes', action='store_true',
+                        help='lista o que exatamente vai no próximo envio ao SNGPC')
+    parser.add_argument('--login-sngpc', dest='login_sngpc', action='store_true',
+                        help='diz se o Digifarma guarda o login do site do SNGPC')
     parser.add_argument('--config', metavar='CHAVE=VALOR',
                         help='muda uma chave do agente_config.json sem editar JSON à mão')
     args = parser.parse_args()
@@ -4397,6 +4545,10 @@ def principal():
             raise SystemExit(0 if modo_regras(config) else 1)
         if args.anvisa:
             raise SystemExit(0 if modo_anvisa(config) else 1)
+        if args.pendentes:
+            raise SystemExit(0 if modo_pendentes(config) else 1)
+        if args.login_sngpc:
+            raise SystemExit(0 if modo_login_sngpc(config) else 1)
         if args.produto is not None:
             raise SystemExit(0 if modo_produto(config, args.produto) else 1)
         if args.comparacao is not None:

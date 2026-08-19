@@ -1601,6 +1601,44 @@ O que foi varrido e está limpo: código morto (nenhum), os oito `.bat` e
 `.vbs` contra a armadilha do parêntese, os arquivos que o `SERVIDOR_AGORA`
 baixa, as flags do agente, e a versão do `app.js` contra a do `sw.js`.
 
+### "21 movimentos" não responde nada
+
+A aba Situação dizia quantos movimentos aguardavam transmissão e parava aí.
+A farmácia perguntou o óbvio: **quais?** Saber o número não ajuda a decidir
+nada — a pergunta real é se o próximo envio cobre o período certo, e qual
+venda está faltando quando a ANVISA acusa saldo diferente.
+
+`--pendentes` (botão **O que falta transmitir**) lista por tipo e por dia:
+número da venda, hora, produto, lote e quantidade, com o total de cada dia —
+que é o número que se compara com a tela do Digifarma. E mostra os ponteiros
+em cima, porque é por eles que a conta é feita, não por data.
+
+Quando não há nada pendente ele diz mais do que "nada": se a ANVISA ainda
+mostra saldo diferente e o Digifarma não tem o que transmitir, o problema
+não é falta de envio — é envio que não foi aceito, e isso se confere no
+Relatório Status de Transmissão.
+
+### O login do SNGPC: a pergunta antes da automação
+
+A farmácia sugeriu que o programa fizesse o login no site sozinho. A
+resposta útil não era automatizar o site por fora — era descobrir se o
+**próprio Digifarma já sabe entrar e só não está usando**.
+
+A tabela `SNGPC` tem colunas de e-mail e senha. Se estiverem vazias, é a
+explicação mais simples para o `Anvisa.exe` parar esperando alguém digitar,
+e o conserto é preenchê-las na configuração do Digifarma — não escrever
+credencial pela porta dos fundos.
+
+`--login-sngpc` (botão **Login do SNGPC**) responde isso e **nunca imprime o
+valor**: diz preenchido ou vazio, que é o que decide o próximo passo. É a
+mesma lição do dia em que o diagnóstico publicou `EMAIL` e `SENHA` no
+Firebase sem ninguém notar.
+
+Se estiver tudo preenchido e o programa ainda parar, aí a conclusão é outra:
+ou o site exige algo que não se automatiza — um código de imagem, por
+exemplo —, ou o `Anvisa.exe` não usa o que a própria tabela dele guarda. A
+segunda é pergunta para o suporte do Digifarma, com evidência na mão.
+
 ## Testes
 
 **Os dois, sempre.** São suítes separadas porque são linguagens separadas, e
