@@ -1,133 +1,153 @@
 @echo off
 chcp 65001 >nul
 setlocal enabledelayedexpansion
-title Servidor - tudo o que precisa ser feito agora
+title Servidor - fazer tudo
 
 REM ============================================================
-REM  SERVIDOR_AGORA.bat  -  a lista da vez, num arquivo so.
+REM  SERVIDOR_AGORA.bat  -  um arquivo, dois cliques, faz tudo.
 REM
-REM  A farmacia nao fica no servidor o dia todo. Quando fica, o
-REM  que atrapalha e descobrir um comando de cada vez, no meio do
-REM  expediente. Este arquivo roda tudo o que da para rodar, na
-REM  ordem que importa, e no fim lista o que so uma pessoa pode
+REM  Baixa sozinho o que precisa, roda a lista inteira sem
+REM  perguntar nada, e no fim diz o que ficou para uma pessoa
 REM  fazer - com o motivo de cada um.
 REM
-REM  Ele e reescrito quando a lista muda. Rode o
-REM  ATUALIZAR_AGENTE.bat antes, ou baixe este de novo, para ter
-REM  a lista do dia.
+REM  Para o proximo, so baixar este arquivo de novo: ele traz a
+REM  lista do dia junto.
 REM
-REM  Cada passo pergunta antes. Pular um nao atrapalha os outros.
+REM     curl -fL -o SERVIDOR_AGORA.bat https://raw.githubusercontent.com/jeffersontete-ui/FARMACIA/main/agente/SERVIDOR_AGORA.bat
+REM
+REM  So para na TROCA DA CHAVE, e so quando a maquina nao tem o
+REM  gcloud: ali o Google exige que uma pessoa autorize o
+REM  download. Todo o resto e automatico.
+REM
+REM  Nao precisa de administrador.
 REM ============================================================
 
 cd /d "%~dp0"
 
+set "CRU=https://raw.githubusercontent.com/jeffersontete-ui/FARMACIA/main/agente"
 set "PY=python"
 where python >nul 2>&1
 if errorlevel 1 set "PY=py"
 
+set "LOG=%~dp0servidor_agora_%DATE:~6,4%-%DATE:~3,2%-%DATE:~0,2%.log"
+
 echo.
 echo  ============================================================
-echo   SERVIDOR - LISTA DE 19/08/2026
+echo   SERVIDOR - FAZENDO TUDO
+echo  ============================================================
+echo   Um passo de cada vez. O que falhar nao derruba os outros.
+echo   Tudo tambem vai para:
+echo   %LOG%
 echo  ============================================================
 echo.
-echo   1. Atualizar o agente e as regras do Firebase
-echo   2. Trocar a chave do Firebase          [a mais importante]
-echo   3. Desligar a escrita no Digifarma
-echo   4. Sincronizar tudo
-echo   5. Abrir o Anvisa.exe para o login
+
+echo ==== %DATE% %TIME% ==== > "%LOG%"
+
+REM ---------- 0. trazer os ajudantes ----------
+REM  Baixar antes de usar: assim este arquivo sozinho basta, e
+REM  quem esta no servidor nao precisa saber que existem outros.
+echo  [0/5] Baixando os arquivos de apoio...
+call :BAIXAR TROCAR_CHAVE_FIREBASE.bat
+call :BAIXAR DIAGNOSTICO_ANVISA.bat
+call :BAIXAR instalar_chromedriver.ps1
+call :BAIXAR ATUALIZAR_AGENTE.bat
 echo.
-echo   Cada um pergunta antes. Responda N para pular.
+
+REM ---------- 1. agente + regras ----------
+echo  [1/5] Atualizando o agente e as regras do Firebase...
+if exist "%~dp0ATUALIZAR_AGENTE.bat" (
+  call "%~dp0ATUALIZAR_AGENTE.bat" /auto
+  echo        pronto.
+) else (
+  echo        nao consegui baixar o ATUALIZAR_AGENTE.bat; pulando.
+)
+echo. >> "%LOG%"
+echo ---- agente atualizado ---- >> "%LOG%"
+echo.
+
+REM ---------- 2. a chave ----------
+REM  A mais importante: a chave de administrador saiu do servidor
+REM  dentro de um .rar. Ela ignora todas as regras do banco.
+echo  [2/5] Trocando a chave do Firebase...
+if exist "%~dp0TROCAR_CHAVE_FIREBASE.bat" (
+  call "%~dp0TROCAR_CHAVE_FIREBASE.bat"
+) else (
+  echo        nao consegui baixar o TROCAR_CHAVE_FIREBASE.bat; pulando.
+)
+echo.
+
+REM ---------- 3. fechar a escrita ----------
+echo  [3/5] Desligando a escrita no Digifarma...
+%PY% agente_auto.py --config permitir_ajuste_estoque=false >> "%LOG%" 2>&1
+if errorlevel 1 (
+  echo        nao consegui - veja o log.
+) else (
+  echo        desligada.
+)
+echo.
+
+REM ---------- 4. sincronizar ----------
+echo  [4/5] Sincronizando tudo. Isto demora um pouco...
+%PY% agente_auto.py --auto >> "%LOG%" 2>&1
+if errorlevel 1 (
+  echo        falhou - veja o log.
+) else (
+  echo        pronto.
+)
+echo.
+
+REM ---------- 5. Anvisa ----------
+REM  Aberto pela tarefa, nao daqui: com /IT ela roda na sessao de
+REM  quem esta na tela. Aberto por este .bat herdaria a sessao de
+REM  quem clicou, o que da no mesmo - mas pela tarefa funciona
+REM  tambem quando o pedido vem do celular.
+echo  [5/5] Abrindo o Anvisa.exe para o login...
+%PY% agente_auto.py --anvisa >> "%LOG%" 2>&1
+type "%LOG%" | findstr /I "anvisa" >nul 2>&1
+echo        veja a tela: se o navegador abriu, faca o login no SNGPC.
+echo.
+
+echo  ============================================================
+echo   O QUE SO UMA PESSOA PODE FAZER
+echo  ============================================================
+echo.
+echo   A. LOGIN NO SITE DO SNGPC
+echo      O Anvisa.exe para na tela de login - e desenho da
+echo      ANVISA. Depois do login ele le o inventario sozinho, e
+echo      as divergencias que sao so foto velha somem.
+echo.
+echo   B. TRANSMITIR A MOVIMENTACAO PENDENTE
+echo      No Digifarma. Enquanto nao sobe, as vendas ficam
+echo      contadas de um lado so.
+echo.
+echo   C. LANCAR PERDA DO DERMOBAN, lote 26111
+echo      No Digifarma. A ANVISA tem 2 e a prateleira esta vazia.
+echo      Zerar o saldo aqui nao resolve: o ajuste e interno e nao
+echo      sobe ao SNGPC, entao o site continuaria com as 2. Perda
+echo      e escriturada e transmitida - zera os dois lados.
+echo.
+echo   D. LER O LOTE IMPRESSO NAS CAIXAS DE ESCITALOPRAM 10MG
+echo      Um lote com -4 e outro com +4, cinco de cada lado: nao
+echo      falta nem sobra nada, sao caixas no lote errado. Contar
+echo      nao responde. So ler a caixa responde.
+echo.
+echo  ============================================================
+echo   Log completo em:
+echo   %LOG%
+echo  ============================================================
 echo.
 pause
+goto :eof
 
-REM ---------- 1 ----------
-echo.
-echo  ------------------------------------------------------------
-echo   1. ATUALIZAR O AGENTE
-echo   Baixa a versao nova do GitHub e publica as regras do
-echo   Firebase junto. Confere o arquivo antes de trocar.
-echo  ------------------------------------------------------------
-set "R="
-set /p R=  Fazer agora [S/N]: 
-if /i not "!R!"=="S" goto PASSO2
-call "%~dp0ATUALIZAR_AGENTE.bat" /auto
-echo   feito.
-
-:PASSO2
-echo.
-echo  ------------------------------------------------------------
-echo   2. TROCAR A CHAVE DO FIREBASE
-echo   A chave de administrador saiu do servidor dentro de um .rar.
-echo   Ela ignora todas as regras do banco. Gerar a nova nao basta:
-echo   e APAGAR a antiga que invalida a que vazou.
-echo  ------------------------------------------------------------
-set "R="
-set /p R=  Fazer agora [S/N]: 
-if /i not "!R!"=="S" goto PASSO3
-call "%~dp0TROCAR_CHAVE_FIREBASE.bat"
-
-:PASSO3
-echo.
-echo  ------------------------------------------------------------
-echo   3. DESLIGAR A ESCRITA NO DIGIFARMA
-echo   Foi ligada para zerar os lotes fantasma. Enquanto fica
-echo   ligada, os botoes que escrevem estao vivos num celular que
-echo   fica no balcao.
-echo  ------------------------------------------------------------
-set "R="
-set /p R=  Desligar agora [S/N]: 
-if /i not "!R!"=="S" goto PASSO4
-%PY% agente_auto.py --config permitir_ajuste_estoque=false
-
-:PASSO4
-echo.
-echo  ------------------------------------------------------------
-echo   4. SINCRONIZAR TUDO
-echo   Recalcula as divergencias com o que estiver valendo agora.
-echo  ------------------------------------------------------------
-set "R="
-set /p R=  Sincronizar agora [S/N]: 
-if /i not "!R!"=="S" goto PASSO5
-%PY% agente_auto.py --auto
-
-:PASSO5
-echo.
-echo  ------------------------------------------------------------
-echo   5. ANVISA.EXE
-echo   Ele para na tela de login e nao anda sozinho. Abrir aqui e
-echo   fazer o login no site regrava o inventario do SNGPC.
-echo   Rode DEPOIS de transmitir o envio, senao a foto vem velha.
-echo  ------------------------------------------------------------
-set "R="
-set /p R=  Abrir agora [S/N]: 
-if /i not "!R!"=="S" goto MANUAIS
-start "" "C:\Digifarma\Aplicativos\VerificaXML\Anvisa.exe"
-echo   aberto. Faca o login no site do SNGPC.
-
-:MANUAIS
-echo.
-echo  ============================================================
-echo   O QUE ESTE ARQUIVO NAO PODE FAZER
-echo  ============================================================
-echo.
-echo   A. TRANSMITIR O ENVIO 17 A 18
-echo      No Digifarma. E o que mais mexe nos numeros: enquanto
-echo      nao sobe, as vendas dos dias 17 e 18 ficam contadas de
-echo      um lado so.
-echo.
-echo   B. LANCAR PERDA DO DERMOBAN, lote 26111
-echo      No Digifarma, nao pelo app. A ANVISA tem 2 unidades e a
-echo      prateleira esta vazia. Zerar o saldo aqui nao resolve -
-echo      o ajuste e interno e nao sobe ao SNGPC, entao o site
-echo      continuaria com as 2. Perda e escriturada e transmitida:
-echo      zera os dois lados de verdade.
-echo.
-echo   C. LER O LOTE IMPRESSO NAS CAIXAS DE ESCITALOPRAM 10MG
-echo      Lote 2509242 tem -4 e o 2529244 tem +4. Cinco de cada
-echo      lado: nao falta nem sobra nada, sao 4 caixas registradas
-echo      no lote errado. Contar nao responde - o total ja esta
-echo      certo. So ler a caixa responde.
-echo.
-echo  ============================================================
-echo.
-pause
+REM ------------------------------------------------------------
+:BAIXAR
+REM  -f para o curl FALHAR em erro de HTTP. Sem ele, a pagina de
+REM  erro do GitHub e gravada por cima do arquivo - ja aconteceu
+REM  aqui, e o .bat virou 199 bytes de HTML.
+curl -fsL -o "%~dp0%~1" "%CRU%/%~1" >nul 2>&1
+if errorlevel 1 (
+  echo        nao baixei %~1
+) else (
+  echo        ok %~1
+)
+goto :eof
