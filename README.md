@@ -1493,15 +1493,36 @@ A resposta muda o que se faz, e por isso são três recados diferentes:
 | alguém conectado | então não é sessão: rode o `DIAGNOSTICO_ANVISA.bat` |
 | não deu para perguntar | diz que não sabe, em vez de chutar |
 
-E aí aparece a coisa maior. A tarefa diária `AnvisaSNGPC_Login` é criada com
-`/IT`: **só roda com usuário na sessão**. Com o servidor na tela de bloqueio,
-ela não roda — silenciosamente, todo dia. É por isso que o inventário do
-SNGPC vive velho, e ninguém tinha ligado uma coisa à outra.
+A tarefa diária `AnvisaSNGPC_Login` é criada com `/IT`: **só roda com usuário
+na sessão**. Com o servidor na tela de bloqueio ela não roda — silenciosamente,
+todo dia. Era a explicação mais provável para o inventário viver velho.
 
-O conserto é o que o `AGENDAR_ANVISA.bat` já dizia no rodapé e ninguém tinha
-motivo para levar a sério: `netplwiz`, desmarcar *"Os usuários devem digitar
-um nome e uma senha"*, para a máquina entrar sozinha na área de trabalho
-depois de reiniciar.
+**Não era essa.** A farmácia respondeu que o servidor entra sozinho, sem pedir
+senha: existe sessão. E é aí que a resposta fica interessante, porque sobra a
+causa que ninguém procura.
+
+#### Tarefa com `/IT` só abre janela para o dono dela
+
+O `AGENDAR_ANVISA.bat` é rodado **como administrador** — está escrito no
+próprio arquivo, porque criar tarefa exige. Então a tarefa nasce pertencendo
+ao administrador. Mas quem entra sozinho na máquina, pelo login automático, é
+a conta do balcão.
+
+Com `/IT`, o Windows abre a janela **na sessão do dono da tarefa**. Se o dono
+não está na tela, ele obedece o comando, não abre nada, e **não reporta erro
+nenhum** — `schtasks /Run` devolve sucesso. Do lado de fora é indistinguível
+de "funcionou".
+
+Por isso o agente passou a comparar os dois nomes: o dono da tarefa
+(`schtasks /Query /V`) e quem está na sessão (`quser`). Quando diferem, ele
+diz isso e diz o conserto — recriar a tarefa logado como a conta que
+realmente usa a máquina.
+
+Comparar nomes de usuário do Windows tem duas pegadinhas, e as duas fariam o
+agente acusar troca onde não há: o domínio (`DROGARIA\\jefferson` e
+`jefferson` são a mesma pessoa) e a caixa. E os rótulos do `schtasks` mudam
+com o idioma — `Run As User` vira `Executar como usuário`. Os casos estão no
+teste.
 
 Ler a sessão parece trivial e não é. O parser tem que ignorar a linha de
 `services`, não confundir sessão **desconectada** com conectada, e entender

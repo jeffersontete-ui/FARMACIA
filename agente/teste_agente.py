@@ -928,6 +928,53 @@ def principal():
     finally:
         _sub.run = guardado_run
 
+    # --- de quem é a tarefa vs quem está na tela --------------------------
+    # A farmácia disse que o servidor entra sozinho, sem pedir senha. Ou
+    # seja: HÁ sessão, e mesmo assim a tarefa não abriu nada. A causa que
+    # sobra é a que ninguém procura — a tarefa foi criada com /IT por um
+    # usuário (o administrador que rodou o AGENDAR_ANVISA.bat) e quem entra
+    # sozinho é outro. Com /IT, o Windows só abre janela na sessão do dono
+    # da tarefa: com outro usuário na tela, ele obedece e não faz nada,
+    # sem erro nenhum.
+    conferir('o domínio não conta na comparação de usuário',
+             ag.so_usuario('DROGARIA\\jefferson') == ag.so_usuario('jefferson'))
+    conferir('maiúscula não conta',
+             ag.so_usuario('JEFFERSON') == ag.so_usuario('jefferson'))
+    conferir('barra normal também é separador de domínio',
+             ag.so_usuario('SERVIDOR/maria') == ag.so_usuario('maria'))
+    conferir('usuários diferentes continuam diferentes',
+             ag.so_usuario('.\\Administrador') != ag.so_usuario('drogariahumanae'))
+
+    # o schtasks muda o rótulo com o idioma do Windows; o campo tem que
+    # sair nos dois
+    SAIDAS_TAREFA = [
+        ('Windows em inglês', 'DROGARIA\\Administrador', """
+TaskName:      \\AnvisaSNGPC_Login
+Status:        Ready
+Run As User:   DROGARIA\\Administrador
+Last Result:   0
+"""),
+        ('Windows em português', 'DROGARIA\\Administrador', """
+NomeDaTarefa:  \\AnvisaSNGPC_Login
+Status:        Pronto
+Executar como usuário:  DROGARIA\\Administrador
+ltimo resultado:  0
+"""),
+    ]
+    for rotulo, esperado, saida_tarefa in SAIDAS_TAREFA:
+        def rodar_tarefa(comando, capture_output=True, text=True, timeout=30,
+                         _s=saida_tarefa):
+            return _types.SimpleNamespace(stdout=_s, stderr='', returncode=0)
+        guardado_run = _sub.run
+        _sub.run = rodar_tarefa
+        try:
+            veio = ag.campo_da_tarefa('AnvisaSNGPC_Login', 'run as user',
+                                      'executar como')
+        finally:
+            _sub.run = guardado_run
+        conferir('dono da tarefa é lido no %s' % rotulo, veio == esperado,
+                 'veio %r' % veio)
+
     # --- todo relatório tem que ter jeito de ser pedido -------------------
     # Duas vezes eu mandei a farmácia usar um botão que não existia: primeiro
     # "Colunas da tabela", depois "Apuração do saldo". O modo estava pronto,

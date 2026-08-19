@@ -2187,6 +2187,53 @@ def sessao_interativa():
     return None
 
 
+def so_usuario(nome):
+    """DROGARIA\\jefferson e jefferson são a mesma pessoa. Comparar sem
+    tirar o domínio faria o agente acusar troca de usuário onde não há."""
+    return texto(nome).replace('/', '\\').split('\\')[-1].strip().lower()
+
+
+def usuario_conectado():
+    """O nome de quem está na sessão, ou '' se não deu para saber."""
+    import subprocess
+    for comando in (['quser'], ['query', 'session']):
+        try:
+            r = subprocess.run(comando, capture_output=True, text=True, timeout=30)
+        except Exception:
+            continue
+        saida = (r.stdout or '')
+        if not saida.strip():
+            continue
+        for linha in saida.splitlines()[1:]:
+            baixa = linha.lower()
+            if 'active' not in baixa and 'ativo' not in baixa:
+                continue
+            if 'services' in baixa or 'rdp-tcp ' in baixa:
+                continue
+            partes = linha.replace('>', ' ').split()
+            if partes:
+                return partes[0]
+        return ''
+    return ''
+
+
+def campo_da_tarefa(nome, *rotulos):
+    """Lê um campo do schtasks /Query /V. Os rótulos mudam com o idioma do
+    Windows, então vêm vários e vale o primeiro que casar."""
+    import subprocess
+    try:
+        r = subprocess.run(['schtasks', '/Query', '/TN', nome, '/FO', 'LIST', '/V'],
+                           capture_output=True, text=True, timeout=30)
+    except Exception:
+        return ''
+    for linha in (r.stdout or '').splitlines():
+        esquerda = linha.split(':', 1)[0].strip().lower()
+        for rotulo in rotulos:
+            if rotulo in esquerda:
+                return linha.split(':', 1)[-1].strip()
+    return ''
+
+
 def ultimo_resultado_da_tarefa(nome):
     """O codigo do ultimo disparo da tarefa agendada, como texto."""
     import subprocess
@@ -2266,11 +2313,30 @@ def abrir_anvisa(config):
                 'nome e uma senha".%s' % (TAREFA_ANVISA, rabicho))
 
     if tem_gente is True:
-        return ('Há alguém conectado no servidor, mas o Anvisa.exe não '
-                'apareceu na lista de processos. Então não é falta de sessão: '
-                'pode ser a tarefa %s apontando para um caminho errado, ou o '
-                'programa abrindo e fechando na hora. Rode o '
-                'DIAGNOSTICO_ANVISA.bat no servidor.%s' % (TAREFA_ANVISA, rabicho))
+        # Sessão existe, e mesmo assim nada abriu. A causa que sobra e que
+        # ninguém procura: a tarefa foi criada com /IT por UM usuário — em
+        # geral o administrador que rodou o AGENDAR_ANVISA.bat — e quem
+        # entra sozinho na máquina é OUTRO. Com /IT, o Windows só abre a
+        # janela na sessão do dono da tarefa. Se não for a mesma pessoa,
+        # ele obedece e não abre nada, sem erro nenhum.
+        de_quem = campo_da_tarefa(TAREFA_ANVISA, 'run as user', 'executar como',
+                                  'usuário para execução', 'usuario para execucao')
+        quem_esta = usuario_conectado()
+        if de_quem and quem_esta and so_usuario(de_quem) != so_usuario(quem_esta):
+            return ('É ISTO: a tarefa %s roda como "%s", mas quem está '
+                    'conectado na máquina é "%s". Criada com /IT, ela só abre '
+                    'janela na sessão do próprio dono — com outro usuário na '
+                    'tela, o Windows obedece e não abre nada, sem erro. '
+                    'Recrie a tarefa com o AGENDAR_ANVISA.bat logado como '
+                    '"%s".%s' % (TAREFA_ANVISA, de_quem, quem_esta,
+                                 quem_esta, rabicho))
+
+        return ('Há alguém conectado no servidor ("%s"), e mesmo assim o '
+                'Anvisa.exe não apareceu. Não é falta de sessão. Pode ser a '
+                'tarefa %s apontando para caminho errado, ou o programa '
+                'abrindo e fechando na hora. O DIAGNOSTICO_ANVISA.bat '
+                'responde no servidor.%s'
+                % (quem_esta or '?', TAREFA_ANVISA, rabicho))
 
     return ('Pedi para abrir e o Anvisa.exe não apareceu na lista de '
             'processos. Não consegui perguntar ao Windows quem está '
