@@ -901,9 +901,18 @@ def principal():
         import re as _re
         pedidos = set(_re.findall(r'data-pedir="(\w+)"', html_app))
         pedidos |= set(_re.findall(r"pedirRelatorio\('(\w+)'", js_app))
-        conhecidas = set(ag.RELATORIOS) | {'sincronizar_vendas', 'atualizar_envio',
-                                           'atualizar_agente', 'config',
-                                           'zerar_negativos', 'ajustar_lote'}
+        # As ações conhecidas saem do CÓDIGO de atender_pedido, não de uma
+        # lista escrita aqui. Lista fixa apodrece calada, e aí o teste passa
+        # a mentir no sentido contrário: deixaria passar botão órfão porque
+        # alguém esqueceu de atualizá-la.
+        with open(os.path.abspath(ag.__file__), encoding='utf-8') as f:
+            fonte_agente = f.read()
+        corpo_atende = fonte_agente[fonte_agente.index('def atender_pedido('):]
+        corpo_atende = corpo_atende[:corpo_atende.index('\ndef ', 10)]
+        conhecidas = set(ag.RELATORIOS)
+        conhecidas |= set(_re.findall(r"acao == '(\w+)'", corpo_atende))
+        for grupo in _re.findall(r"acao in \(([^)]*)\)", corpo_atende):
+            conhecidas |= set(_re.findall(r"'(\w+)'", grupo))
         orfas = sorted(pedidos - conhecidas)
         conferir('nenhum botão pede ação que o agente não conhece',
                  not orfas, ', '.join(orfas))

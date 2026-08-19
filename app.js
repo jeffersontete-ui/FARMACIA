@@ -18,7 +18,7 @@
 /* Tem que ser igual à VERSAO do sw.js — o teste de fumaça cobra as duas.
    Se divergirem, a tela mente sobre qual casca está em cache, que é
    justamente o que este carimbo existe para evitar. */
-const VERSAO_APP = 'v28';
+const VERSAO_APP = 'v29';
 
 const CONFIG_FIREBASE = {
   apiKey: 'AIzaSyC3nXsBC2ARX8IOLITHUtovPn4DONEQe7g',
@@ -300,7 +300,7 @@ const ROTULO_PEDIDO = {
   atualizar_envio: 'Atualizar envio', atualizar_agente: 'Atualizar o agente',
   config: 'Ajuste do agente', colunas: 'Colunas da tabela',
   totais: 'Total do produto x soma dos lotes',
-  receitas: 'Receitas lançadas',
+  receitas: 'Receitas lançadas', anvisa: 'Abrir o Anvisa.exe',
   zerar_negativos: 'Zerar lotes negativos', ajustar_lote: 'Gravar contagem no lote'
 };
 

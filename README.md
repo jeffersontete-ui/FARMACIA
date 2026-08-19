@@ -1446,6 +1446,46 @@ marcado há meses.
 E fica dito na tela o que o episódio ensinou duas vezes: **XML arquivado não
 é prova de transmissão.** Só o site responde isso.
 
+### Abrir o Anvisa.exe pelo app, e o que isso não resolve
+
+A farmácia pediu para abrir o `Anvisa.exe` de dentro do app. Dá — com um
+limite que precisa estar escrito: **abrir, sim; logar, não.** O programa para
+na tela de login do site do SNGPC, e isso é desenho da ANVISA. O que o botão
+resolve é o "não tem ninguém que saiba abrir o programa", que é um problema
+real quando quem está na loja não é quem cuida do servidor.
+
+E há uma armadilha do Windows no caminho. O agente roda como **SYSTEM**, numa
+tarefa agendada. Programa aberto por SYSTEM nasce na **sessão 0**, isolada do
+desktop desde o Windows Vista: a janela existe e ninguém vê. Para um programa
+que *para esperando alguém*, isso significaria processo pendurado para
+sempre — que é exatamente como o `Anvisa.exe` já apareceu quebrado aqui.
+
+Por isso quem abre não é o agente: é a tarefa `AnvisaSNGPC_Login`, criada
+pelo `AGENDAR_ANVISA.bat` com `/IT`. Ela roda como o usuário conectado, na
+sessão dele. O agente só dispara com `schtasks /Run`.
+
+Se não houver ninguém conectado no servidor, ela não roda — e **isso é a
+resposta certa, não um erro**. O app diz isso, em vez de fingir que abriu.
+
+Duas coisas que o botão faz antes de responder:
+
+- **confere se já está aberto.** Cópia pendurada é a causa nº 1 de "o
+  Anvisa.exe não abre", e abrir outra em cima só piora;
+- **espera o processo aparecer** antes de dar a resposta. Sem isso o recado
+  seria sempre "mandei abrir", que não informa nada a quem está longe.
+
+### A lista de ações conhecidas vem do código
+
+O teste que cobra "todo botão tem ação e toda ação tem botão" começou com uma
+lista fixa das ações válidas. Ao acrescentar o `anvisa`, ele acusou — certo —
+e a correção óbvia seria escrever `'anvisa'` na lista.
+
+Seria trocar um problema por outro mais silencioso: lista fixa apodrece, e
+a partir daí o teste mente no sentido contrário, deixando passar botão órfão
+porque alguém esqueceu de atualizá-la. Agora as ações são lidas do corpo do
+`atender_pedido`. Confirmei removendo o `anvisa` do agente: o teste acusa o
+botão órfão.
+
 ## Testes
 
 **Os dois, sempre.** São suítes separadas porque são linguagens separadas, e
