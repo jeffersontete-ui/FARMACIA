@@ -873,6 +873,61 @@ def principal():
     conferir('--receitas com texto no lugar dos dias não inventa 0 dias',
              not ag.modo_receitas({}, 'abc'))
 
+    # --- quem está conectado no servidor ----------------------------------
+    # O botão "Abrir o Anvisa.exe" respondia "o mais provável é não haver
+    # ninguém conectado" — um chute, num recado que a farmácia lê de longe.
+    # Agora ele pergunta ao Windows. As saídas abaixo são as de verdade, e
+    # incluem as três que enganam um parser ingênuo: a linha de services,
+    # a sessão desconectada, e o Windows em português.
+    import types as _types
+    import subprocess as _sub
+
+    SAIDAS_QUSER = [
+        ('ninguém conectado, só services', False, """
+ SESSIONNAME       USERNAME                 ID  STATE   TYPE        DEVICE
+ services                                    0  Disc
+ console                                     1  Conn
+"""),
+        ('usuário ativo no console', True, """
+ USERNAME              SESSIONNAME        ID  STATE   IDLE TIME  LOGON TIME
+>drogariahumanae       console             1  Active      none   19/08/2026 08:12
+"""),
+        ('sessão desconectada não conta', False, """
+ USERNAME              SESSIONNAME        ID  STATE   IDLE TIME  LOGON TIME
+ drogariahumanae                           2  Disc          1:04  19/08/2026 08:12
+"""),
+        ('Windows em português', True, """
+ USUARIO               SESSAO             ID  ESTADO  TEMPO OCIOSO  LOGON
+>drogariahumanae       console             1  Ativo         nenhum  19/08/2026 08:12
+"""),
+    ]
+
+    for rotulo, esperado, saida_quser in SAIDAS_QUSER:
+        def rodar_falso(comando, capture_output=True, text=True, timeout=30,
+                        _s=saida_quser):
+            return _types.SimpleNamespace(stdout=_s, stderr='', returncode=0)
+        guardado_run = _sub.run
+        _sub.run = rodar_falso
+        try:
+            veio = ag.sessao_interativa()
+        finally:
+            _sub.run = guardado_run
+        conferir('sessão do Windows: %s' % rotulo, veio is esperado,
+                 'esperado %s, veio %s' % (esperado, veio))
+
+    # Sem quser nem query session, a resposta é "não sei" — e não "não tem
+    # ninguém". Um chute com cara de certeza manda a farmácia mexer no
+    # netplwiz por nada.
+    def rodar_que_falha(comando, capture_output=True, text=True, timeout=30):
+        raise OSError('comando não existe')
+    guardado_run = _sub.run
+    _sub.run = rodar_que_falha
+    try:
+        conferir('sem como perguntar, responde "não sei" em vez de chutar',
+                 ag.sessao_interativa() is None)
+    finally:
+        _sub.run = guardado_run
+
     # --- todo relatório tem que ter jeito de ser pedido -------------------
     # Duas vezes eu mandei a farmácia usar um botão que não existia: primeiro
     # "Colunas da tabela", depois "Apuração do saldo". O modo estava pronto,
