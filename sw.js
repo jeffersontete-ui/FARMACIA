@@ -4,7 +4,7 @@
 /* Trocar a VERSAO a cada publicação do app: o fetch aqui é cache-first, e
    sem versão nova o celular que já instalou continua servindo o app.js
    antigo do cache — a atualização sobe para o GitHub Pages e ninguém vê. */
-const VERSAO = 'farmacia-sngpc-v27';
+const VERSAO = 'farmacia-sngpc-v28';
 const CASCA = [
   './',
   './index.html',
