@@ -1616,12 +1616,37 @@ def montar_inventario(conexao, config, data_inventario=None, usar_envio=False):
     # pedir e torcer
     resultado['agente'] = versao_do_agente()
 
-    # datas já arquivadas, para a aba Aceites
+    # XMLs já arquivados, para a aba Aceites.
+    #
+    # O nome do arquivo carrega a data em que ele foi arquivado, e essa data
+    # NÃO é como o site da ANVISA identifica a transmissão: lá cada linha é
+    # rotulada pelo PERÍODO (Data Inicial a Data Final). A farmácia abriu os
+    # dois lado a lado e não conseguiu casar linha com linha — o app dizia
+    # "Envio de 19/08" e o site, "17/08 a 18/08", para a mesma coisa.
+    #
+    # Por isso o período de cada arquivo sobe junto. A data continua sendo a
+    # chave do aceite (é o que já está gravado em farmacia/aceites), mas
+    # quem manda no rótulo passa a ser o período.
     pasta_enviados = os.path.join(config['pasta_xml'], 'enviados')
     if os.path.isdir(pasta_enviados):
-        resultado['enviosConhecidos'] = sorted(
-            n[6:16] for n in os.listdir(pasta_enviados)
+        arquivos = sorted(
+            n for n in os.listdir(pasta_enviados)
             if n.lower().startswith('sngpc_') and n.lower().endswith('.xml'))[-60:]
+        resultado['enviosConhecidos'] = [n[6:16] for n in arquivos]
+
+        periodos = {}
+        # só os últimos: abrir 60 XMLs a cada sincronização custa caro, e
+        # aceite antigo já foi marcado há muito tempo
+        for nome in arquivos[-20:]:
+            try:
+                cab = mapa_xml.ler(os.path.join(pasta_enviados, nome)).get('cabecalho', {})
+            except Exception:
+                continue
+            de, ate = cab.get('dataInicio'), cab.get('dataFim')
+            if de or ate:
+                periodos[nome[6:16]] = {'de': de, 'ate': ate}
+        if periodos:
+            resultado['periodosDeEnvio'] = periodos
 
     return resultado
 

@@ -1411,6 +1411,41 @@ foi baixado em venda e perda, e o que a ANVISA tem do mesmo lote. É o
 relatório que responde quando os dois lados falam de lotes com números
 diferentes.
 
+### Duas datas para a mesma transmissão, de novo — agora resolvida
+
+Já tinha aparecido, e voltou noutro lugar. A farmácia abriu o **Relatório
+Status de Transmissão** ao lado da aba Aceites e não conseguiu casar linha
+com linha:
+
+| | |
+|---|---|
+| o site dizia | `Data Inicial 17/08 · Data Final 18/08` |
+| o app dizia | `Envio de 19/08/2026` |
+
+**É a mesma transmissão.** O XML foi gerado e arquivado no dia 19, cobrindo o
+movimento dos dias 17 e 18. As duas datas estão certas e nomeiam coisas
+diferentes.
+
+O app listava os XMLs de `enviados/` e tirava o título do **nome do
+arquivo** — que carrega a data em que o agente arquivou. Esse número não
+aparece em lugar nenhum do site, então não havia por onde casar.
+
+Agora o agente lê o cabeçalho de cada XML arquivado e publica o período em
+`periodosDeEnvio`. O título da linha passa a ser **`Movimentos de 17/08 a
+18/08`**, igual ao site, e a data do arquivo desce para a segunda linha, onde
+serve de referência sem confundir.
+
+A chave do aceite continua sendo a data do arquivo: é o que já está gravado
+em `farmacia/aceites`, e trocá-la órfãaria os aceites que a farmácia já
+marcou. O que mudou é só o rótulo — e o rótulo é o que a pessoa lê.
+
+Só os 20 arquivos mais recentes são abertos a cada sincronização. Ler 60
+XMLs de hora em hora custaria caro para responder sobre aceite que foi
+marcado há meses.
+
+E fica dito na tela o que o episódio ensinou duas vezes: **XML arquivado não
+é prova de transmissão.** Só o site responde isso.
+
 ## Testes
 
 **Os dois, sempre.** São suítes separadas porque são linguagens separadas, e

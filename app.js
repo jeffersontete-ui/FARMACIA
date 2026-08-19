@@ -18,7 +18,7 @@
 /* Tem que ser igual à VERSAO do sw.js — o teste de fumaça cobra as duas.
    Se divergirem, a tela mente sobre qual casca está em cache, que é
    justamente o que este carimbo existe para evitar. */
-const VERSAO_APP = 'v27';
+const VERSAO_APP = 'v28';
 
 const CONFIG_FIREBASE = {
   apiKey: 'AIzaSyC3nXsBC2ARX8IOLITHUtovPn4DONEQe7g',
@@ -1300,8 +1300,24 @@ function pintarAceites() {
 
     const esquerda = criar('div');
     const d = criar('p', 'aceite-data');
-    d.textContent = 'Envio de ' + dataBR(data);
+    /* O título é o PERÍODO, porque é assim que o site da ANVISA identifica
+       cada transmissão — Data Inicial a Data Final. A data do arquivo, que
+       era o título antes, não aparece em lugar nenhum lá: a farmácia abriu
+       os dois lado a lado e não conseguiu casar linha com linha. */
+    const per = estado.inventario?.periodosDeEnvio?.[data];
+    d.textContent = per && (per.de || per.ate)
+      ? 'Movimentos de ' + dataBR(per.de) + ' a ' + dataBR(per.ate)
+      : 'Envio de ' + dataBR(data);
     esquerda.appendChild(d);
+
+    if (per && (per.de || per.ate)) {
+      const arq = criar('p', 'sublinha');
+      arq.style.margin = '2px 0 0';
+      arq.textContent = 'XML arquivado em ' + dataBR(data)
+        + ' · procure este período no Relatório Status de Transmissão';
+      esquerda.appendChild(arq);
+    }
+
     const sub = criar('p', 'sublinha');
     sub.style.margin = '2px 0 0';
     sub.textContent = a.por ? `${estadoAtual === 'aceito' ? 'Aceite' : 'Recusa'} marcada por ${a.por} em ${dataHora(a.em)}` : 'Ainda não conferido no site da ANVISA';
