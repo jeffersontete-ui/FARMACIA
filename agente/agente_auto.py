@@ -2342,6 +2342,65 @@ def abrir_anvisa(config):
             % rabicho)
 
 
+def modo_log_anvisa(config, quantas=''):
+    """As últimas linhas do anvisa.log, que é onde o Anvisa.exe conta o que
+    fez.
+
+    Era o DIAGNOSTICO_ANVISA.bat que lia isso, no servidor. A farmácia
+    perdeu o acesso à máquina, e sem o log de longe a pergunta "onde ele
+    parou?" fica sem resposta — que é justamente a pergunta que decide se o
+    problema é do programa, do login do site, ou de não ter rodado."""
+    try:
+        limite = int(str(quantas).strip()) if str(quantas).strip() else 40
+    except ValueError:
+        limite = 40
+    limite = max(5, min(limite, 300))
+
+    pasta = config.get('pasta_xml') or ''
+    candidatos = [os.path.join(pasta, n) for n in
+                  ('anvisa.log', 'Anvisa.log', os.path.join('log', 'anvisa.log'))]
+    caminho = next((c for c in candidatos if os.path.exists(c)), None)
+
+    if not caminho:
+        print('Não achei anvisa.log em %s.' % (pasta or '(pasta não configurada)'))
+        print('')
+        print('O programa pode nunca ter chegado a escrever — o que já é uma')
+        print('pista: se ele abre e fecha na hora, não passa da primeira linha.')
+        return False
+
+    try:
+        with open(caminho, encoding='utf-8', errors='replace') as f:
+            linhas = f.read().splitlines()
+    except Exception as e:
+        print('Não consegui ler %s: %s' % (caminho, e))
+        return False
+
+    try:
+        quando = datetime.datetime.fromtimestamp(os.path.getmtime(caminho))
+        idade = datetime.datetime.now() - quando
+    except Exception:
+        quando, idade = None, None
+
+    print('ANVISA.LOG — últimas %d linha(s) de %d' % (min(limite, len(linhas)), len(linhas)))
+    print('%s' % caminho)
+    if quando:
+        print('escrito pela última vez em %s (%d dia(s) atrás)'
+              % (quando.strftime('%d/%m/%Y %H:%M'), idade.days))
+    print('=' * 78)
+    for linha in linhas[-limite:]:
+        print(linha)
+    print('=' * 78)
+
+    # O "aguardando login" é a assinatura de sempre neste servidor: o
+    # programa chega até o site e para. Dizer isso poupa a leitura.
+    ultimas = ' '.join(linhas[-limite:]).lower()
+    if 'aguardando login' in ultimas or 'aguardando' in ultimas:
+        print('')
+        print('Ele chegou ao site e PAROU esperando o login. Não é defeito do')
+        print('programa nem do servidor: falta alguém entrar na conta.')
+    return True
+
+
 def arrumar_tarefa_anvisa(config):
     """Recria a tarefa AnvisaSNGPC_Login no nome de quem usa a máquina.
 
@@ -3015,6 +3074,7 @@ RELATORIOS = {
     'receitas': lambda config, alvo: texto_do_modo(modo_receitas, config, alvo),
     'pendentes': lambda config, alvo: texto_do_modo(modo_pendentes, config),
     'login_sngpc': lambda config, alvo: texto_do_modo(modo_login_sngpc, config),
+    'log_anvisa': lambda config, alvo: texto_do_modo(modo_log_anvisa, config, alvo),
 }
 
 LIMITE_TEXTO = 120000    # o relatório inteiro cabe; o corte é rede de segurança
@@ -4656,6 +4716,9 @@ def principal():
                         help='publica as regras do Firebase a partir do GitHub')
     parser.add_argument('--anvisa', action='store_true',
                         help='abre o Anvisa.exe na tela de quem está no servidor')
+    parser.add_argument('--log-anvisa', dest='log_anvisa', metavar='LINHAS',
+                        nargs='?', const='',
+                        help='mostra o fim do anvisa.log, onde o Anvisa.exe conta o que fez')
     parser.add_argument('--tarefa-anvisa', dest='tarefa_anvisa', action='store_true',
                         help='recria a tarefa do Anvisa.exe no nome de quem usa a máquina')
     parser.add_argument('--pendentes', action='store_true',
@@ -4700,6 +4763,8 @@ def principal():
             raise SystemExit(0 if modo_regras(config) else 1)
         if args.anvisa:
             raise SystemExit(0 if modo_anvisa(config) else 1)
+        if args.log_anvisa is not None:
+            raise SystemExit(0 if modo_log_anvisa(config, args.log_anvisa) else 1)
         if args.tarefa_anvisa:
             raise SystemExit(0 if modo_tarefa_anvisa(config) else 1)
         if args.pendentes:

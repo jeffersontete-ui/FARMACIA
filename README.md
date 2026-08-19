@@ -1316,6 +1316,36 @@ ser lote irmão legítimo, e só quem está na farmácia sabe.
 Falhar ao ler o inventário **não** trava a correção: este aviso é rede a
 mais, não a única.
 
+### O login do site: a resposta que fechou a pergunta
+
+A medição do `--login-sngpc` respondeu: **e-mail, senha e CPF do responsável
+estão todos preenchidos** na tabela `SNGPC`. Então o `Anvisa.exe` tem as
+credenciais e mesmo assim para.
+
+O `CPF_RESPONSAVEL_SNGPC` ao lado do e-mail e da senha aponta para o login
+pelo **gov.br**, que é como o SNGPC autentica. E o gov.br costuma exigir
+segundo fator — código no aplicativo ou SMS. Se for isso, **nenhum programa
+faz esse login sozinho**: nem o `Anvisa.exe`, nem nada que se escreva aqui.
+É desenho do governo, não limitação do Digifarma.
+
+Uma observação separa as duas hipóteses, e não precisa do servidor: **quando
+a janela abre, os campos já vêm preenchidos?** Preenchidos e parando num
+código, o passo humano é obrigatório e a busca acaba. Em branco, o programa
+não usa o que a própria tabela dele guarda — e aí é chamado no Digifarma,
+com a evidência na mão.
+
+Enquanto isso, o objetivo mudou: não é automatizar o login, é **tornar o
+passo humano barato**. Quem está no balcão aperta um botão no celular de
+quem cuida do SNGPC, a janela abre na tela do servidor, e alguém entra.
+
+`--log-anvisa` (botão **Log do Anvisa.exe**) completa isso: mostra o fim do
+`anvisa.log` e a data em que ele foi escrito pela última vez. Era o
+`DIAGNOSTICO_ANVISA.bat` que lia esse arquivo, no servidor — sem acesso à
+máquina, "onde ele parou?" ficaria sem resposta, e é justamente a pergunta
+que separa problema do programa, do login, e de simplesmente não ter rodado.
+Quando o log termina em *aguardando login*, ele diz isso em português, para
+poupar a leitura.
+
 ### Quando o servidor deixa de ser alcançável
 
 Em 19/08/2026 a farmácia perdeu o acesso à máquina. Daí em diante, tudo pelo
