@@ -2156,45 +2156,27 @@ def processo_rodando(nome):
     return nome.lower() in (saida or '').lower()
 
 
-def sessao_interativa():
-    """Diz se há alguém conectado na máquina. True, False, ou None se não
-    deu para saber.
-
-    Sem isto o agente só podia SUPOR o motivo de a tarefa não ter aberto
-    nada — e supor errado num recado que a farmácia lê de longe é pior que
-    não dizer. O quser não existe em toda edição do Windows; o query session
-    existe em mais lugares e serve de segunda tentativa."""
-    import subprocess
-    for comando in (['quser'], ['query', 'session']):
-        try:
-            r = subprocess.run(comando, capture_output=True, text=True, timeout=30)
-        except Exception:
-            continue
-        saida = (r.stdout or '')
-        if not saida.strip():
-            continue
-        for linha in saida.splitlines()[1:]:
-            # sessão de verdade tem nome de usuário e estado Active/Ativo;
-            # as linhas de services, console vazio e rdp-tcp ociosas não
-            texto_linha = linha.lower()
-            if 'active' in texto_linha or 'ativo' in texto_linha:
-                if 'services' in texto_linha or 'rdp-tcp ' in texto_linha:
-                    continue
-                partes = linha.split()
-                if partes and partes[0].strip('> '):
-                    return True
-        return False
-    return None
-
-
 def so_usuario(nome):
-    """DROGARIA\\jefferson e jefferson são a mesma pessoa. Comparar sem
-    tirar o domínio faria o agente acusar troca de usuário onde não há."""
+    """DROGARIA\\jefferson e jefferson são a mesma pessoa. Comparar sem tirar
+    o domínio faria o agente acusar troca de usuário onde não há."""
     return texto(nome).replace('/', '\\').split('\\')[-1].strip().lower()
 
 
-def usuario_conectado():
-    """O nome de quem está na sessão, ou '' se não deu para saber."""
+def ler_sessoes():
+    """Quem está conectado na máquina, pelo Windows.
+
+    Devolve a lista de nomes, [] quando não há ninguém, ou None quando não
+    deu para perguntar — e esses três casos são diferentes de propósito.
+    "Não sei" virar "não tem ninguém" mandaria a farmácia mexer no login
+    automático por nada.
+
+    O quser não existe em toda edição do Windows; o query session existe em
+    mais lugares e serve de segunda tentativa.
+
+    Três coisas enganam quem lê essa saída, e as três aparecem no servidor
+    da farmácia: a linha de services, que existe sempre e não é gente; a
+    sessão Disc, que é alguém desconectado e não conta; e o Windows em
+    português, onde Active vira Ativo."""
     import subprocess
     for comando in (['quser'], ['query', 'session']):
         try:
@@ -2204,17 +2186,32 @@ def usuario_conectado():
         saida = (r.stdout or '')
         if not saida.strip():
             continue
+        nomes = []
         for linha in saida.splitlines()[1:]:
             baixa = linha.lower()
             if 'active' not in baixa and 'ativo' not in baixa:
                 continue
             if 'services' in baixa or 'rdp-tcp ' in baixa:
                 continue
+            # o > marca a própria sessão no quser e não faz parte do nome
             partes = linha.replace('>', ' ').split()
-            if partes:
-                return partes[0]
-        return ''
-    return ''
+            if partes and partes[0].strip():
+                nomes.append(partes[0])
+        return nomes
+    return None
+
+
+def sessao_interativa():
+    """True, False, ou None se não deu para saber."""
+    sessoes = ler_sessoes()
+    return None if sessoes is None else bool(sessoes)
+
+
+def usuario_conectado():
+    """O nome de quem está na sessão, ou '' se não há ninguém ou não deu
+    para saber."""
+    sessoes = ler_sessoes()
+    return sessoes[0] if sessoes else ''
 
 
 def campo_da_tarefa(nome, *rotulos):
