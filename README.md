@@ -1474,6 +1474,40 @@ Duas coisas que o botão faz antes de responder:
 - **espera o processo aparecer** antes de dar a resposta. Sem isso o recado
   seria sempre "mandei abrir", que não informa nada a quem está longe.
 
+### O servidor sem ninguém conectado explica o inventário velho
+
+Na primeira vez que a farmácia apertou "Abrir o Anvisa.exe", o app respondeu
+que o programa não apareceu na lista de processos e que *"o mais provável é
+não haver ninguém conectado"*.
+
+Provável não serve. É um recado lido a quilômetros do servidor, e as duas
+hipóteses levam a consertos opostos — mexer no login automático do Windows,
+ou investigar o programa. O agente passou a **perguntar**, com `quser` e,
+onde ele não existe, `query session`.
+
+A resposta muda o que se faz, e por isso são três recados diferentes:
+
+| O que o Windows diz | O que o app responde |
+|---|---|
+| ninguém conectado | é falta de sessão — e o conserto é o `netplwiz` |
+| alguém conectado | então não é sessão: rode o `DIAGNOSTICO_ANVISA.bat` |
+| não deu para perguntar | diz que não sabe, em vez de chutar |
+
+E aí aparece a coisa maior. A tarefa diária `AnvisaSNGPC_Login` é criada com
+`/IT`: **só roda com usuário na sessão**. Com o servidor na tela de bloqueio,
+ela não roda — silenciosamente, todo dia. É por isso que o inventário do
+SNGPC vive velho, e ninguém tinha ligado uma coisa à outra.
+
+O conserto é o que o `AGENDAR_ANVISA.bat` já dizia no rodapé e ninguém tinha
+motivo para levar a sério: `netplwiz`, desmarcar *"Os usuários devem digitar
+um nome e uma senha"*, para a máquina entrar sozinha na área de trabalho
+depois de reiniciar.
+
+Ler a sessão parece trivial e não é. O parser tem que ignorar a linha de
+`services`, não confundir sessão **desconectada** com conectada, e entender
+o Windows em português — `Ativo` no lugar de `Active`. Os quatro casos estão
+no `teste_agente.py`, com a saída real do `quser`.
+
 ### A lista de ações conhecidas vem do código
 
 O teste que cobra "todo botão tem ação e toda ação tem botão" começou com uma

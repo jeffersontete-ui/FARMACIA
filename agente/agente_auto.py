@@ -2156,6 +2156,51 @@ def processo_rodando(nome):
     return nome.lower() in (saida or '').lower()
 
 
+def sessao_interativa():
+    """Diz se há alguém conectado na máquina. True, False, ou None se não
+    deu para saber.
+
+    Sem isto o agente só podia SUPOR o motivo de a tarefa não ter aberto
+    nada — e supor errado num recado que a farmácia lê de longe é pior que
+    não dizer. O quser não existe em toda edição do Windows; o query session
+    existe em mais lugares e serve de segunda tentativa."""
+    import subprocess
+    for comando in (['quser'], ['query', 'session']):
+        try:
+            r = subprocess.run(comando, capture_output=True, text=True, timeout=30)
+        except Exception:
+            continue
+        saida = (r.stdout or '')
+        if not saida.strip():
+            continue
+        for linha in saida.splitlines()[1:]:
+            # sessão de verdade tem nome de usuário e estado Active/Ativo;
+            # as linhas de services, console vazio e rdp-tcp ociosas não
+            texto_linha = linha.lower()
+            if 'active' in texto_linha or 'ativo' in texto_linha:
+                if 'services' in texto_linha or 'rdp-tcp ' in texto_linha:
+                    continue
+                partes = linha.split()
+                if partes and partes[0].strip('> '):
+                    return True
+        return False
+    return None
+
+
+def ultimo_resultado_da_tarefa(nome):
+    """O codigo do ultimo disparo da tarefa agendada, como texto."""
+    import subprocess
+    try:
+        r = subprocess.run(['schtasks', '/Query', '/TN', nome, '/FO', 'LIST', '/V'],
+                           capture_output=True, text=True, timeout=30)
+    except Exception:
+        return ''
+    for linha in (r.stdout or '').splitlines():
+        if 'last result' in linha.lower() or 'ltimo resultado' in linha.lower():
+            return linha.split(':', 1)[-1].strip()
+    return ''
+
+
 def abrir_anvisa(config):
     """Abre o Anvisa.exe NA TELA de quem está no servidor.
 
@@ -2204,9 +2249,34 @@ def abrir_anvisa(config):
                     'login no site do SNGPC na tela de lá — daí ele lê o '
                     'inventário sozinho.')
 
-    return ('Pedi para abrir, mas o Anvisa.exe não apareceu na lista de '
-            'processos. O mais provável é não haver ninguém conectado na '
-            'máquina: a tarefa só roda com usuário na sessão.')
+    # Aqui o agente parava de ajudar e começava a chutar. Perguntar ao
+    # Windows quem está conectado troca "o mais provável é" por uma
+    # resposta — e as duas apontam para consertos diferentes.
+    tem_gente = sessao_interativa()
+    resultado = ultimo_resultado_da_tarefa(TAREFA_ANVISA)
+    rabicho = (' Último resultado da tarefa: %s.' % resultado) if resultado else ''
+
+    if tem_gente is False:
+        return ('NÃO HÁ NINGUÉM CONECTADO no servidor, então o Windows não '
+                'abriu nada: a tarefa %s só roda com usuário na sessão. É a '
+                'mesma razão pela qual o inventário fica velho — a tarefa '
+                'diária dela também não roda com a máquina na tela de '
+                'bloqueio. O conserto é a máquina entrar sozinha na área de '
+                'trabalho: netplwiz, desmarcar "Os usuários devem digitar um '
+                'nome e uma senha".%s' % (TAREFA_ANVISA, rabicho))
+
+    if tem_gente is True:
+        return ('Há alguém conectado no servidor, mas o Anvisa.exe não '
+                'apareceu na lista de processos. Então não é falta de sessão: '
+                'pode ser a tarefa %s apontando para um caminho errado, ou o '
+                'programa abrindo e fechando na hora. Rode o '
+                'DIAGNOSTICO_ANVISA.bat no servidor.%s' % (TAREFA_ANVISA, rabicho))
+
+    return ('Pedi para abrir e o Anvisa.exe não apareceu na lista de '
+            'processos. Não consegui perguntar ao Windows quem está '
+            'conectado, então não dá para dizer se é falta de sessão ou '
+            'outra coisa. O DIAGNOSTICO_ANVISA.bat responde no servidor.%s'
+            % rabicho)
 
 
 def modo_anvisa(config):
