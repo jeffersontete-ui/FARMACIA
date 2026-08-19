@@ -2342,6 +2342,70 @@ def abrir_anvisa(config):
             % rabicho)
 
 
+def arrumar_tarefa_anvisa(config):
+    """Recria a tarefa AnvisaSNGPC_Login no nome de quem usa a máquina.
+
+    Existia só no AGENDAR_ANVISA.bat, rodado no servidor. A farmácia perdeu
+    o acesso ao servidor, e sem isto o Anvisa.exe fica travado para sempre:
+    a tarefa pertence ao administrador que a criou, e com /IT o Windows só
+    abre janela na sessão do dono. Com outro usuário na tela, ele obedece e
+    não abre nada, sem erro.
+
+    O agente roda como SYSTEM, então tem permissão para criar tarefa. O
+    usuário vem de quem está conectado agora — que é justamente quem precisa
+    ver a janela."""
+    import subprocess
+
+    quem = usuario_conectado()
+    if not quem:
+        raise RuntimeError(
+            'não há ninguém conectado no servidor agora, e é o nome dessa '
+            'pessoa que a tarefa precisa ter. Peça para alguém entrar na '
+            'máquina e tente de novo.')
+
+    caminho = os.path.join(config.get('pasta_xml') or '', 'Anvisa.exe')
+    if not os.path.exists(caminho):
+        raise RuntimeError('não achei o Anvisa.exe em %s' % caminho)
+
+    dono_antes = campo_da_tarefa(TAREFA_ANVISA, 'run as user', 'executar como',
+                                 'usuário para execução', 'usuario para execucao')
+
+    # /IT = só roda com usuário na sessão, que é o ponto: o programa PARA
+    # esperando alguém digitar o login do site. Sem /IT ele abriria invisível
+    # na sessão 0 e ficaria pendurado.
+    # /SC ONCE com hora passada + /F: a tarefa existe para ser disparada à
+    # mão, não para rodar sozinha num horário.
+    comando = ['schtasks', '/Create', '/TN', TAREFA_ANVISA, '/F',
+               '/SC', 'DAILY', '/ST', '08:30', '/IT',
+               '/RU', quem, '/TR', '"%s"' % caminho]
+    try:
+        r = subprocess.run(comando, capture_output=True, text=True, timeout=60)
+    except Exception as e:
+        raise RuntimeError('não consegui criar a tarefa: %s' % e)
+
+    if r.returncode != 0:
+        detalhe = (r.stderr or r.stdout or '').strip()[:250]
+        raise RuntimeError(
+            'o Windows recusou criar a tarefa para "%s" (%s). Detalhe: %s'
+            % (quem, r.returncode, detalhe))
+
+    virou = ' Antes ela era de "%s".' % dono_antes if dono_antes and \
+            so_usuario(dono_antes) != so_usuario(quem) else ''
+    return ('Tarefa %s recriada no nome de "%s", que é quem está na máquina '
+            'agora.%s Agora o botão "Abrir o Anvisa.exe" deve abrir a janela '
+            'na tela de lá.' % (TAREFA_ANVISA, quem, virou))
+
+
+def modo_tarefa_anvisa(config):
+    """Recria a tarefa à mão, do servidor."""
+    try:
+        print(arrumar_tarefa_anvisa(config))
+        return True
+    except Exception as e:
+        print('Não consegui: %s' % e)
+        return False
+
+
 def modo_anvisa(config):
     """Abre o Anvisa.exe à mão, do servidor."""
     try:
@@ -2553,13 +2617,51 @@ def linhas_do_lote_para_ajuste(conexao, info, ms, lote):
             if not ms or so_digitos(l.get('REGISTRO_MS')) == so_digitos(ms)]
 
 
+# Quanto tempo a escrita fica liberada quando é ligada pelo app.
+#
+# A trava era ligada só no servidor, de propósito. Deixou de ser possível:
+# a farmácia perdeu o acesso à máquina, e uma trava que ninguém consegue
+# desarmar não protege — impede. Mas ligar de longe sem prazo repetiria o
+# que já aconteceu aqui: foi liberada num dia, ninguém desligou, e ficou
+# aberta por dias com os botões vivos num celular de balcão.
+#
+# Uma hora chega para o que se faz numa sessão de conferência, e o
+# esquecimento deixa de existir como categoria de erro.
+JANELA_AJUSTE_MINUTOS = 60
+
+
+def prazo_do_ajuste(config):
+    """Até quando a escrita está liberada. Devolve (ligada, quando_expira).
+
+    Sem prazo salvo, uma configuração antiga com true continua valendo —
+    quem ligou no servidor não some por causa desta mudança."""
+    if not config.get('permitir_ajuste_estoque'):
+        return False, None
+    ate = texto(config.get('permitir_ajuste_estoque_ate'))
+    if not ate:
+        return True, None
+    try:
+        limite = datetime.datetime.fromisoformat(ate)
+    except ValueError:
+        # prazo ilegível: trata como sem prazo, e não como liberado para
+        # sempre nem como fechado. Quem gravou foi o próprio agente.
+        return True, None
+    return datetime.datetime.now() <= limite, limite
+
+
 def conferir_permissao_de_ajuste(config, info):
     """As duas travas que valem para qualquer escrita no Digifarma."""
-    if not config.get('permitir_ajuste_estoque'):
+    ligada, limite = prazo_do_ajuste(config)
+    if not ligada:
+        if limite:
+            raise RuntimeError(
+                'a liberação da escrita venceu em %s. Ligue de novo pelo app, '
+                'no bloco "Corrigir estoque no Digifarma" — vale %d minutos.'
+                % (limite.strftime('%d/%m/%Y %H:%M'), JANELA_AJUSTE_MINUTOS))
         raise RuntimeError(
-            'ajuste de estoque desligado. Para ligar, ponha '
-            '"permitir_ajuste_estoque": true no agente_config.json, no servidor. '
-            'É de propósito que isso não se liga pelo app.')
+            'ajuste de estoque desligado. Ligue pelo app, no bloco "Corrigir '
+            'estoque no Digifarma": a liberação vale %d minutos e depois se '
+            'fecha sozinha.' % JANELA_AJUSTE_MINUTOS)
     if info['modo'] != 'saldo':
         # nesta instalação a coluna é de MOVIMENTO: cada linha é um
         # lançamento, e o saldo é a soma. Escrever nela não corrige saldo,
@@ -2787,19 +2889,32 @@ def aplicar_config(config, pedido):
     # que fica no balcão. Uma trava que não dá para desarmar de longe acaba
     # ficando armada.
     if chave == 'permitir_ajuste_estoque':
-        if texto(pedido.get('valor')).lower() not in ('false', 'nao', 'não', 'n', '0', 'off'):
-            raise RuntimeError(
-                'o app só DESLIGA a escrita no Digifarma. Ligar é no '
-                'servidor: python agente_auto.py --config '
-                'permitir_ajuste_estoque=true')
+        ligar = texto(pedido.get('valor')).lower() in ('true', 'sim', 's', '1', 'on')
         atual_cfg = carregar_config()
         antes_val = bool(atual_cfg.get(chave, False))
-        atual_cfg[chave] = False
+        atual_cfg[chave] = ligar
+
+        if ligar:
+            # Prazo, sempre. É ele que faz "ligar de longe" ser aceitável:
+            # o pior caso deixa de ser "ficou aberto por dias" e passa a ser
+            # "ficou aberto até a hora do almoço".
+            limite = (datetime.datetime.now()
+                      + datetime.timedelta(minutes=JANELA_AJUSTE_MINUTOS))
+            atual_cfg['permitir_ajuste_estoque_ate'] = limite.isoformat(timespec='seconds')
+            recado = ('Escrita no Digifarma LIGADA até %s (%d minutos). Depois '
+                      'disso ela se fecha sozinha — não precisa lembrar de '
+                      'desligar.' % (limite.strftime('%H:%M'), JANELA_AJUSTE_MINUTOS))
+        else:
+            atual_cfg.pop('permitir_ajuste_estoque_ate', None)
+            recado = ('Escrita no Digifarma DESLIGADA (estava %s).'
+                      % ('ligada' if antes_val else 'desligada'))
+
         with open(ARQUIVO_CONFIG, 'w', encoding='utf-8') as f:
             json.dump(atual_cfg, f, indent=2, ensure_ascii=False)
-        config[chave] = False
-        return ('Escrita no Digifarma DESLIGADA (estava %s). Para ligar de '
-                'novo é no servidor.' % ('ligada' if antes_val else 'desligada'))
+        config[chave] = ligar
+        config['permitir_ajuste_estoque_ate'] = atual_cfg.get('permitir_ajuste_estoque_ate')
+        registrar(recado)
+        return recado
 
     if chave not in CONFIG_REMOTO:
         raise RuntimeError('chave "%s" não pode ser mudada pelo app' % chave)
@@ -2931,6 +3046,9 @@ def atender_pedido(config, db, pedido):
 
     if acao == 'anvisa':
         return abrir_anvisa(config)
+
+    if acao == 'arrumar_tarefa_anvisa':
+        return arrumar_tarefa_anvisa(config)
 
     if acao == 'zerar_negativos':
         return zerar_negativos(config, db, pedido)
@@ -4538,6 +4656,8 @@ def principal():
                         help='publica as regras do Firebase a partir do GitHub')
     parser.add_argument('--anvisa', action='store_true',
                         help='abre o Anvisa.exe na tela de quem está no servidor')
+    parser.add_argument('--tarefa-anvisa', dest='tarefa_anvisa', action='store_true',
+                        help='recria a tarefa do Anvisa.exe no nome de quem usa a máquina')
     parser.add_argument('--pendentes', action='store_true',
                         help='lista o que exatamente vai no próximo envio ao SNGPC')
     parser.add_argument('--login-sngpc', dest='login_sngpc', action='store_true',
@@ -4580,6 +4700,8 @@ def principal():
             raise SystemExit(0 if modo_regras(config) else 1)
         if args.anvisa:
             raise SystemExit(0 if modo_anvisa(config) else 1)
+        if args.tarefa_anvisa:
+            raise SystemExit(0 if modo_tarefa_anvisa(config) else 1)
         if args.pendentes:
             raise SystemExit(0 if modo_pendentes(config) else 1)
         if args.login_sngpc:

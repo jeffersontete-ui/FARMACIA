@@ -1188,14 +1188,61 @@ ltimo resultado:  0
                      json.load(f).get('permitir_ajuste_estoque') is False)
         conferir('a config em memória também', cfg_vivo['permitir_ajuste_estoque'] is False)
 
+        # Ligar pela app passou a ser possível: a farmácia perdeu o acesso
+        # ao servidor, e trava que ninguém consegue desarmar não protege,
+        # impede. O que torna isso aceitável é o PRAZO — o pior caso deixa
+        # de ser "ficou aberto por dias" e passa a ser "ficou aberto até a
+        # hora do almoço".
         for tentativa in ('true', 'sim', '1', 'S'):
-            barrou = False
-            try:
-                ag.aplicar_config({}, {'chave': 'permitir_ajuste_estoque',
-                                       'valor': tentativa})
-            except RuntimeError as e:
-                barrou = 'servidor' in str(e)
-            conferir('o app NÃO liga a escrita com "%s"' % tentativa, barrou)
+            cfg_lig = {}
+            recado_lig = ag.aplicar_config(
+                cfg_lig, {'chave': 'permitir_ajuste_estoque', 'valor': tentativa})
+            conferir('o app liga a escrita com "%s", com prazo' % tentativa,
+                     'LIGADA' in recado_lig and 'minutos' in recado_lig, recado_lig)
+            conferir('  e o prazo fica gravado (%s)' % tentativa,
+                     bool(cfg_lig.get('permitir_ajuste_estoque_ate')))
+
+        # dentro do prazo, escreve
+        agora = datetime.datetime.now()
+        dentro = {'permitir_ajuste_estoque': True,
+                  'permitir_ajuste_estoque_ate':
+                      (agora + datetime.timedelta(minutes=30)).isoformat()}
+        ligada, _ = ag.prazo_do_ajuste(dentro)
+        conferir('dentro do prazo, a escrita vale', ligada is True)
+        ag.conferir_permissao_de_ajuste(dentro, {'modo': 'saldo', 'coluna': 'X'})
+
+        # vencido, NÃO escreve — e o recado diz quando venceu
+        vencido = {'permitir_ajuste_estoque': True,
+                   'permitir_ajuste_estoque_ate':
+                       (agora - datetime.timedelta(minutes=1)).isoformat()}
+        conferir('vencido, a escrita não vale', ag.prazo_do_ajuste(vencido)[0] is False)
+        recusa_prazo = ''
+        try:
+            ag.conferir_permissao_de_ajuste(vencido, {'modo': 'saldo', 'coluna': 'X'})
+        except RuntimeError as e:
+            recusa_prazo = str(e)
+        conferir('e o recado diz que venceu, e quando',
+                 'venceu' in recusa_prazo, recusa_prazo)
+
+        # configuração antiga, ligada no servidor sem prazo, continua valendo:
+        # esta mudança não pode desligar quem já estava trabalhando
+        antiga = {'permitir_ajuste_estoque': True}
+        conferir('config antiga sem prazo continua valendo',
+                 ag.prazo_do_ajuste(antiga)[0] is True)
+
+        # prazo ilegível não vira "liberado para sempre" nem "fechado"
+        torto = {'permitir_ajuste_estoque': True,
+                 'permitir_ajuste_estoque_ate': 'ontem de manhã'}
+        conferir('prazo ilegível cai no caso sem prazo, não em extremo',
+                 ag.prazo_do_ajuste(torto) == (True, None))
+
+        # desligar apaga o prazo, senão ele reaparece na próxima leitura
+        cfg_desl = {}
+        ag.aplicar_config(cfg_desl, {'chave': 'permitir_ajuste_estoque',
+                                     'valor': 'false'})
+        with open(ag.ARQUIVO_CONFIG, encoding='utf-8') as f:
+            conferir('desligar apaga o prazo do arquivo',
+                     'permitir_ajuste_estoque_ate' not in json.load(f))
     finally:
         ag.ARQUIVO_CONFIG = guardado_cfg
 
