@@ -1316,6 +1316,48 @@ ser lote irmão legítimo, e só quem está na farmácia sabe.
 Falhar ao ler o inventário **não** trava a correção: este aviso é rede a
 mais, não a única.
 
+### Mexer no servidor: um arquivo, não uma lista de comandos
+
+A farmácia não fica no servidor o dia todo. Quando fica, o que atrapalha é
+descobrir um comando de cada vez, no meio do expediente, com o balcão
+esperando.
+
+`SERVIDOR_AGORA.bat` é a lista da vez num arquivo só: roda o que dá para
+rodar, na ordem que importa, perguntando antes de cada passo — responder N
+pula sem atrapalhar os outros. No fim ele lista **o que só uma pessoa pode
+fazer**, com o motivo de cada um, porque essa parte não some por ser
+ignorada.
+
+Ele é reescrito quando a lista muda. Rodar o `ATUALIZAR_AGENTE.bat` antes,
+ou baixar de novo, traz a lista do dia.
+
+### Trocar a chave do Firebase
+
+A chave de administrador saiu do servidor dentro de um `.rar`, duas vezes.
+Ela ignora todas as regras do banco.
+
+`TROCAR_CHAVE_FIREBASE.bat` gera a nova, **testa**, e só então apaga a velha
+no Google. Se o teste falhar, a antiga volta e a nova é apagada — o agente
+nunca fica sem chave boa.
+
+Três decisões que valem explicar:
+
+**Quem troca é a conta Google da pessoa, não a chave do agente.** A chave não
+pode trocar a si mesma: para isso precisaria de permissão para criar e apagar
+chaves, e aí uma chave vazada poderia gerar novas para sempre. O `gcloud`
+autentica a pessoa uma vez e a rotação passa a ser um comando.
+
+**Apagar a velha é o passo que importa.** Gerar uma chave nova não desativa
+nada: as duas valem até a antiga ser removida. Um script de rotação que só
+gera dá a sensação de segurança sem a segurança.
+
+**Sem `gcloud`, ele não finge.** Diz o que falta, abre a página do console e
+lista os três passos manuais — incluindo o de apagar a antiga, que é o que
+se esquece.
+
+O backup da chave anterior fica na pasta com carimbo de data. É uma chave
+válida até o momento da revogação: guardar fora do servidor ou apagar.
+
 ## Testes
 
 **Os dois, sempre.** São suítes separadas porque são linguagens separadas, e
