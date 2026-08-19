@@ -2400,6 +2400,32 @@ def modo_pendentes(config):
     print('%d movimento(s) no total.' % total)
     print('')
 
+    # O RITMO DA FARMÁCIA, dito por ela: a venda do dia sobe no dia
+    # seguinte. Sem isso, o movimento de hoje aparece como pendência e
+    # assusta todo fim de tarde — quando é o funcionamento normal.
+    #
+    # O que interessa saber é o que passou do prazo. Movimento de anteontem
+    # ainda aqui não é ritmo, é envio que não aconteceu, e aí a divergência
+    # de saldo tem explicação.
+    hoje = datetime.date.today().isoformat()
+    ontem = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+
+    atrasados = 0
+    for linhas_tipo in pendentes.values():
+        for l in linhas_tipo:
+            if texto(l.get('data'))[:10] < ontem:
+                atrasados += 1
+
+    if atrasados:
+        print('*** %d movimento(s) de ANTES DE ONTEM ainda aqui.' % atrasados)
+        print('A venda do dia sobe no dia seguinte, então isso passou do')
+        print('ritmo: é envio que não aconteceu, e explica divergência de')
+        print('saldo contra a ANVISA.')
+    else:
+        print('Nada atrasado: tudo que está aqui é de ontem ou de hoje, e a')
+        print('venda do dia sobe no dia seguinte.')
+    print('')
+
     for tipo in ('saidas', 'entradas', 'perdas', 'transferencias'):
         linhas_tipo = pendentes.get(tipo) or []
         if not linhas_tipo:
@@ -2415,9 +2441,18 @@ def modo_pendentes(config):
         for dia in sorted(por_dia):
             do_dia = por_dia[dia]
             soma = round(sum(numero(l.get('quantidade')) for l in do_dia), 3)
+            if dia == hoje:
+                quando = 'sobe amanhã'
+            elif dia == ontem:
+                quando = 'sobe hoje'
+            elif dia:
+                quando = 'ATRASADO'
+            else:
+                quando = ''
             print('')
-            print('  %s — %d movimento(s), %g unidade(s)' % (br(dia) or '(sem data)',
-                                                            len(do_dia), soma))
+            print('  %s — %d movimento(s), %g unidade(s)%s'
+                  % (br(dia) or '(sem data)', len(do_dia), soma,
+                     '  [%s]' % quando if quando else ''))
             for l in sorted(do_dia, key=lambda x: (texto(x.get('hora')),
                                                    numero(x.get('id')))):
                 print('    %-6s %-5s %-38s lote %-14s %g'

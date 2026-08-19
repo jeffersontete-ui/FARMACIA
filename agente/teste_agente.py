@@ -951,6 +951,61 @@ def principal():
     finally:
         _sub.run = guardado_run
 
+    # --- o ritmo da transmissão -------------------------------------------
+    # Regra dita pela farmácia: a venda do dia sobe no dia SEGUINTE. Sem
+    # isso, o movimento de hoje aparece como pendência e assusta todo fim
+    # de tarde, quando é o funcionamento normal. O que interessa é o que
+    # passou do prazo — movimento de anteontem ainda parado não é ritmo, é
+    # envio que não aconteceu.
+    hoje_teste = datetime.date.today()
+    ontem_teste = hoje_teste - datetime.timedelta(days=1)
+    antes_teste = hoje_teste - datetime.timedelta(days=3)
+
+    def pendentes_com(dias):
+        def falso(conexao, config, *a, **k):
+            return {
+                'envio': {'ULT_SAIDA_VENDA_NOTA_ID': 46186,
+                          'ULT_ENTRADA_CAB_NOTA_ID': 1588, 'data': '2026-08-18'},
+                'pendentes': {'saidas': [
+                    {'id': 100 + i, 'data': d.isoformat(), 'hora': '10:00',
+                     'descricao': 'CLONAZEPAM 2MG', 'lote': 'L1', 'quantidade': 1}
+                    for i, d in enumerate(dias)],
+                    'entradas': [], 'perdas': [], 'transferencias': []},
+            }
+        guardado_montar = ag.montar_inventario
+        guardado_conectar = ag.conectar_firebird
+        guardado_fechar = ag.fechar
+        ag.montar_inventario = falso
+        ag.conectar_firebird = lambda c: None
+        ag.fechar = lambda c: None
+        try:
+            return ag.texto_do_modo(ag.modo_pendentes, {})
+        finally:
+            ag.montar_inventario = guardado_montar
+            ag.conectar_firebird = guardado_conectar
+            ag.fechar = guardado_fechar
+
+    saida_hoje = pendentes_com([hoje_teste])
+    conferir('venda de hoje é marcada como "sobe amanhã"',
+             'sobe amanhã' in saida_hoje and 'ATRASADO' not in saida_hoje)
+    conferir('só com venda de hoje, nada é acusado de atrasado',
+             'Nada atrasado' in saida_hoje, saida_hoje[-200:])
+
+    saida_ontem = pendentes_com([ontem_teste])
+    conferir('venda de ontem é "sobe hoje", não atraso',
+             'sobe hoje' in saida_ontem and 'ATRASADO' not in saida_ontem)
+
+    saida_velha = pendentes_com([antes_teste, hoje_teste])
+    conferir('venda de antes de ontem é acusada de atrasada',
+             'ATRASADO' in saida_velha and 'ANTES DE ONTEM' in saida_velha)
+    conferir('e a de hoje, na mesma lista, continua sendo ritmo normal',
+             'sobe amanhã' in saida_velha)
+
+    vazio = pendentes_com([])
+    conferir('sem nada pendente, aponta o envio não aceito como causa',
+             'NADA PENDENTE' in vazio and 'não ter sido aceito' in vazio,
+             vazio[-200:])
+
     # --- o botão "Abrir o Anvisa.exe", de ponta a ponta -------------------
     # É o caminho mais novo e o que a farmácia usa de longe: se ele der o
     # recado errado, manda mexer no lugar errado do servidor. Cada resposta
