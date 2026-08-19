@@ -873,6 +873,41 @@ def principal():
     conferir('--receitas com texto no lugar dos dias não inventa 0 dias',
              not ag.modo_receitas({}, 'abc'))
 
+    # --- todo relatório tem que ter jeito de ser pedido -------------------
+    # Duas vezes eu mandei a farmácia usar um botão que não existia: primeiro
+    # "Colunas da tabela", depois "Apuração do saldo". O modo estava pronto,
+    # entrava em RELATORIOS, aparecia com nome em ROTULO_PEDIDO — e não havia
+    # como pedir pela tela. A pessoa procura, não acha, e volta perguntando.
+    #
+    # É invariante e dá para cobrar: toda ação de RELATORIOS precisa de um
+    # data-pedir no index.html OU de uma chamada a pedirRelatorio no app.js.
+    raiz_app = os.path.dirname(os.path.dirname(os.path.abspath(ag.__file__)))
+    try:
+        with open(os.path.join(raiz_app, 'index.html'), encoding='utf-8') as f:
+            html_app = f.read()
+        with open(os.path.join(raiz_app, 'app.js'), encoding='utf-8') as f:
+            js_app = f.read()
+    except OSError:
+        html_app = js_app = None
+
+    if html_app is not None:
+        sem_jeito = [a for a in ag.RELATORIOS
+                     if ('data-pedir="%s"' % a) not in html_app
+                     and ("pedirRelatorio('%s'" % a) not in js_app]
+        conferir('todo relatório do agente tem botão ou chamada no app',
+                 not sem_jeito, ', '.join(sem_jeito))
+
+        # e o contrário: botão que pede uma ação que o agente não atende
+        import re as _re
+        pedidos = set(_re.findall(r'data-pedir="(\w+)"', html_app))
+        pedidos |= set(_re.findall(r"pedirRelatorio\('(\w+)'", js_app))
+        conhecidas = set(ag.RELATORIOS) | {'sincronizar_vendas', 'atualizar_envio',
+                                           'atualizar_agente', 'config',
+                                           'zerar_negativos', 'ajustar_lote'}
+        orfas = sorted(pedidos - conhecidas)
+        conferir('nenhum botão pede ação que o agente não conhece',
+                 not orfas, ', '.join(orfas))
+
     # --- desligar a escrita pelo app --------------------------------------
     # De mão única de propósito: o app fecha a porta, nunca abre. A escrita
     # ficou ligada por dias porque foi liberada num dia em que havia alguém
