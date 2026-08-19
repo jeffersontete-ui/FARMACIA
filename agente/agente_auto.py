@@ -2140,6 +2140,85 @@ def publicar_regras(config, origem=None):
     return 'Regras do Firebase publicadas a partir do GitHub.'
 
 
+TAREFA_ANVISA = 'AnvisaSNGPC_Login'
+
+
+def processo_rodando(nome):
+    """Diz se um .exe está na lista de processos do Windows."""
+    import subprocess
+    try:
+        saida = subprocess.run(
+            ['tasklist', '/FI', 'IMAGENAME eq %s' % nome],
+            capture_output=True, text=True, timeout=30).stdout
+    except Exception as e:
+        registrar('Não consegui listar os processos: %s' % e)
+        return None
+    return nome.lower() in (saida or '').lower()
+
+
+def abrir_anvisa(config):
+    """Abre o Anvisa.exe NA TELA de quem está no servidor.
+
+    Parece bobo mandar o agente abrir um programa, e não é: ele roda como
+    SYSTEM, numa tarefa agendada. Programa aberto por SYSTEM nasce na
+    sessão 0, isolada do desktop desde o Windows Vista — a janela existe e
+    ninguém vê. O Anvisa.exe PARA na tela de login do site; janela invisível
+    significa processo pendurado para sempre, que é exatamente como ele já
+    apareceu quebrado aqui.
+
+    Por isso quem abre é a tarefa AnvisaSNGPC_Login, criada com /IT: ela
+    roda como o usuário conectado, na sessão dele. Se não houver ninguém
+    conectado, ela não roda — e isso é a resposta certa, não um erro.
+
+    O que este botão resolve: alguém no balcão consegue abrir o programa
+    sem saber onde ele fica. O login continua sendo de quem está lá."""
+    import subprocess
+
+    ja = processo_rodando('Anvisa.exe')
+    if ja:
+        return ('O Anvisa.exe JÁ ESTÁ ABERTO no servidor. Se ninguém vê a '
+                'janela, ela pode ter ficado pendurada de uma vez anterior: '
+                'feche pelo Gerenciador de Tarefas e peça de novo.')
+
+    try:
+        r = subprocess.run(['schtasks', '/Run', '/TN', TAREFA_ANVISA],
+                           capture_output=True, text=True, timeout=60)
+    except Exception as e:
+        raise RuntimeError('não consegui disparar a tarefa %s: %s' % (TAREFA_ANVISA, e))
+
+    if r.returncode != 0:
+        detalhe = (r.stderr or r.stdout or '').strip()[:200]
+        raise RuntimeError(
+            'a tarefa %s não rodou (%s). Ela é criada pelo AGENDAR_ANVISA.bat, '
+            'no servidor, e só roda com alguém conectado na máquina. Detalhe: %s'
+            % (TAREFA_ANVISA, r.returncode, detalhe))
+
+    # Dar tempo de o processo aparecer antes de responder. Sem isto a
+    # resposta seria sempre "mandei" — que é o tipo de recado que não
+    # informa nada a quem está longe.
+    import time
+    for _ in range(6):
+        time.sleep(2)
+        if processo_rodando('Anvisa.exe'):
+            return ('Anvisa.exe aberto no servidor. Alguém precisa fazer o '
+                    'login no site do SNGPC na tela de lá — daí ele lê o '
+                    'inventário sozinho.')
+
+    return ('Pedi para abrir, mas o Anvisa.exe não apareceu na lista de '
+            'processos. O mais provável é não haver ninguém conectado na '
+            'máquina: a tarefa só roda com usuário na sessão.')
+
+
+def modo_anvisa(config):
+    """Abre o Anvisa.exe à mão, do servidor."""
+    try:
+        print(abrir_anvisa(config))
+        return True
+    except Exception as e:
+        print('Não consegui: %s' % e)
+        return False
+
+
 def modo_regras(config):
     """Publica as regras à mão, do servidor."""
     try:
@@ -2537,6 +2616,9 @@ def atender_pedido(config, db, pedido):
 
     if acao == 'atualizar_agente':
         return atualizar_agente(config)
+
+    if acao == 'anvisa':
+        return abrir_anvisa(config)
 
     if acao == 'zerar_negativos':
         return zerar_negativos(config, db, pedido)
@@ -4142,6 +4224,8 @@ def principal():
                         help='baixa a versão mais nova do agente do GitHub e se substitui')
     parser.add_argument('--regras', action='store_true',
                         help='publica as regras do Firebase a partir do GitHub')
+    parser.add_argument('--anvisa', action='store_true',
+                        help='abre o Anvisa.exe na tela de quem está no servidor')
     parser.add_argument('--config', metavar='CHAVE=VALOR',
                         help='muda uma chave do agente_config.json sem editar JSON à mão')
     args = parser.parse_args()
@@ -4178,6 +4262,8 @@ def principal():
             raise SystemExit(0)
         if args.regras:
             raise SystemExit(0 if modo_regras(config) else 1)
+        if args.anvisa:
+            raise SystemExit(0 if modo_anvisa(config) else 1)
         if args.produto is not None:
             raise SystemExit(0 if modo_produto(config, args.produto) else 1)
         if args.comparacao is not None:
