@@ -147,20 +147,99 @@ echo        no projeto. Nada foi trocado.
 goto FIM
 
 :SEM_GCLOUD
+REM  Sem o gcloud a troca e no console, mas o unico passo que
+REM  PRECISA de gente e o download: o Google exige que alguem
+REM  autorize. O resto - achar o arquivo, conferir, trocar,
+REM  testar - o .bat faz. Quem esta fazendo isto costuma estar
+REM  por acesso remoto, as vezes guiando outra pessoa por
+REM  telefone; cada passo manual a menos e um erro a menos.
 echo        nao achei o gcloud nesta maquina.
 echo.
-echo        Para a troca virar um comando so, instale uma vez:
-echo        https://cloud.google.com/sdk/docs/install
+echo        Para a troca virar um comando so na proxima vez,
+echo        instale uma vez: https://cloud.google.com/sdk/docs/install
 echo.
-echo        Sem ele, a troca e a mao no console:
-echo         1. gerar nova chave privada e salvar como
-echo            chave-firebase.json nesta pasta;
-echo         2. APAGAR a chave antiga na mesma tela - e isso que
-echo            invalida a que vazou;
-echo         3. rodar: python agente_auto.py --teste
-echo.
-echo        Abrindo a pagina...
+echo        Agora vamos pelo console. Abrindo a pagina...
 start "" "https://console.firebase.google.com/project/%PROJETO%/settings/serviceaccounts/adminsdk"
+echo.
+echo  ------------------------------------------------------------
+echo   NA PAGINA QUE ABRIU:
+echo     clique em "Gerar nova chave privada" e confirme.
+echo     Deixe o arquivo baixar onde o navegador quiser - nao
+echo     precisa mover nem renomear nada.
+echo  ------------------------------------------------------------
+echo.
+pause
+
+echo  Procurando a chave baixada...
+set "BAIXADA="
+for /f "delims=" %%A in ('powershell -NoProfile -Command "$d = Join-Path $env:USERPROFILE 'Downloads'; $e = Join-Path $env:USERPROFILE 'Desktop'; Get-ChildItem -Path $d, $e, '.' -Filter *.json -ErrorAction SilentlyContinue ^| Where-Object { $_.Name -notlike 'chave-firebase*' } ^| Sort-Object LastWriteTime -Descending ^| Select-Object -First 1 -ExpandProperty FullName" 2^>nul') do set "BAIXADA=%%A"
+
+if "!BAIXADA!"=="" (
+  echo        nao achei nenhum .json novo em Downloads, na Area de
+  echo        Trabalho nem nesta pasta. Se voce salvou noutro lugar,
+  echo        copie o arquivo para ca e rode de novo.
+  goto FIM
+)
+echo        achei: !BAIXADA!
+
+REM  Conferir ANTES de encostar na chave que esta funcionando. Um
+REM  .json qualquer da pasta de downloads nao pode virar a
+REM  credencial do agente por engano.
+set "CONFERE="
+for /f "delims=" %%A in ('powershell -NoProfile -Command "try { $j = Get-Content -Raw -LiteralPath '!BAIXADA!' ^| ConvertFrom-Json; if ($j.private_key -and $j.client_email -eq '!CONTA!') { 'sim' } } catch { }" 2^>nul') do set "CONFERE=%%A"
+
+if not "!CONFERE!"=="sim" (
+  echo.
+  echo        Esse arquivo NAO e uma chave da conta !CONTA!.
+  echo        Nada foi trocado. Confira se baixou do projeto certo.
+  goto FIM
+)
+
+for /f "delims=" %%A in ('powershell -NoProfile -Command "(Get-Content -Raw -LiteralPath '!BAIXADA!' ^| ConvertFrom-Json).private_key_id" 2^>nul') do set "IDNOVA=%%A"
+echo        chave nova  !IDNOVA!
+
+if "!IDNOVA!"=="!IDVELHA!" (
+  echo        essa e a MESMA chave que ja esta em uso. Gere uma nova
+  echo        na pagina antes de continuar. Nada foi trocado.
+  goto FIM
+)
+
+echo.
+echo  Trocando e testando...
+copy /Y "%CHAVE%" "%BACKUP%" >nul
+copy /Y "!BAIXADA!" "%CHAVE%" >nul
+
+set "PY=python"
+where python >nul 2>&1
+if errorlevel 1 set "PY=py"
+
+%PY% agente_auto.py --teste
+if errorlevel 1 goto MANUAL_FALHOU
+
+del "!BAIXADA!" >nul 2>&1
+echo        a chave nova funciona, e o arquivo baixado foi apagado.
+echo.
+echo  ------------------------------------------------------------
+echo   FALTA O PASSO QUE MAIS IMPORTA
+echo.
+echo   Volte na pagina do console e APAGUE a chave antiga:
+echo     !IDVELHA!
+echo.
+echo   Gerar a nova nao desativa nada. Enquanto a antiga nao for
+echo   removida, a que vazou continua valendo.
+echo  ------------------------------------------------------------
+echo.
+echo   Backup da anterior em:
+echo   %BACKUP%
+echo   Tire do servidor ou apague depois de conferir.
+goto FIM
+
+:MANUAL_FALHOU
+echo.
+echo        O TESTE FALHOU com a chave nova. Voltando a anterior.
+copy /Y "%BACKUP%" "%CHAVE%" >nul
+echo        a chave antiga voltou. Nada mudou, e a baixada continua
+echo        em !BAIXADA! caso queira olhar. Me mande o erro acima.
 goto FIM
 
 :FIM

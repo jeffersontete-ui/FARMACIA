@@ -1322,14 +1322,40 @@ A farmácia não fica no servidor o dia todo. Quando fica, o que atrapalha é
 descobrir um comando de cada vez, no meio do expediente, com o balcão
 esperando.
 
-`SERVIDOR_AGORA.bat` é a lista da vez num arquivo só: roda o que dá para
-rodar, na ordem que importa, perguntando antes de cada passo — responder N
-pula sem atrapalhar os outros. No fim ele lista **o que só uma pessoa pode
-fazer**, com o motivo de cada um, porque essa parte não some por ser
-ignorada.
+`SERVIDOR_AGORA.bat` é a lista da vez num arquivo só — e **um arquivo só**
+mesmo: ele baixa sozinho os outros `.bat` de que precisa. Quem está no
+servidor não tem que saber que existem.
 
-Ele é reescrito quando a lista muda. Rodar o `ATUALIZAR_AGENTE.bat` antes,
-ou baixar de novo, traz a lista do dia.
+Roda a lista inteira **sem perguntar nada**. A versão anterior pedia S/N a
+cada passo, e a farmácia pediu que fizesse tudo automaticamente: quem está
+lá quer terminar, não decidir. Passo que falha não derruba os seguintes, e
+tudo vai para um log com data.
+
+Ele **só para uma vez**, na troca da chave, e só quando a máquina não tem o
+`gcloud` — ali o Google exige que uma pessoa autorize o download. Não é
+teimosia do script.
+
+No fim lista **o que só uma pessoa pode fazer**, com o motivo de cada um,
+porque essa parte não some por ser ignorada.
+
+A lista do dia vem junto com o arquivo: para o próximo, basta baixá-lo de
+novo.
+
+#### A troca da chave sem `gcloud` ficou quase automática
+
+O único passo que **precisa** de gente é o download — o Google exige que
+alguém autorize. O resto o `.bat` faz: abre a página certa, espera, procura
+o arquivo baixado em Downloads, na Área de Trabalho e na pasta do agente,
+confere que é mesmo uma chave **daquela conta de serviço**, recusa se for
+outro `.json` qualquer, recusa se for a mesma chave que já está em uso,
+guarda a atual, troca, testa, apaga o arquivo baixado — e no fim cobra em
+voz alta o passo que mais importa e que se esquece: **apagar a chave antiga
+no console**, dizendo o ID dela.
+
+Se o teste falhar, devolve a anterior. O agente nunca fica sem chave boa.
+
+Quem faz isso costuma estar por acesso remoto, às vezes guiando outra pessoa
+por telefone. Cada passo manual a menos é um erro a menos.
 
 ### Trocar a chave do Firebase
 
