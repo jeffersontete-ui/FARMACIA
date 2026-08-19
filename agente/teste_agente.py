@@ -915,6 +915,29 @@ def principal():
         conferir('sessão do Windows: %s' % rotulo, veio is esperado,
                  'esperado %s, veio %s' % (esperado, veio))
 
+    # O nome sai do mesmo parser, e sem o > que o quser põe na própria
+    # sessão. Duas funções lendo a mesma saída com lógicas parecidas foi o
+    # que havia aqui antes; duas lógicas parecidas divergem.
+    def com_saida(saida_falsa, funcao):
+        def rodar(comando, capture_output=True, text=True, timeout=30):
+            return _types.SimpleNamespace(stdout=saida_falsa, stderr='', returncode=0)
+        guardado = _sub.run
+        _sub.run = rodar
+        try:
+            return funcao()
+        finally:
+            _sub.run = guardado
+
+    SAIDA_COM_NOME = """
+ USERNAME              SESSIONNAME        ID  STATE   IDLE TIME  LOGON TIME
+>drogariahumanae       console             1  Active      none   19/08/2026 08:12
+"""
+    conferir('o nome de quem está conectado sai sem o > do quser',
+             com_saida(SAIDA_COM_NOME, ag.usuario_conectado) == 'drogariahumanae',
+             com_saida(SAIDA_COM_NOME, ag.usuario_conectado))
+    conferir('sem ninguém conectado, o nome é vazio e não None',
+             com_saida(SAIDAS_QUSER[0][2], ag.usuario_conectado) == '')
+
     # Sem quser nem query session, a resposta é "não sei" — e não "não tem
     # ninguém". Um chute com cara de certeza manda a farmácia mexer no
     # netplwiz por nada.
@@ -927,6 +950,78 @@ def principal():
                  ag.sessao_interativa() is None)
     finally:
         _sub.run = guardado_run
+
+    # --- o botão "Abrir o Anvisa.exe", de ponta a ponta -------------------
+    # É o caminho mais novo e o que a farmácia usa de longe: se ele der o
+    # recado errado, manda mexer no lugar errado do servidor. Cada resposta
+    # aponta para um conserto diferente, então cada uma tem que sair no
+    # cenário certo.
+    def anvisa_com(processos, saida_quser, saida_tarefa, codigo_run=0):
+        """Roda abrir_anvisa com o Windows simulado. 'processos' é a lista
+        de nomes que o tasklist devolve."""
+        def rodar(comando, capture_output=True, text=True, timeout=30):
+            alvo_cmd = ' '.join(comando).lower()
+            if 'tasklist' in alvo_cmd:
+                return _types.SimpleNamespace(
+                    stdout='\n'.join(processos), stderr='', returncode=0)
+            if '/run' in alvo_cmd:
+                return _types.SimpleNamespace(
+                    stdout='', stderr='sem sessao', returncode=codigo_run)
+            if '/query' in alvo_cmd:
+                return _types.SimpleNamespace(
+                    stdout=saida_tarefa, stderr='', returncode=0)
+            return _types.SimpleNamespace(stdout=saida_quser, stderr='', returncode=0)
+
+        guardado_run = _sub.run
+        guardado_sleep = None
+        import time as _time
+        guardado_sleep = _time.sleep
+        _sub.run = rodar
+        _time.sleep = lambda s: None      # não esperar 12s no teste
+        try:
+            return ag.abrir_anvisa({})
+        except RuntimeError as e:
+            return 'ERRO: %s' % e
+        finally:
+            _sub.run = guardado_run
+            _time.sleep = guardado_sleep
+
+    NINGUEM = SAIDAS_QUSER[0][2]
+    COM_GENTE = SAIDAS_QUSER[1][2]        # drogariahumanae no console
+    TAREFA_DO_ADMIN = """
+TaskName:      \\AnvisaSNGPC_Login
+Run As User:   DROGARIA\\Administrador
+Last Result:   0
+"""
+    TAREFA_DO_BALCAO = """
+TaskName:      \\AnvisaSNGPC_Login
+Run As User:   drogariahumanae
+Last Result:   0
+"""
+
+    recado = anvisa_com(['Anvisa.exe'], COM_GENTE, TAREFA_DO_BALCAO)
+    conferir('já aberto: não abre outra em cima',
+             'JÁ ESTÁ ABERTO' in recado, recado[:90])
+
+    recado = anvisa_com([], NINGUEM, TAREFA_DO_BALCAO)
+    conferir('ninguém conectado: aponta o netplwiz',
+             'NINGUÉM CONECTADO' in recado and 'netplwiz' in recado, recado[:90])
+
+    recado = anvisa_com([], COM_GENTE, TAREFA_DO_ADMIN)
+    conferir('dono da tarefa diferente de quem está na tela: aponta isso',
+             'É ISTO' in recado and 'Administrador' in recado, recado[:120])
+
+    recado = anvisa_com([], COM_GENTE, TAREFA_DO_BALCAO)
+    conferir('mesmo usuário e mesmo assim não abriu: manda diagnosticar',
+             'DIAGNOSTICO_ANVISA' in recado and 'É ISTO' not in recado, recado[:120])
+
+    recado = anvisa_com(['Anvisa.exe'], COM_GENTE, TAREFA_DO_BALCAO, codigo_run=1)
+    conferir('processo já rodando é visto antes de disparar a tarefa',
+             'JÁ ESTÁ ABERTO' in recado, recado[:90])
+
+    recado = anvisa_com([], COM_GENTE, TAREFA_DO_BALCAO, codigo_run=1)
+    conferir('tarefa que não roda vira erro com o nome dela',
+             'ERRO:' in recado and 'AnvisaSNGPC_Login' in recado, recado[:120])
 
     # --- de quem é a tarefa vs quem está na tela --------------------------
     # A farmácia disse que o servidor entra sozinho, sem pedir senha. Ou
@@ -1270,13 +1365,26 @@ ltimo resultado:  0
     recusa('"true" como texto também é regra aberta',
            aberta_texto, 'farmacia/relatorios')
 
+    # TODA ação que o app manda, não só as de RELATORIOS. Ação nova
+    # esquecida na regra é o erro mais silencioso desta dupla: o botão
+    # aparece, o clique funciona, e o Firebase recusa a escrita sem que
+    # nada no servidor fique sabendo.
+    validacao_acao = regras_reais['rules']['farmacia']['comando']['acao']['.validate']
+    acoes_do_app = set(_re.findall(r'data-pedir="(\w+)"', html_app or ''))
+    acoes_do_app |= set(_re.findall(r"acao: '(\w+)'", js_app or ''))
+    acoes_do_app |= set(_re.findall(r"pedirRelatorio\('(\w+)'", js_app or ''))
+    sem_regra = sorted(a for a in acoes_do_app
+                       if ("=== '%s'" % a) not in validacao_acao)
     conferir('toda ação que o app pede está liberada nas regras',
-             all(("=== '%s'" % acao) in
-                 regras_reais['rules']['farmacia']['comando']['acao']['.validate']
-                 for acao in ag.RELATORIOS),
-             ', '.join(a for a in ag.RELATORIOS
-                       if ("=== '%s'" % a) not in
-                       regras_reais['rules']['farmacia']['comando']['acao']['.validate']))
+             not sem_regra, ', '.join(sem_regra))
+
+    # o mesmo para as chaves de configuração
+    validacao_chave = regras_reais['rules']['farmacia']['comando']['chave']['.validate']
+    chaves_do_app = set(_re.findall(r"chave: '(\w+)'", js_app or ''))
+    sem_regra_chave = sorted(c for c in chaves_do_app
+                             if ("=== '%s'" % c) not in validacao_chave)
+    conferir('toda chave de config que o app manda está liberada nas regras',
+             not sem_regra_chave, ', '.join(sem_regra_chave))
 
     shutil.rmtree(pasta, ignore_errors=True)
     print('\n%s\n' % ('%d falha(s)' % len(falhas) if falhas else 'Tudo passou.'))

@@ -1567,6 +1567,40 @@ porque alguém esqueceu de atualizá-la. Agora as ações são lidas do corpo do
 `atender_pedido`. Confirmei removendo o `anvisa` do agente: o teste acusa o
 botão órfão.
 
+### O que a verificação de 19/08 encontrou
+
+Uma varredura do projeto inteiro depois da semana de mudanças. Três achados,
+todos meus e todos silenciosos:
+
+**Dois parsers para a mesma saída.** `sessao_interativa()` e
+`usuario_conectado()` liam o `quser` com lógicas parecidas — uma tratava o
+`>` da própria sessão, a outra não — e cada uma chamava o Windows por conta
+própria. Duas lógicas parecidas divergem; agora há um `ler_sessoes()` só, e
+as duas o usam.
+
+**A cobertura das regras do Firebase valia só para metade.** O teste
+conferia as ações de `RELATORIOS` contra `regras-firebase.json`, mas ações
+como `anvisa`, `zerar_negativos` e `ajustar_lote` são despachadas fora dele.
+Ação nova esquecida na regra é **o erro mais silencioso desta dupla**: o
+botão aparece, o clique funciona, e o Firebase recusa a escrita sem que nada
+no servidor fique sabendo. Agora o teste lê as ações do `index.html` e do
+`app.js` — todas — e faz o mesmo com as chaves de configuração. Confirmei
+removendo `anvisa` da regra: acusa.
+
+**O refactor apagou uma função junto.** Ao unificar os parsers, o
+`so_usuario()` foi no meio do trecho substituído. O teste que compara dono
+da tarefa com quem está na tela quebrou na hora — que é exatamente o que
+teste serve para fazer.
+
+Também entrou o que faltava: `abrir_anvisa()` passou a ser testado de ponta
+a ponta, nos seis cenários. É o caminho que a farmácia usa de longe, e cada
+resposta dele manda mexer num lugar diferente do servidor — dar o recado
+errado ali custa uma viagem.
+
+O que foi varrido e está limpo: código morto (nenhum), os oito `.bat` e
+`.vbs` contra a armadilha do parêntese, os arquivos que o `SERVIDOR_AGORA`
+baixa, as flags do agente, e a versão do `app.js` contra a do `sw.js`.
+
 ## Testes
 
 **Os dois, sempre.** São suítes separadas porque são linguagens separadas, e
