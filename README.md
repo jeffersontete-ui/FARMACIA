@@ -1618,6 +1618,22 @@ mostra saldo diferente e o Digifarma não tem o que transmitir, o problema
 não é falta de envio — é envio que não foi aceito, e isso se confere no
 Relatório Status de Transmissão.
 
+### O ritmo: a venda do dia sobe no dia seguinte
+
+Regra do negócio que a farmácia contou e que o app não sabia. **O número de
+"aguardando transmissão" quase nunca é zero, e não deveria ser** — as vendas
+de hoje ficam ali até amanhã, por funcionamento normal.
+
+Sem isso, todo fim de tarde a tela mostra pendência crescente e parece
+problema. E, pior, o problema de verdade fica escondido no meio: movimento de
+**antes de ontem** ainda parado não é ritmo, é envio que não aconteceu — e é
+exatamente isso que explica divergência de saldo contra a ANVISA.
+
+O `--pendentes` marca cada dia: `sobe amanhã`, `sobe hoje`, ou **`ATRASADO`**.
+E abre com a contagem do que passou do prazo, que é o único número que pede
+ação. A nota da aba Situação passou a dizer o mesmo, para o contador ali
+parar de assustar.
+
 ### O login do SNGPC: a pergunta antes da automação
 
 A farmácia sugeriu que o programa fizesse o login no site sozinho. A
