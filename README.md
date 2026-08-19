@@ -1316,6 +1316,42 @@ ser lote irmão legítimo, e só quem está na farmácia sabe.
 Falhar ao ler o inventário **não** trava a correção: este aviso é rede a
 mais, não a única.
 
+### Quando o servidor deixa de ser alcançável
+
+Em 19/08/2026 a farmácia perdeu o acesso à máquina. Daí em diante, tudo pelo
+app.
+
+Isso obrigou a revisar uma decisão que estava certa e passou a estar errada:
+**ligar a escrita no Digifarma só no servidor**. A intenção era boa — ato
+deliberado, presencial, longe do celular de balcão. Mas trava que ninguém
+consegue desarmar não protege, impede: as duas operações que corrigem
+estoque ficariam mortas para sempre.
+
+O que a torna aceitável de longe é o **prazo**. A liberação agora vence
+sozinha em uma hora. O pior caso deixa de ser "ficou aberto por dias" — que
+foi o que realmente aconteceu aqui — e passa a ser "ficou aberto até a hora
+do almoço". Esquecer de desligar deixou de ser uma categoria de erro.
+
+Quatro cuidados no prazo, todos com teste:
+
+- configuração antiga, ligada no servidor **sem** prazo, continua valendo:
+  esta mudança não podia desligar quem já estava trabalhando;
+- prazo ilegível cai no caso "sem prazo", nem liberado para sempre nem
+  fechado — quem gravou aquilo foi o próprio agente;
+- desligar **apaga** o prazo, senão ele reapareceria na leitura seguinte;
+- vencido, o recado diz **quando** venceu e como liberar de novo.
+
+Junto foi o `arrumar_tarefa_anvisa`: recriar a tarefa do `Anvisa.exe` no nome
+de quem usa a máquina só existia no `AGENDAR_ANVISA.bat`, rodado no servidor.
+Sem isso o programa ficaria travado para sempre — a tarefa pertence ao
+administrador que a criou, e com `/IT` o Windows só abre janela na sessão do
+dono. O agente roda como SYSTEM, então tem permissão para recriá-la; o nome
+vem de quem está conectado, que é justamente quem precisa ver a janela.
+
+**O que continua exigindo alguém na máquina**, e não vai mudar: a troca da
+chave do Firebase (o arquivo precisa chegar ao disco), o login no site do
+SNGPC, e as telas do Digifarma — transmitir e lançar perda.
+
 ### Mexer no servidor: um arquivo, não uma lista de comandos
 
 A farmácia não fica no servidor o dia todo. Quando fica, o que atrapalha é

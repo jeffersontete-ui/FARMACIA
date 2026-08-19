@@ -18,7 +18,7 @@
 /* Tem que ser igual à VERSAO do sw.js — o teste de fumaça cobra as duas.
    Se divergirem, a tela mente sobre qual casca está em cache, que é
    justamente o que este carimbo existe para evitar. */
-const VERSAO_APP = 'v31';
+const VERSAO_APP = 'v32';
 
 const CONFIG_FIREBASE = {
   apiKey: 'AIzaSyC3nXsBC2ARX8IOLITHUtovPn4DONEQe7g',
@@ -302,6 +302,7 @@ const ROTULO_PEDIDO = {
   totais: 'Total do produto x soma dos lotes',
   receitas: 'Receitas lançadas', anvisa: 'Abrir o Anvisa.exe',
   pendentes: 'O que falta transmitir', login_sngpc: 'Login do SNGPC',
+  arrumar_tarefa_anvisa: 'Arrumar a tarefa do Anvisa',
   zerar_negativos: 'Zerar lotes negativos', ajustar_lote: 'Gravar contagem no lote'
 };
 
@@ -356,6 +357,20 @@ $('btn-ponteiro').onclick = async () => {
 
 /* Os dois únicos botões do projeto que escrevem no Digifarma. A confirmação
    diz o que vai mudar e o que NÃO pode ser feito depois — transmitir. */
+$('btn-ligar-escrita').onclick = async () => {
+  const ok = await confirmar('Liberar a escrita',
+    'Os botões que gravam no Digifarma passam a funcionar, e a liberação '
+    + 'vence sozinha em 1 hora. Cada gravação fica registrada com o antes, o '
+    + 'depois e quem pediu. Confirma?', 'Liberar', 'botao-perigo');
+  if (!ok) return;
+  await db.ref('farmacia/comando').set({
+    acao: 'config', chave: 'permitir_ajuste_estoque', valor: 'true',
+    pedidoEm: agora(), pedidoPor: estado.operador, estado: 'pendente'
+  });
+  estado.ultimoPedido = 'config';
+  avisar('Pedido enviado. O agente atende em cerca de um minuto.');
+};
+
 $('btn-desligar-escrita').onclick = async () => {
   const ok = await confirmar('Desligar a escrita',
     'Os botões que gravam no Digifarma param de funcionar. Para ligar de novo '
