@@ -18,7 +18,7 @@
 /* Tem que ser igual à VERSAO do sw.js — o teste de fumaça cobra as duas.
    Se divergirem, a tela mente sobre qual casca está em cache, que é
    justamente o que este carimbo existe para evitar. */
-const VERSAO_APP = 'v26';
+const VERSAO_APP = 'v27';
 
 const CONFIG_FIREBASE = {
   apiKey: 'AIzaSyC3nXsBC2ARX8IOLITHUtovPn4DONEQe7g',
@@ -324,6 +324,12 @@ $('btn-produto').onclick = () => {
   const alvo = $('campo-produto').value.trim();
   if (!alvo) { avisar('Escreva parte do nome do medicamento.'); return; }
   pedirRelatorio('produto', alvo);
+};
+
+$('btn-apuracao').onclick = () => {
+  const alvo = $('campo-saldo').value.trim();
+  if (!alvo) { avisar('Escreva parte do nome do medicamento ou do lote.'); return; }
+  pedirRelatorio('saldo', alvo);
 };
 
 $('btn-colunas').onclick = () => {

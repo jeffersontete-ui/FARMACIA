@@ -1390,6 +1390,27 @@ alguém na máquina.
 *Transmitir o envio e lançar perda.* São telas do Digifarma. O projeto lê o
 banco dele; operar o sistema é outra coisa.
 
+### Modo pronto sem botão: o erro que eu cometi duas vezes
+
+Primeiro foi "Colunas da tabela". Depois "Apuração do saldo". Nos dois casos
+eu mandei a farmácia usar um botão que não existia: o modo estava pronto no
+agente, entrava em `RELATORIOS`, tinha nome em `ROTULO_PEDIDO` — e não havia
+como pedir pela tela. A pessoa procura, não acha, e volta perguntando.
+
+É invariante, e invariante se cobra em teste. O `teste_agente.py` passou a
+ler o `index.html` e o `app.js` e exigir que **toda ação de `RELATORIOS`
+tenha um `data-pedir` ou uma chamada a `pedirRelatorio`**. E o contrário
+também: nenhum botão pode pedir ação que o agente não atende — esse erra
+mais calado ainda, porque o pedido sobe ao Firebase e morre lá.
+
+Verifiquei que o teste falha quando o botão é removido.
+
+O que o botão faz, agora que existe: `--saldo TEXTO` abre a conta lote a
+lote — as linhas cruas do Digifarma, a soma de cada coluna candidata, o que
+foi baixado em venda e perda, e o que a ANVISA tem do mesmo lote. É o
+relatório que responde quando os dois lados falam de lotes com números
+diferentes.
+
 ## Testes
 
 **Os dois, sempre.** São suítes separadas porque são linguagens separadas, e
