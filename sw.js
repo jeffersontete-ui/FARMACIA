@@ -4,7 +4,7 @@
 /* Trocar a VERSAO a cada publicação do app: o fetch aqui é cache-first, e
    sem versão nova o celular que já instalou continua servindo o app.js
    antigo do cache — a atualização sobe para o GitHub Pages e ninguém vê. */
-const VERSAO = 'farmacia-sngpc-v33';
+const VERSAO = 'farmacia-sngpc-v34';
 const CASCA = [
   './',
   './index.html',
@@ -17,8 +17,21 @@ const CASCA = [
   './icon-512-maskable.png'
 ];
 
+/* O cache:'reload' aqui é o que faz a troca de versão funcionar.
+   Sem ele, o addAll pede os arquivos e o NAVEGADOR pode respondê-los do
+   cache HTTP dele — o GitHub Pages manda max-age=600, então por dez
+   minutos ele tem uma cópia guardada. Resultado: o service worker novo
+   instala, cria um cache com nome novo, e enche esse cache com o app.js
+   VELHO. A versão sobe, o cache troca de nome, e a tela continua a
+   mesma. Foi o que aconteceu aqui a cada publicação, e o remendo era
+   abrir o endereço com ?v=NN, que muda a URL e escapa do cache HTTP.
+   Pedir com reload obriga a buscar da rede e acaba com o remendo. */
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSAO).then((c) => c.addAll(CASCA)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(VERSAO)
+      .then((c) => c.addAll(CASCA.map((u) => new Request(u, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (e) => {

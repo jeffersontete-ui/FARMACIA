@@ -18,7 +18,7 @@
 /* Tem que ser igual à VERSAO do sw.js — o teste de fumaça cobra as duas.
    Se divergirem, a tela mente sobre qual casca está em cache, que é
    justamente o que este carimbo existe para evitar. */
-const VERSAO_APP = 'v33';
+const VERSAO_APP = 'v34';
 
 const CONFIG_FIREBASE = {
   apiKey: 'AIzaSyC3nXsBC2ARX8IOLITHUtovPn4DONEQe7g',
@@ -1381,7 +1381,21 @@ async function marcarAceite(data, status) {
    ============================================================ */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service worker não registrado:', e));
+    navigator.serviceWorker.register('sw.js').then((registro) => {
+      // Pedir a checagem na hora, em vez de esperar o navegador decidir.
+      // Com isto, abrir o app já procura versão nova; sem isto a troca
+      // pode demorar uma navegação a mais.
+      registro.update().catch(() => {});
+      // Service worker novo assumiu o controle: a casca em cache mudou
+      // debaixo da página aberta. Recarregar uma vez deixa as duas na
+      // mesma versão — senão o HTML é o velho e o app.js o novo.
+      let jaTrocou = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (jaTrocou) return;
+        jaTrocou = true;
+        window.location.reload();
+      });
+    }).catch((e) => console.warn('Service worker não registrado:', e));
   });
 }
 window.addEventListener('offline', () => {

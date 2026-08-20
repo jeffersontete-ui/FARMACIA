@@ -1236,6 +1236,40 @@ acrescente o UID dele em `farmacia/autorizados`.
 - **`localStorage` só guarda o nome do operador** daquele aparelho.
 - **Nunca subir** `chave-firebase.json` nem os XMLs do SNGPC (dados de paciente).
 
+### Por que a versão nova não chegava ao celular
+
+O `?v=NN` no fim do endereço virou ritual: toda publicação exigia esse
+truque para a farmácia ver a mudança. Ritual que se repete é sintoma, e o
+sintoma tinha causa.
+
+O service worker fazia tudo certo — nome de cache novo a cada versão,
+`skipWaiting`, `clients.claim`, apagar os caches velhos. O furo estava numa
+linha que parecia inocente:
+
+```js
+caches.open(VERSAO).then((c) => c.addAll(CASCA))
+```
+
+O `addAll` **pede os arquivos, e o navegador pode respondê-los do cache HTTP
+dele**. O GitHub Pages manda `max-age=600`, então por dez minutos existe uma
+cópia guardada. O resultado é perverso: o service worker novo instala, cria
+um cache com nome novo, e enche esse cache com o `app.js` **velho**. A versão
+sobe, o cache troca de nome, e a tela continua exatamente a mesma.
+
+O `?v=NN` funcionava porque muda a URL e escapa do cache HTTP — tratava o
+sintoma.
+
+O conserto é pedir com `cache: 'reload'`, que obriga a busca pela rede:
+
+```js
+c.addAll(CASCA.map((u) => new Request(u, { cache: 'reload' })))
+```
+
+Junto foram duas coisas do lado da página: `registro.update()` ao abrir, para
+procurar versão nova na hora em vez de esperar o navegador decidir; e um
+recarregamento único quando o service worker novo assume o controle — senão
+o HTML servido é o velho e o `app.js` o novo, que é o pior dos dois mundos.
+
 ### O app carimba a própria versão
 
 Três vezes na mesma semana a pergunta foi: *"o celular já pegou a versão
